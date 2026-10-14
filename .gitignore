@@ -1,0 +1,29 @@
+node_modules/
+dist/
+coverage/
+*.log
+.env
+.env.*
+!.env.example
+!.env.mock
+
+# CDK
+backend/cdk.out/
+backend/cdk.context.json
+
+# Frontend local runtime config (generated per stage by CDK in deployed envs)
+frontend/public/config.json
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Playwright
+frontend/test-results/
+frontend/playwright-report/
+
+# Demo build (npm run build:demo -w frontend) and Vercel CLI state
+frontend/dist-demo/
+.vercel/

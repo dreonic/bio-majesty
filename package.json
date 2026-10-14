@@ -1,0 +1,20 @@
+{
+  "name": "bio-majesty",
+  "private": true,
+  "description": "Prodia executive dashboard: AI-curated news, chat over saved news, and PRDA stock panel (AWS serverless, CDK).",
+  "workspaces": [
+    "shared",
+    "backend",
+    "frontend"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "build": "npm run build -w frontend",
+    "synth": "npm run synth -w backend",
+    "deploy": "npm run build && npm run deploy -w backend"
+  }
+}
