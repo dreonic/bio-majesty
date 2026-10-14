@@ -1,0 +1,99 @@
+@import 'tailwindcss';
+
+/*
+ * Design tokens. Chart/surface/ink values and the status colors come from the
+ * validated data-viz palette (docs/design.md): sentiment uses the reserved
+ * status colors (always with an icon + label), categories use the fixed
+ * 8-hue categorical order, text always uses ink tokens.
+ */
+@theme {
+  --font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+
+  --color-plane: #f9f9f7;
+  --color-surface: #fcfcfb;
+  --color-raised: #ffffff;
+  --color-ink: #0b0b0b;
+  --color-ink-2: #52514e;
+  --color-muted: #898781;
+  --color-grid: #e1e0d9;
+  --color-axis: #c3c2b7;
+  --color-hairline: #e7e6e1;
+  --color-wash: #f0efec;
+
+  --color-accent: #2a78d6;
+  --color-accent-strong: #1c5cab;
+  --color-accent-wash: #e9f1fc;
+
+  --color-good: #0ca30c;
+  --color-good-text: #006300;
+  --color-good-wash: #e8f6e8;
+  --color-critical: #d03b3b;
+  --color-critical-wash: #fbeaea;
+  --color-warning: #fab219;
+  --color-warning-wash: #fef5e2;
+  --color-neutral: #898781;
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  body {
+    @apply bg-plane text-ink antialiased;
+    font-family: var(--font-sans);
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Markdown answers in the chat */
+.prose-chat {
+  line-height: 1.6;
+}
+.prose-chat p {
+  margin: 0.4rem 0;
+}
+.prose-chat ul,
+.prose-chat ol {
+  margin: 0.4rem 0;
+  padding-left: 1.25rem;
+}
+.prose-chat ul {
+  list-style: disc;
+}
+.prose-chat ol {
+  list-style: decimal;
+}
+.prose-chat a {
+  color: var(--color-accent-strong);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.prose-chat strong {
+  font-weight: 600;
+}
+.prose-chat table {
+  border-collapse: collapse;
+  margin: 0.5rem 0;
+  font-variant-numeric: tabular-nums;
+}
+.prose-chat th,
+.prose-chat td {
+  border-bottom: 1px solid var(--color-grid);
+  padding: 0.25rem 0.5rem;
+  text-align: left;
+}
+.prose-chat code {
+  background: var(--color-wash);
+  border-radius: 4px;
+  padding: 0 0.25rem;
+  font-size: 0.875em;
+}

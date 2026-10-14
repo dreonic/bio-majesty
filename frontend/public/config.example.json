@@ -1,0 +1,10 @@
+{
+  "stage": "dev",
+  "region": "ap-southeast-3",
+  "apiUrl": "https://REPLACE.execute-api.ap-southeast-3.amazonaws.com/api/",
+  "cognito": {
+    "authority": "https://cognito-idp.ap-southeast-3.amazonaws.com/ap-southeast-3_REPLACE",
+    "clientId": "REPLACE",
+    "domain": "https://bio-majesty-dev-ACCOUNT.auth.ap-southeast-3.amazoncognito.com"
+  }
+}
