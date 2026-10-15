@@ -1,0 +1,71 @@
+import { DEFAULT_TIME_ZONE, EMBEDDING_MODELS, isValidTimeZone } from '@bio-majesty/shared';
+import type { App } from 'aws-cdk-lib';
+
+/**
+ * Deployment configuration, read from CDK context (cdk.json) and overridable
+ * per command, e.g.:
+ *
+ *   npx cdk synth -c stage=prod -c region=ap-southeast-3 -c timeZone=Asia/Jakarta
+ *
+ * The region is the single place to change where everything is deployed; the
+ * time zone is the exec's clock (daily run, displayed times, "today").
+ */
+export interface AppConfig {
+  stage: string;
+  region: string;
+  /** IANA time zone of the exec. Stock schedules always follow IDX hours (Asia/Jakarta). */
+  timeZone: string;
+  account: string | undefined;
+  stockProvider: 'yahoo' | 'eodhd';
+  embeddingModel: string;
+  embeddingDimensions: number;
+  alarmEmail: string | null;
+  customDomainName: string | null;
+  customDomainCertificateArn: string | null;
+  /** Keep data (table, buckets, secret, user pool) when the stack is deleted. */
+  retainData: boolean;
+  /** Extra origin allowed to call the API and to receive Cognito redirects (local dev). */
+  localDevOrigin: string | null;
+}
+
+function ctx(app: App, key: string): string {
+  const value = app.node.tryGetContext(key);
+  return value === undefined || value === null ? '' : String(value).trim();
+}
+
+export function loadConfig(app: App): AppConfig {
+  const stage = ctx(app, 'stage') || 'dev';
+  if (!/^[a-z][a-z0-9-]{1,15}$/.test(stage)) throw new Error(`Invalid stage "${stage}" (lowercase, 2-16 chars)`);
+
+  const region = ctx(app, 'region') || process.env.CDK_DEFAULT_REGION || 'ap-southeast-1';
+  if (!/^[a-z]{2}(-[a-z]+)+-\d$/.test(region)) throw new Error(`Invalid region "${region}"`);
+
+  const timeZone = ctx(app, 'timeZone') || DEFAULT_TIME_ZONE;
+  if (!isValidTimeZone(timeZone)) throw new Error(`Invalid timeZone "${timeZone}" (expected an IANA name such as Asia/Singapore)`);
+
+  const stockProvider = (ctx(app, 'stockProvider') || 'yahoo') as AppConfig['stockProvider'];
+  if (stockProvider !== 'yahoo' && stockProvider !== 'eodhd') throw new Error('stockProvider must be "yahoo" or "eodhd"');
+
+  const embeddingModel = ctx(app, 'embeddingModel') || 'google:gemini-embedding-2';
+  const model = EMBEDDING_MODELS.find((m) => m.id === embeddingModel);
+  if (!model) throw new Error(`Unknown embeddingModel "${embeddingModel}". Options: ${EMBEDDING_MODELS.map((m) => m.id).join(', ')}`);
+  const embeddingDimensions = Number(ctx(app, 'embeddingDimensions') || model.dimensions[0]);
+  if (!model.dimensions.includes(embeddingDimensions)) {
+    throw new Error(`embeddingDimensions for ${embeddingModel} must be one of ${model.dimensions.join(', ')}`);
+  }
+
+  return {
+    stage,
+    region,
+    timeZone,
+    account: process.env.CDK_DEFAULT_ACCOUNT,
+    stockProvider,
+    embeddingModel,
+    embeddingDimensions,
+    alarmEmail: ctx(app, 'alarmEmail') || null,
+    customDomainName: ctx(app, 'customDomainName') || null,
+    customDomainCertificateArn: ctx(app, 'customDomainCertificateArn') || null,
+    retainData: stage === 'prod' || ctx(app, 'retainData') === 'true',
+    localDevOrigin: stage === 'prod' ? null : ctx(app, 'localDevOrigin') || 'http://localhost:5173',
+  };
+}
