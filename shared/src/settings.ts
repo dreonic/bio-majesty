@@ -55,9 +55,8 @@ export type TaskModelSettings = z.infer<typeof TaskModelSettingsSchema>;
 
 export const ScheduleSettingsSchema = z.object({
   enabled: z.boolean(),
-  /** Local time in Asia/Jakarta, HH:mm. */
+  /** HH:mm in the exec's time zone (the deployment's `timeZone`, default Asia/Singapore). */
   dailyTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
-  timezone: z.literal('Asia/Jakarta'),
 });
 
 export const SettingsSchema = z.object({
@@ -143,7 +142,7 @@ export const DEFAULT_SETTINGS: Settings = {
     digest: { model: DEFAULT_MODEL, fallbackModel: null, reasoning: 'low', providerOptions: null },
     chat: { model: DEFAULT_MODEL, fallbackModel: null, reasoning: 'medium', providerOptions: null },
   },
-  schedule: { enabled: true, dailyTime: '06:00', timezone: 'Asia/Jakarta' },
+  schedule: { enabled: true, dailyTime: '06:00' },
   sources: { googleNews: true, gdelt: true },
   notifications: { notifyWhenEmpty: false },
   stock: { symbol: 'PRDA.JK', volumeAlerts: true, volumeRatio: 2.5 },

@@ -9,3 +9,4 @@ export * from './digest';
 export * from './chat';
 export * from './telegram';
 export * from './feedback';
+export * from './time';

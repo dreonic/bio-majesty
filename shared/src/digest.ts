@@ -9,7 +9,7 @@ export const DigestHighlightSchema = z.object({
 });
 
 export const DigestSchema = z.object({
-  /** Asia/Jakarta calendar date, YYYY-MM-DD, plus a suffix for backfills. */
+  /** The exec's calendar date, YYYY-MM-DD, plus a suffix for backfills. */
   id: z.string(),
   runId: z.string(),
   runType: z.enum(['daily', 'backfill']),
