@@ -1,10 +1,10 @@
-import { STOCK_RANGES, type Candle, type StockRange, type VolumeAnomaly } from '@bio-majesty/shared';
+import { candleDate, STOCK_RANGES, type Candle, type StockRange, type VolumeAnomaly } from '@bio-majesty/shared';
 import { AlertTriangle, ArrowDownRight, ArrowUpRight, BarChart3, BellRing, ChevronDown, ChevronRight, Clock, PanelRightClose, Table2 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { SENTIMENT_META, SentimentBadge } from '../../components/tags';
 import { EmptyState, Spinner } from '../../components/ui';
 import { cn } from '../../lib/cn';
-import { formatCompact, formatDate, formatPercent, formatPrice, formatSigned, formatTime, jakartaYmd } from '../../lib/format';
+import { formatClock, formatCompact, formatDate, formatPercent, formatPrice, formatSigned, formatTime, timeZoneLabel } from '../../lib/format';
 import { useStoredState } from '../../lib/hooks';
 import { useAnomalies, useStock, useStockMarkers } from '../../lib/queries';
 import { useOpenArticle } from '../news/ArticleSheet';
@@ -19,7 +19,8 @@ export function StockPanel({ onCollapse }: { onCollapse?: () => void }) {
   const anomalies = useAnomalies();
   const data = stock.data;
   const intraday = data?.interval === '15m';
-  const markersFrom = !intraday && data?.candles.length ? jakartaYmd(new Date(data.candles[0]!.time * 1000)) : null;
+  // Trading date of the first candle (the API reads it as a Jakarta day).
+  const markersFrom = !intraday && data?.candles.length ? candleDate(data.candles[0]!.time) : null;
   const markers = useStockMarkers(markersFrom).data ?? [];
   const dayNews = useMemo(() => (selectedDay ? markers.filter((m) => m.time === selectedDay) : []), [markers, selectedDay]);
   const highlightTimes = useMemo(() => new Set((anomalies.data?.items ?? []).map((a) => a.time)), [anomalies.data]);
@@ -218,7 +219,7 @@ function CandleTable({ candles, intraday }: { candles: Candle[]; intraday: boole
       <table className="tabular w-full text-xs">
         <thead className="sticky top-0 bg-surface text-left text-ink-2">
           <tr className="border-b border-grid">
-            <th className="py-1.5 pr-2 font-medium">{intraday ? 'Time (WIB)' : 'Date'}</th>
+            <th className="py-1.5 pr-2 font-medium">{intraday ? `Time (${timeZoneLabel()})` : 'Date'}</th>
             <th className="py-1.5 pr-2 text-right font-medium">Open</th>
             <th className="py-1.5 pr-2 text-right font-medium">High</th>
             <th className="py-1.5 pr-2 text-right font-medium">Low</th>
@@ -229,7 +230,7 @@ function CandleTable({ candles, intraday }: { candles: Candle[]; intraday: boole
         <tbody className="text-ink">
           {rows.map((c) => (
             <tr key={c.time} className="border-b border-grid/60">
-              <td className="py-1 pr-2">{intraday ? `${formatDate(c.time * 1000)} ${formatTime(c.time * 1000).replace(' WIB', '')}` : formatDate(c.time * 1000)}</td>
+              <td className="py-1 pr-2">{intraday ? `${formatDate(c.time * 1000)} ${formatClock(c.time * 1000)}` : formatDate(c.time * 1000)}</td>
               <td className="py-1 pr-2 text-right">{formatPrice(c.open)}</td>
               <td className="py-1 pr-2 text-right">{formatPrice(c.high)}</td>
               <td className="py-1 pr-2 text-right">{formatPrice(c.low)}</td>

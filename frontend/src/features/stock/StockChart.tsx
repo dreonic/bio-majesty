@@ -15,7 +15,7 @@ import {
   type UTCTimestamp,
 } from 'lightweight-charts';
 import { useEffect, useRef, useState } from 'react';
-import { formatCompact, formatPrice } from '../../lib/format';
+import { displayOffsetSeconds, formatCompact, formatPrice } from '../../lib/format';
 
 /** Chart colors from the validated palette (docs/design.md). */
 const C = {
@@ -38,9 +38,6 @@ const MARKER_STYLE: Record<StockMarker['sentiment'], Pick<SeriesMarker<Time>, 's
   neutral: { shape: 'circle', color: C.neutral },
   undecided: { shape: 'square', color: C.undecided },
 };
-
-/** Lightweight Charts renders UTC; shift intraday bars so the axis reads in WIB. */
-const WIB_SHIFT = 7 * 3600;
 
 interface Props {
   candles: Candle[];
@@ -145,12 +142,13 @@ export function StockChart({ candles, intraday, markers, highlightTimes, onDaySe
   useEffect(() => {
     const chart = chartRef.current;
     if (!chart || !candleRef.current || !volumeRef.current) return;
-    const shift = intraday ? WIB_SHIFT : 0;
+    // Lightweight Charts renders UTC; shift intraday bars so the axis reads in the display time zone.
+    const shift = (t: number) => (intraday ? displayOffsetSeconds(t) : 0);
     const byTime = new Map<number, Readout>();
     const sorted = [...candles].sort((a, b) => a.time - b.time);
     candleRef.current.setData(
       sorted.map((c) => {
-        const time = c.time + shift;
+        const time = c.time + shift(c.time);
         byTime.set(time, { ...c, time });
         return { time: time as UTCTimestamp, open: c.open, high: c.high, low: c.low, close: c.close };
       }),
@@ -159,7 +157,7 @@ export function StockChart({ candles, intraday, markers, highlightTimes, onDaySe
       sorted.map((c) => {
         const up = c.close >= c.open;
         const strong = !intraday && highlightTimes?.has(c.time);
-        return { time: (c.time + shift) as UTCTimestamp, value: c.volume, color: strong ? (up ? C.up : C.down) : up ? C.upVolume : C.downVolume };
+        return { time: (c.time + shift(c.time)) as UTCTimestamp, value: c.volume, color: strong ? (up ? C.up : C.down) : up ? C.upVolume : C.downVolume };
       }),
     );
     byTimeRef.current = byTime;
@@ -194,7 +192,8 @@ export function StockChart({ candles, intraday, markers, highlightTimes, onDaySe
     markersRef.current.setMarkers(list);
   }, [markers, candles, intraday]);
 
-  const shown = readout ?? (candles.length ? { ...candles[candles.length - 1]!, time: candles[candles.length - 1]!.time + (intraday ? WIB_SHIFT : 0) } : null);
+  const last = candles[candles.length - 1];
+  const shown = readout ?? (last ? { ...last, time: last.time + (intraday ? displayOffsetSeconds(last.time) : 0) } : null);
   const change = shown ? shown.close - shown.open : 0;
 
   return (

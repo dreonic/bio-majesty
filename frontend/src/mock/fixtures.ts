@@ -188,7 +188,7 @@ export const settings: SettingsView = {
   telegram: { configured: true, linked: false, chatTitle: null, linkedAt: null },
   configuredProviders: ['anthropic', 'google'],
   stage: 'demo',
-  region: 'ap-southeast-3',
+  region: 'ap-southeast-1',
 };
 
 export const models = {

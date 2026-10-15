@@ -3,7 +3,7 @@ import { CheckCircle2, CircleAlert, Loader2, Play } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useToast } from '../../components/toast';
 import { Button, Card, Input, SectionTitle, Spinner, Switch } from '../../components/ui';
-import { formatDateTime } from '../../lib/format';
+import { displayTimeZone, formatDateTime, timeZoneLabel } from '../../lib/format';
 import { useCategories, useFeedbackStats, useRunDaily, useRuns, useSettings, useUpdateSettings } from '../../lib/queries';
 
 export function ScheduleSection() {
@@ -46,7 +46,9 @@ export function ScheduleSection() {
         <label className="flex items-center gap-2 text-sm text-ink">
           Run every day at
           <Input type="time" value={time} onChange={(e) => setTime(e.target.value)} className="w-32" aria-label="Daily run time" />
-          <span className="text-ink-2">WIB</span>
+          <span className="text-ink-2" title={displayTimeZone()}>
+            {timeZoneLabel()}
+          </span>
         </label>
         <Switch checked={enabled} onChange={setEnabled} label="Enabled" />
         <Button

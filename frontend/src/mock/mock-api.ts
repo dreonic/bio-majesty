@@ -1,4 +1,15 @@
-import { CATEGORY_COLORS, detectVolumeAnomalies, effectiveTags, SENTIMENTS, type Article, type Category, type Sentiment, type StockRange } from '@bio-majesty/shared';
+import {
+  CATEGORY_COLORS,
+  DEFAULT_TIME_ZONE,
+  detectVolumeAnomalies,
+  effectiveTags,
+  midnightInZone,
+  SENTIMENTS,
+  type Article,
+  type Category,
+  type Sentiment,
+  type StockRange,
+} from '@bio-majesty/shared';
 import type { RuntimeConfig } from '../app/config';
 import { formatDate, formatPercent, formatPrice } from '../lib/format';
 import * as fx from './fixtures';
@@ -10,7 +21,8 @@ import * as fx from './fixtures';
  */
 export const MOCK_CONFIG: RuntimeConfig = {
   stage: 'demo',
-  region: 'ap-southeast-3',
+  region: 'ap-southeast-1',
+  timeZone: DEFAULT_TIME_ZONE,
   apiUrl: 'https://mock.invalid/api/',
   cognito: { authority: 'https://mock.invalid', clientId: 'mock', domain: 'https://mock.invalid' },
 };
@@ -37,7 +49,8 @@ function list(url: URL) {
   const q = url.searchParams.get('q')?.toLowerCase();
   const items = state.articles
     .filter((a) => a.status === status)
-    .filter((a) => !from || a.publishedAt >= new Date(`${from}T00:00:00+07:00`).toISOString())
+    // Like the API: news dates are days on the exec's calendar.
+    .filter((a) => !from || a.publishedAt >= midnightInZone(DEFAULT_TIME_ZONE, from).toISOString())
     .filter((a) => !cats.length || effectiveTags(a).categoryIds.some((c) => cats.includes(c)))
     .filter((a) => !sents.length || sents.includes(effectiveTags(a).sentiment))
     .filter((a) => !q || `${a.title} ${a.suggestion?.summary}`.toLowerCase().includes(q))
@@ -56,6 +69,8 @@ function stock(range: StockRange) {
   }
   const last = fx.dailyCandles[fx.dailyCandles.length - 1]!;
   const prev = fx.dailyCandles[fx.dailyCandles.length - 2]!;
+  // Like a real quote: the time of the last trade (the latest 15-minute bar), not the time of the request.
+  const lastBar = fx.intradayCandles[fx.intradayCandles.length - 1];
   return {
     symbol: state.settings.stock.symbol,
     range,
@@ -71,7 +86,7 @@ function stock(range: StockRange) {
       dayLow: last.low,
       volume: last.volume,
       currency: 'IDR',
-      marketTime: new Date().toISOString(),
+      marketTime: lastBar ? new Date(lastBar.time * 1000).toISOString() : new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       provider: 'demo',
     },

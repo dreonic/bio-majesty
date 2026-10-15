@@ -5,7 +5,7 @@ import { MultiSelect } from '../../components/overlays';
 import { SENTIMENT_META } from '../../components/tags';
 import { Button, EmptyState, Input, Select, Spinner } from '../../components/ui';
 import { cn } from '../../lib/cn';
-import { daysAgo, jakartaYmd } from '../../lib/format';
+import { daysAgo, localYmd } from '../../lib/format';
 import { useDebounced, useStoredState } from '../../lib/hooks';
 import { useCategories, useNews } from '../../lib/queries';
 import { ArticleCard } from './ArticleCard';
@@ -42,7 +42,7 @@ export function NewsTab() {
   const range = useMemo(() => {
     if (filters.window === 'all') return {};
     if (filters.window === 'custom') return { from: filters.from || undefined, to: filters.to || undefined };
-    return { from: jakartaYmd(daysAgo(Number(filters.window))) };
+    return { from: localYmd(daysAgo(Number(filters.window))) };
   }, [filters.window, filters.from, filters.to]);
 
   const news = useNews({
