@@ -8,7 +8,9 @@ import type { App } from 'aws-cdk-lib';
  *   npx cdk synth -c stage=prod -c region=ap-southeast-3 -c timeZone=Asia/Jakarta
  *
  * The region is the single place to change where everything is deployed; the
- * time zone is the exec's clock (daily run, displayed times, "today").
+ * time zone is the exec's clock (daily run, displayed times, "today"). `account`
+ * pins the AWS account: a command run with another account's credentials stops
+ * instead of deploying there.
  */
 export interface AppConfig {
   stage: string;
@@ -40,6 +42,9 @@ export function loadConfig(app: App): AppConfig {
   const region = ctx(app, 'region') || process.env.CDK_DEFAULT_REGION || 'ap-southeast-1';
   if (!/^[a-z]{2}(-[a-z]+)+-\d$/.test(region)) throw new Error(`Invalid region "${region}"`);
 
+  const account = ctx(app, 'account') || process.env.CDK_DEFAULT_ACCOUNT;
+  if (account && !/^\d{12}$/.test(account)) throw new Error(`Invalid account "${account}" (12 digits)`);
+
   const timeZone = ctx(app, 'timeZone') || DEFAULT_TIME_ZONE;
   if (!isValidTimeZone(timeZone)) throw new Error(`Invalid timeZone "${timeZone}" (expected an IANA name such as Asia/Singapore)`);
 
@@ -58,7 +63,7 @@ export function loadConfig(app: App): AppConfig {
     stage,
     region,
     timeZone,
-    account: process.env.CDK_DEFAULT_ACCOUNT,
+    account,
     stockProvider,
     embeddingModel,
     embeddingDimensions,

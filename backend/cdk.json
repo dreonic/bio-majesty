@@ -19,6 +19,7 @@
   "context": {
     "stage": "dev",
     "region": "ap-southeast-1",
+    "account": "297580066575",
     "timeZone": "Asia/Singapore",
     "stockProvider": "yahoo",
     "embeddingModel": "google:gemini-embedding-2",
