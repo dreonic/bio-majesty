@@ -37,6 +37,10 @@ describe('DashboardStack', () => {
     expect(unprotected).toEqual([]);
   });
 
+  it('compresses API responses of 1 KB or more', () => {
+    template.hasResourceProperties('AWS::ApiGateway::RestApi', { MinimumCompressionSize: 1024 });
+  });
+
   it('streams the chat endpoint', () => {
     template.hasResourceProperties('AWS::ApiGateway::Method', {
       HttpMethod: 'POST',

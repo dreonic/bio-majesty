@@ -1,4 +1,4 @@
-import { Duration } from 'aws-cdk-lib';
+import { Duration, Size } from 'aws-cdk-lib';
 import * as apigateway from 'aws-cdk-lib/aws-apigateway';
 import type * as cognito from 'aws-cdk-lib/aws-cognito';
 import * as iam from 'aws-cdk-lib/aws-iam';
@@ -34,6 +34,9 @@ export class ApiConstruct extends Construct {
       restApiName: `bio-majesty-${config.stage}`,
       description: 'Prodia exec dashboard API',
       endpointConfiguration: { types: [apigateway.EndpointType.REGIONAL] },
+      // gzip JSON responses of 1 KB or more for browsers that accept it (e.g. MAX history,
+      // CSV downloads). Streamed chat responses are never compressed by API Gateway.
+      minCompressionSize: Size.kibibytes(1),
       cloudWatchRole: true,
       deployOptions: {
         stageName: 'api',
