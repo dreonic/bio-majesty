@@ -12,7 +12,8 @@ export class YahooStockProvider implements StockProvider {
   private readonly yf = new YahooFinance({ suppressNotices: ['yahooSurvey'], versionCheck: false });
 
   async daily(symbol: string, from: Date, to?: Date): Promise<StockSnapshot> {
-    return this.fetch(symbol, { period1: from, period2: to, interval: '1d' }, true);
+    // yahoo-finance2 rejects `period2: undefined`, so the key is only set with an end date.
+    return this.fetch(symbol, { period1: from, ...(to && { period2: to }), interval: '1d' }, true);
   }
 
   async intraday(symbol: string, from: Date): Promise<StockSnapshot> {
