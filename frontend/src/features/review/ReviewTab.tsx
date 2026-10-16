@@ -8,6 +8,7 @@ import { cn } from '../../lib/cn';
 import { formatDate, formatDateTime, relativeTime } from '../../lib/format';
 import { useBulkReview, useCategories, useCounts, useNews, useReview } from '../../lib/queries';
 import { ArticleCard, type ArticleCardHandle } from '../news/ArticleCard';
+import { useChartFocus } from '../stock/chart-focus';
 
 /**
  * Review queue: every AI-suggested article waits here until the exec saves
@@ -27,6 +28,15 @@ export function ReviewTab() {
   const cardRefs = useRef(new Map<string, ArticleCardHandle>());
   const skipped = counts.data?.skipped ?? 0;
 
+  // Once the exec clicks a card or moves with J/K, the chart highlights the focused card
+  // (and keeps following it when Save/Skip moves the focus to the next one).
+  const { focus: focusChart } = useChartFocus();
+  const [followChart, setFollowChart] = useState(false);
+  const current = items[focus];
+  useEffect(() => {
+    if (followChart) focusChart(current ?? null);
+  }, [followChart, current, focusChart]);
+
   useEffect(() => {
     if (focus >= items.length) setFocus(Math.max(0, items.length - 1));
   }, [items.length, focus]);
@@ -36,9 +46,10 @@ export function ReviewTab() {
       const target = e.target as HTMLElement;
       if (target.closest('input, textarea, select, [role="dialog"], [role="menu"]') || e.metaKey || e.ctrlKey || e.altKey) return;
       const current = items[focus];
-      if (e.key === 'j') setFocus((f) => Math.min(items.length - 1, f + 1));
-      else if (e.key === 'k') setFocus((f) => Math.max(0, f - 1));
-      else if (current && e.key === 's') cardRefs.current.get(current.id)?.save();
+      if (e.key === 'j' || e.key === 'k') {
+        setFocus((f) => (e.key === 'j' ? Math.min(items.length - 1, f + 1) : Math.max(0, f - 1)));
+        setFollowChart(true);
+      } else if (current && e.key === 's') cardRefs.current.get(current.id)?.save();
       else if (current && e.key === 'x') cardRefs.current.get(current.id)?.skip();
       else if (current && e.key === 'e') cardRefs.current.get(current.id)?.details();
       else return;
@@ -109,7 +120,10 @@ export function ReviewTab() {
                       article={a}
                       categories={categories}
                       focused={index === focus}
-                      onFocus={() => setFocus(index)}
+                      onFocus={() => {
+                        setFocus(index);
+                        setFollowChart(true);
+                      }}
                       handleRef={(h) => {
                         if (h) cardRefs.current.set(a.id, h);
                         else cardRefs.current.delete(a.id);

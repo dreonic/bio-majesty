@@ -5,6 +5,7 @@ import { useSearchParams } from 'react-router';
 import { DigestBanner } from '../features/digest/DigestBanner';
 import { NewsTab } from '../features/news/NewsTab';
 import { ReviewTab } from '../features/review/ReviewTab';
+import { ChartFocusProvider } from '../features/stock/chart-focus';
 import { StockPanel } from '../features/stock/StockPanel';
 import { Spinner } from '../components/ui';
 import { cn } from '../lib/cn';
@@ -19,9 +20,18 @@ type Tab = 'news' | 'review' | 'chat' | 'stock';
 /**
  * News / Review / Chat tabs on the left, PRDA stock on the right with a
  * draggable divider and a collapse button (sizes persist in localStorage).
- * Below 1024px the stock panel becomes a fourth tab.
+ * Below 1024px the stock panel becomes a fourth tab. An article clicked in
+ * News or Review is highlighted on the stock chart (ChartFocusProvider).
  */
 export function Dashboard({ config }: { config: RuntimeConfig }) {
+  return (
+    <ChartFocusProvider>
+      <DashboardLayout config={config} />
+    </ChartFocusProvider>
+  );
+}
+
+function DashboardLayout({ config }: { config: RuntimeConfig }) {
   const wide = useMediaQuery('(min-width: 1024px)');
   const [params, setParams] = useSearchParams();
   const requested = (params.get('tab') as Tab | null) ?? 'news';

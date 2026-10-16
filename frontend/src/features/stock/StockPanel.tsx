@@ -8,7 +8,20 @@ import { formatClock, formatCompact, formatDate, formatPercent, formatPrice, for
 import { useStoredState } from '../../lib/hooks';
 import { useAnomalies, useStock, useStockMarkers } from '../../lib/queries';
 import { useOpenArticle } from '../news/ArticleSheet';
+import { useChartFocus } from './chart-focus';
 import { StockChart } from './StockChart';
+
+/** How the unusual-volume list names the span of each range. */
+const RANGE_SPAN: Record<StockRange, string> = {
+  '1D': 'on the last trading day',
+  '5D': 'in the past 5 days',
+  '1M': 'in the past month',
+  '3M': 'in the past 3 months',
+  '6M': 'in the past 6 months',
+  '1Y': 'in the past year',
+  '5Y': 'in the past 5 years',
+  MAX: 'since listing',
+};
 
 /** PRDA quote, chart (or table), unusual-volume days and the saved news plotted on the chart. */
 export function StockPanel({ onCollapse }: { onCollapse?: () => void }) {
@@ -16,12 +29,15 @@ export function StockPanel({ onCollapse }: { onCollapse?: () => void }) {
   const [view, setView] = useState<'chart' | 'table'>('chart');
   const [selectedDay, setSelectedDay] = useState<number | null>(null);
   const stock = useStock(range);
-  const anomalies = useAnomalies();
   const data = stock.data;
   const intraday = data?.interval === '15m';
-  // Trading date of the first candle (the API reads it as a Jakarta day).
-  const markersFrom = !intraday && data?.candles.length ? candleDate(data.candles[0]!.time) : null;
-  const markers = useStockMarkers(markersFrom).data ?? [];
+  // Trading date of the first candle (the API reads it as a Jakarta day): markers and the
+  // unusual-volume list cover the same span as the chart.
+  const firstDay = data?.candles.length ? candleDate(data.candles[0]!.time) : null;
+  const anomalies = useAnomalies(firstDay);
+  const markers = useStockMarkers(intraday ? null : firstDay).data ?? [];
+  const { focused } = useChartFocus();
+  const focusBeforeRange = Boolean(focused && data?.candles.length && focused.time < data.candles[0]!.time);
   const dayNews = useMemo(() => (selectedDay ? markers.filter((m) => m.time === selectedDay) : []), [markers, selectedDay]);
   const highlightTimes = useMemo(() => new Set((anomalies.data?.items ?? []).map((a) => a.time)), [anomalies.data]);
   const openArticle = useOpenArticle();
@@ -118,7 +134,14 @@ export function StockPanel({ onCollapse }: { onCollapse?: () => void }) {
             {data?.lastError ? `Last refresh error: ${data.lastError}` : 'Intraday data appears during IDX trading hours.'}
           </EmptyState>
         ) : view === 'chart' ? (
-          <StockChart candles={data.candles} intraday={intraday} markers={markers} highlightTimes={highlightTimes} onDaySelected={setSelectedDay} />
+          <StockChart
+            candles={data.candles}
+            intraday={intraday}
+            markers={markers}
+            focus={focused}
+            highlightTimes={highlightTimes}
+            onDaySelected={setSelectedDay}
+          />
         ) : (
           <CandleTable candles={data.candles} intraday={intraday} />
         )}
@@ -139,13 +162,17 @@ export function StockPanel({ onCollapse }: { onCollapse?: () => void }) {
           ) : (
             <p className="text-ink-2">
               Saved news: <MarkerKey symbol="▲" sentiment="positive" /> · <MarkerKey symbol="▼" sentiment="negative" /> · <MarkerKey symbol="●" sentiment="neutral" /> ·{' '}
-              <MarkerKey symbol="■" sentiment="undecided" />. Bold volume bars = unusual volume. Click a day to see its articles.
+              <MarkerKey symbol="■" sentiment="undecided" />. Bold volume bars = unusual volume. Click a day to see its articles; click an article in
+              News or Review to highlight it.
+              {focused && focusBeforeRange && (
+                <span className="text-ink"> The selected article ({formatDate(focused.time * 1000)}) is before this range; pick a longer one.</span>
+              )}
             </p>
           )}
         </div>
       )}
 
-      <AnomalyList items={anomalies.data?.items ?? []} minRatio={anomalies.data?.minRatio} onSelectDay={setSelectedDay} />
+      <AnomalyList items={anomalies.data?.items ?? []} minRatio={anomalies.data?.minRatio} span={RANGE_SPAN[range]} />
     </div>
   );
 }
@@ -161,8 +188,8 @@ function MarkerKey({ symbol, sentiment }: { symbol: string; sentiment: keyof typ
   );
 }
 
-/** Days whose trading volume was far above the 20-day average (newest first). */
-function AnomalyList({ items, minRatio, onSelectDay }: { items: VolumeAnomaly[]; minRatio?: number; onSelectDay: (time: number) => void }) {
+/** Days in the selected range whose trading volume was far above the 20-day average (newest first). */
+function AnomalyList({ items, minRatio, span }: { items: VolumeAnomaly[]; minRatio?: number; span: string }) {
   const [open, setOpen] = useStoredState('bm:anomalies-open', true);
   const [showAll, setShowAll] = useState(false);
   const shown = showAll ? items : items.slice(0, 4);
@@ -172,18 +199,19 @@ function AnomalyList({ items, minRatio, onSelectDay }: { items: VolumeAnomaly[];
         {open ? <ChevronDown className="size-3.5" aria-hidden /> : <ChevronRight className="size-3.5" aria-hidden />}
         Unusual volume
         <span className="font-normal text-ink-2">
-          · {items.length} in 12 months{minRatio ? ` (≥ ${minRatio}× the 20-day average)` : ''}
+          · {items.length} {span}
+          {minRatio ? ` (≥ ${minRatio}× the 20-day average)` : ''}
         </span>
       </button>
       {open && (
         <div className="mt-2">
           {items.length === 0 ? (
-            <p className="text-ink-2">No unusual trading volume in the last 12 months.</p>
+            <p className="text-ink-2">No unusual trading volume {span}.</p>
           ) : (
             <table className="tabular w-full">
               <tbody>
                 {shown.map((a) => (
-                  <tr key={a.date} className="cursor-pointer border-b border-grid/60 last:border-0 hover:bg-wash" onClick={() => onSelectDay(a.time)}>
+                  <tr key={a.date} className="border-b border-grid/60 last:border-0">
                     <td className="py-1 pr-2 text-ink">
                       {formatDate(a.time * 1000)}
                       {a.source === 'intraday' && <span className="ml-1 rounded bg-accent-wash px-1 text-[10px] text-accent-strong">today</span>}
@@ -194,7 +222,11 @@ function AnomalyList({ items, minRatio, onSelectDay }: { items: VolumeAnomaly[];
                       {a.changePercent !== null ? formatPercent(a.changePercent) : '—'}
                     </td>
                     <td className="w-4 py-1 text-right">
-                      {a.notifiedAt && <BellRing className="inline size-3 text-muted" aria-label="Alert sent" />}
+                      {a.notifiedAt && (
+                        <span title={`Telegram alert sent ${formatDate(a.notifiedAt)} ${formatTime(a.notifiedAt)}`}>
+                          <BellRing className="inline size-3 text-muted" aria-label="Telegram alert sent" />
+                        </span>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -213,7 +245,8 @@ function AnomalyList({ items, minRatio, onSelectDay }: { items: VolumeAnomaly[];
 }
 
 function CandleTable({ candles, intraday }: { candles: Candle[]; intraday: boolean }) {
-  const rows = [...candles].reverse().slice(0, 120);
+  // Every bar in the selected range, newest first.
+  const rows = [...candles].reverse();
   return (
     <div className="h-full overflow-auto px-3 pb-3">
       <table className="tabular w-full text-xs">

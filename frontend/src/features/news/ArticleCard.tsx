@@ -9,6 +9,7 @@ import { Button } from '../../components/ui';
 import { cn } from '../../lib/cn';
 import { formatDateTime, relativeTime } from '../../lib/format';
 import { useReview } from '../../lib/queries';
+import { useChartFocus } from '../stock/chart-focus';
 import { useOpenArticle } from './ArticleSheet';
 
 const SKIPPED = 'Skipped · moved to the recycle bin';
@@ -43,6 +44,7 @@ export function ArticleCard({
   const openArticle = useOpenArticle();
   const review = useReview();
   const toast = useToast();
+  const chartFocus = useChartFocus();
   const tags = effectiveTags(article);
   const aiSummary = article.suggestion?.summary ?? article.snippet ?? '';
   const aiRationale = article.suggestion?.rationale ?? '';
@@ -76,6 +78,7 @@ export function ArticleCard({
       .then(() => {
         toast.success(message);
         setEditingSaved(false);
+        if (action === 'reject' || action === 'unsave') chartFocus.release(article.id);
       }, toast.error);
 
   useEffect(() => {

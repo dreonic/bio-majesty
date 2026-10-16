@@ -8,6 +8,7 @@ import { cn } from '../../lib/cn';
 import { daysAgo, localYmd } from '../../lib/format';
 import { useDebounced, useStoredState } from '../../lib/hooks';
 import { useCategories, useNews } from '../../lib/queries';
+import { useChartFocus } from '../stock/chart-focus';
 import { ArticleCard } from './ArticleCard';
 
 const WINDOWS = [
@@ -31,8 +32,12 @@ interface Filters {
 
 const DEFAULT_FILTERS: Filters = { q: '', categories: [], sentiments: [], window: '30', from: '', to: '' };
 
-/** Saved (approved) news with keyword, category, sentiment and time-window filters. */
+/**
+ * Saved (approved) news with keyword, category, sentiment and time-window
+ * filters. Clicking a card highlights its marker on the stock chart.
+ */
 export function NewsTab() {
+  const chartFocus = useChartFocus();
   const [filters, setFilters] = useStoredState<Filters>('bm:news-filters', DEFAULT_FILTERS);
   const [q, setQ] = useState(filters.q);
   const debouncedQ = useDebounced(q, 350);
@@ -145,7 +150,14 @@ export function NewsTab() {
         ) : (
           <div className="mx-auto max-w-3xl space-y-3">
             {items.map((a) => (
-              <ArticleCard key={a.id} article={a} categories={categories} mode="saved" />
+              <ArticleCard
+                key={a.id}
+                article={a}
+                categories={categories}
+                mode="saved"
+                focused={chartFocus.focused?.articleId === a.id}
+                onFocus={() => chartFocus.focus(a)}
+              />
             ))}
             {news.hasNextPage && (
               <div className="flex justify-center pt-2">

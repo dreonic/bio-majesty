@@ -68,22 +68,22 @@ export const handler = createRouter({
   },
 
   'GET /stock/anomalies': async (event) => {
-    const { months } = parseQuery(event, z.object({ months: z.coerce.number().int().min(1).max(60).default(12) }));
+    // `from` is a trading date (the chart's first day, so the list follows the selected range); default 12 months.
+    const q = parseQuery(event, z.object({ from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional() }));
     const { stock } = await getSettings();
     const now = new Date();
-    const from = addMonths(now, -months);
+    const from = q.from ? parseDateInput(q.from, false, MARKET_TIME_ZONE) : addMonths(now, -12);
+    const fromDate = jakartaDate(from);
     // Load extra history so the first days in range have a full baseline window.
     const daily = await queryDaily(stock.symbol, addDays(from, -45), now);
-    const detected = detectVolumeAnomalies(daily, { window: ANOMALY_WINDOW, minRatio: stock.volumeRatio }).filter(
-      (a) => a.time >= from.getTime() / 1000,
-    );
-    const records = await listAnomalyRecords(stock.symbol, jakartaDate(from));
+    const detected = detectVolumeAnomalies(daily, { window: ANOMALY_WINDOW, minRatio: stock.volumeRatio }).filter((a) => a.date >= fromDate);
+    const records = await listAnomalyRecords(stock.symbol, fromDate);
     const byDate = new Map<string, VolumeAnomaly>(records.map((r) => [r.date, r]));
     const items: VolumeAnomaly[] = detected.map((a) => ({ ...a, notifiedAt: byDate.get(a.date)?.notifiedAt ?? null }));
     // Intraday flags for a session whose daily bar is not stored yet.
     for (const r of records) if (!items.some((i) => i.date === r.date)) items.push(r);
     items.sort((a, b) => b.date.localeCompare(a.date));
-    return json(200, { items: items.slice(0, 100), minRatio: stock.volumeRatio, window: ANOMALY_WINDOW });
+    return json(200, { items, minRatio: stock.volumeRatio, window: ANOMALY_WINDOW });
   },
 
   'POST /stock/resync': async () => {

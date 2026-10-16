@@ -49,7 +49,7 @@ export const qk = {
   runs: ['runs'] as const,
   stock: (range: StockRange) => ['stock', range] as const,
   markers: (from: string) => ['markers', from] as const,
-  anomalies: ['anomalies'] as const,
+  anomalies: (from: string) => ['anomalies', from] as const,
   feedbackStats: ['feedback-stats'] as const,
   conversations: ['conversations'] as const,
   conversation: (id: string) => ['conversation', id] as const,
@@ -252,10 +252,13 @@ export function useStockMarkers(from: string | null) {
   });
 }
 
-export function useAnomalies() {
+/** Unusual-volume days from `from` (a trading date: the chart's first day) to today. */
+export function useAnomalies(from: string | null) {
   return useQuery({
-    queryKey: qk.anomalies,
-    queryFn: () => api<{ items: VolumeAnomaly[]; minRatio: number; window: number }>('stock/anomalies'),
+    queryKey: qk.anomalies(from ?? ''),
+    queryFn: () => api<{ items: VolumeAnomaly[]; minRatio: number; window: number }>('stock/anomalies', { query: { from: from! } }),
+    enabled: Boolean(from),
+    placeholderData: keepPreviousData,
     refetchInterval: 10 * 60_000,
   });
 }

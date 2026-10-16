@@ -312,10 +312,10 @@ async function route(method: string, url: URL, body: unknown): Promise<Response>
   if (path === 'stock/markers') return json({ items: markers(url.searchParams.get('from')) });
   if (path === 'stock/resync') return json({ started: true }, 202);
   if (path === 'stock/anomalies') {
-    const cutoff = Date.now() / 1000 - 366 * 86400;
+    const from = url.searchParams.get('from') ?? new Date(Date.now() - 366 * 86400_000).toISOString().slice(0, 10);
     const items = detectVolumeAnomalies(fx.dailyCandles, { minRatio: state.settings.stock.volumeRatio })
-      .filter((a) => a.time >= cutoff)
       .map((a, i) => ({ ...a, notifiedAt: i % 2 ? new Date(a.time * 1000 + 10 * 3600_000).toISOString() : null }))
+      .filter((a) => a.date >= from)
       .reverse();
     return json({ items, minRatio: state.settings.stock.volumeRatio, window: 20 });
   }

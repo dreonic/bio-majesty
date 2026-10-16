@@ -16,6 +16,7 @@ import {
 } from 'lightweight-charts';
 import { useEffect, useRef, useState } from 'react';
 import { displayOffsetSeconds, formatCompact, formatPrice } from '../../lib/format';
+import type { ChartFocus } from './chart-focus';
 
 /** Chart colors from the validated palette (docs/design.md). */
 const C = {
@@ -39,10 +40,20 @@ const MARKER_STYLE: Record<StockMarker['sentiment'], Pick<SeriesMarker<Time>, 's
   undecided: { shape: 'square', color: C.undecided },
 };
 
+/** Markers are faded until their article is picked in the News or Review tab. */
+const FADED_ALPHA = 0.35;
+
+function fade(hex: string, alpha: number): string {
+  const n = parseInt(hex.slice(1), 16);
+  return `rgba(${n >> 16}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
+}
+
 interface Props {
   candles: Candle[];
   intraday: boolean;
   markers: StockMarker[];
+  /** The picked article: its marker is drawn at full strength (added if it is not saved yet). */
+  focus?: ChartFocus | null;
   /** Daily candle times with unusual volume (drawn at full strength). */
   highlightTimes?: Set<number>;
   onDaySelected: (dayTime: number | null) => void;
@@ -57,7 +68,7 @@ interface Readout {
   volume: number;
 }
 
-export function StockChart({ candles, intraday, markers, highlightTimes, onDaySelected }: Props) {
+export function StockChart({ candles, intraday, markers, focus, highlightTimes, onDaySelected }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const candleRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
@@ -173,24 +184,36 @@ export function StockChart({ candles, intraday, markers, highlightTimes, onDaySe
       return;
     }
     const first = candles[0]!.time;
-    const groups = new Map<string, { time: number; sentiment: StockMarker['sentiment']; count: number }>();
+    type Group = { time: number; sentiment: StockMarker['sentiment']; count: number; focused: boolean };
+    const groups = new Map<string, Group>();
     for (const m of markers) {
       if (m.time < first) continue;
       const key = `${m.time}|${m.sentiment}`;
-      const g = groups.get(key) ?? { time: m.time, sentiment: m.sentiment, count: 0 };
+      const g = groups.get(key) ?? { time: m.time, sentiment: m.sentiment, count: 0, focused: false };
       g.count++;
+      if (m.articleId === focus?.articleId) g.focused = true;
       groups.set(key, g);
+    }
+    // A picked review item is not a saved marker yet: show it on its own day.
+    if (focus && focus.time >= first && ![...groups.values()].some((g) => g.focused)) {
+      const key = `${focus.time}|${focus.sentiment}`;
+      groups.set(key, { ...(groups.get(key) ?? { time: focus.time, sentiment: focus.sentiment, count: 0 }), focused: true });
     }
     const list: SeriesMarker<Time>[] = [...groups.values()]
       .sort((a, b) => a.time - b.time)
-      .map((g) => ({
-        time: g.time as UTCTimestamp,
-        position: g.sentiment === 'positive' ? 'belowBar' : 'aboveBar',
-        ...MARKER_STYLE[g.sentiment],
-        text: g.count > 1 ? String(g.count) : undefined,
-      }));
+      .map((g) => {
+        const style = MARKER_STYLE[g.sentiment];
+        return {
+          time: g.time as UTCTimestamp,
+          position: g.sentiment === 'positive' ? 'belowBar' : 'aboveBar',
+          shape: style.shape,
+          color: g.focused ? style.color : fade(style.color, FADED_ALPHA),
+          size: g.focused ? 1.6 : 1,
+          text: g.count > 1 ? String(g.count) : undefined,
+        };
+      });
     markersRef.current.setMarkers(list);
-  }, [markers, candles, intraday]);
+  }, [markers, candles, intraday, focus]);
 
   const last = candles[candles.length - 1];
   const shown = readout ?? (last ? { ...last, time: last.time + (intraday ? displayOffsetSeconds(last.time) : 0) } : null);
