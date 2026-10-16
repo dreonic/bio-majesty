@@ -52,6 +52,11 @@ export function dateInZone(timeZone: string, date: Date = new Date()): string {
   return new Date(date.getTime() + zoneOffsetMinutes(timeZone, date) * 60_000).toISOString().slice(0, 10);
 }
 
+/** "YYYY-MM-DD HH:mm" of `date` in the zone. */
+export function dateTimeInZone(timeZone: string, date: Date = new Date()): string {
+  return new Date(date.getTime() + zoneOffsetMinutes(timeZone, date) * 60_000).toISOString().slice(0, 16).replace('T', ' ');
+}
+
 /** UTC instant of 00:00 on the given YYYY-MM-DD in the zone. */
 export function midnightInZone(timeZone: string, ymd: string): Date {
   const utcMidnight = Date.parse(`${ymd}T00:00:00Z`);

@@ -1,12 +1,14 @@
-import { candleDate, STOCK_RANGES, type Candle, type StockRange, type VolumeAnomaly } from '@bio-majesty/shared';
-import { AlertTriangle, ArrowDownRight, ArrowUpRight, BarChart3, BellRing, ChevronDown, ChevronRight, Clock, PanelRightClose, Table2 } from 'lucide-react';
+import { candleDate, STOCK_RANGES, type Candle, type StockExportInterval, type StockRange, type VolumeAnomaly } from '@bio-majesty/shared';
+import { AlertTriangle, ArrowDownRight, ArrowUpRight, BarChart3, BellRing, ChevronDown, ChevronRight, Clock, Download, PanelRightClose, Table2 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { SENTIMENT_META, SentimentBadge } from '../../components/tags';
-import { EmptyState, Spinner } from '../../components/ui';
+import { useToast } from '../../components/toast';
+import { Button, EmptyState, Spinner } from '../../components/ui';
 import { cn } from '../../lib/cn';
+import { downloadFile } from '../../lib/download';
 import { formatClock, formatCompact, formatDate, formatPercent, formatPrice, formatSigned, formatTime, timeZoneLabel } from '../../lib/format';
 import { useStoredState } from '../../lib/hooks';
-import { useAnomalies, useStock, useStockMarkers } from '../../lib/queries';
+import { useAnomalies, useStock, useStockExport, useStockMarkers } from '../../lib/queries';
 import { useOpenArticle } from '../news/ArticleSheet';
 import { useChartFocus } from './chart-focus';
 import { StockChart } from './StockChart';
@@ -173,6 +175,7 @@ export function StockPanel({ onCollapse }: { onCollapse?: () => void }) {
       )}
 
       <AnomalyList items={anomalies.data?.items ?? []} minRatio={anomalies.data?.minRatio} span={RANGE_SPAN[range]} />
+      <Downloads />
     </div>
   );
 }
@@ -241,6 +244,38 @@ function AnomalyList({ items, minRatio, span }: { items: VolumeAnomaly[]; minRat
         </div>
       )}
     </section>
+  );
+}
+
+const DOWNLOADS: { interval: StockExportInterval; label: string; title: string }[] = [
+  { interval: '1d', label: 'Daily', title: 'Every daily bar since listing' },
+  { interval: '15m', label: '15-min', title: 'Every stored 15-minute bar' },
+];
+
+/** CSV downloads of every stored bar, whatever range the chart shows. */
+function Downloads() {
+  const exportCsv = useStockExport();
+  const toast = useToast();
+  const download = (interval: StockExportInterval) =>
+    exportCsv.mutateAsync(interval).then(({ filename, csv }) => downloadFile(filename, csv), toast.error);
+
+  return (
+    <footer className="flex shrink-0 flex-wrap items-center gap-2 border-t border-hairline px-4 py-2 text-xs text-ink-2">
+      <span>Download all data (CSV)</span>
+      {DOWNLOADS.map((d) => (
+        <Button
+          key={d.interval}
+          size="sm"
+          icon={<Download className="size-4" />}
+          loading={exportCsv.isPending && exportCsv.variables === d.interval}
+          disabled={exportCsv.isPending}
+          onClick={() => void download(d.interval)}
+          title={d.title}
+        >
+          {d.label}
+        </Button>
+      ))}
+    </footer>
   );
 }
 

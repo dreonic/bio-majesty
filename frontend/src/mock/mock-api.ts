@@ -5,6 +5,7 @@ import {
   effectiveTags,
   midnightInZone,
   SENTIMENTS,
+  stockCsv,
   type Article,
   type Category,
   type Sentiment,
@@ -309,6 +310,10 @@ async function route(method: string, url: URL, body: unknown): Promise<Response>
   if (path === 'runs/daily') return json({ executionArn: 'demo' }, 202);
 
   if (path === 'stock/history') return json(stock((url.searchParams.get('range') as StockRange) ?? '3M'));
+  if (path === 'stock/export') {
+    const interval = url.searchParams.get('interval') === '15m' ? '15m' : '1d';
+    return json(stockCsv(state.settings.stock.symbol, interval, interval === '1d' ? fx.dailyCandles : fx.intradayCandles, DEFAULT_TIME_ZONE));
+  }
   if (path === 'stock/markers') return json({ items: markers(url.searchParams.get('from')) });
   if (path === 'stock/resync') return json({ started: true }, 202);
   if (path === 'stock/anomalies') {

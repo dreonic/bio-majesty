@@ -8,12 +8,17 @@ import { HISTORY_START, stockProvider } from '../stock';
 import { checkEodVolume, checkIntradayVolume } from '../stock/anomalies';
 
 const ALERT_AFTER_FAILURES = 3;
+/** Yahoo keeps 15-minute bars for about 60 days: what a resync can load. */
+const INTRADAY_BACKFILL_DAYS = 59;
+/** The end-of-day run re-fetches this many days of 15-minute bars, so a short outage leaves no gap. */
+const INTRADAY_REFETCH_DAYS = 7;
 
 /**
  * Scheduled market-data refresh:
  *  - intraday: every 15 min during IDX hours (delayed 15m bars + quote)
- *  - eod:      after the close (re-fetch the last two weeks of daily bars)
- *  - resync:   full daily history since listing (also runs automatically the first time)
+ *  - eod:      after the close (re-fetch the last two weeks of daily bars and the last week of 15m bars)
+ *  - resync:   full daily history since listing plus the 15m bars the provider still has
+ *              (also runs automatically the first time)
  * After each refresh, unusually high volume is recorded and alerted once per day.
  */
 export async function handler(event: { mode?: 'intraday' | 'eod' | 'resync' }): Promise<{ candles: number }> {
@@ -38,6 +43,7 @@ export async function handler(event: { mode?: 'intraday' | 'eod' | 'resync' }): 
       if (snapshot.quote) await putQuote(snapshot.quote);
       candles = snapshot.candles.length;
       await checkEodVolume(symbol, settings, now);
+      candles += await refillIntraday(symbol, addDays(now, mode === 'resync' ? -INTRADAY_BACKFILL_DAYS : -INTRADAY_REFETCH_DAYS));
     }
     await putStockStatus(symbol, {
       lastSuccessAt: now.toISOString(),
@@ -58,5 +64,17 @@ export async function handler(event: { mode?: 'intraday' | 'eod' | 'resync' }): 
       );
     }
     throw err;
+  }
+}
+
+/** Best effort: the daily refresh still counts as done if the 15-minute provider fails (the 15-minute runs alert on that). */
+async function refillIntraday(symbol: string, from: Date): Promise<number> {
+  try {
+    const snapshot = await stockProvider().intraday(symbol, from);
+    await putIntradayCandles(symbol, snapshot.candles);
+    return snapshot.candles.length;
+  } catch (err) {
+    logger.warn('15-minute refill failed', { symbol, from: from.toISOString(), error: errorMessage(err) });
+    return 0;
   }
 }

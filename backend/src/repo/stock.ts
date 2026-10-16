@@ -1,7 +1,7 @@
 import { BatchWriteCommand, GetCommand, PutCommand, QueryCommand, type QueryCommandOutput } from '@aws-sdk/lib-dynamodb';
 import type { Candle, Quote, VolumeAnomaly } from '@bio-majesty/shared';
 import { jakartaDate } from '../lib/time';
-import { chunk, ddb, stripKeys, table, ttlInDays } from './client';
+import { chunk, ddb, stripKeys, table } from './client';
 import { keys } from './keys';
 
 export interface StockStatus {
@@ -19,9 +19,10 @@ export async function putDailyCandles(symbol: string, candles: Candle[]): Promis
   await batchWrite(items);
 }
 
+/** 15-minute bars are kept for good (about 5,000 a year): the 15-minute CSV download has them all. */
 export async function putIntradayCandles(symbol: string, candles: Candle[]): Promise<void> {
   const items = candles.map((c) => ({
-    PutRequest: { Item: { ...keys.stockIntraday(symbol, c.time), ...c, expiresAt: ttlInDays(10) } },
+    PutRequest: { Item: { ...keys.stockIntraday(symbol, c.time), ...c } },
   }));
   await batchWrite(items);
 }

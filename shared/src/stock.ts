@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { IsoDateTime, SentimentSchema } from './common';
+import { dateTimeInZone, timeZoneLabel } from './time';
 
 export const STOCK_RANGES = ['1D', '5D', '1M', '3M', '6M', '1Y', '5Y', 'MAX'] as const;
 export const StockRangeSchema = z.enum(STOCK_RANGES);
@@ -45,6 +46,17 @@ export const StockHistoryResponseSchema = z.object({
 });
 export type StockHistoryResponse = z.infer<typeof StockHistoryResponseSchema>;
 
+/** CSV download: every stored bar at one granularity. */
+export const StockExportIntervalSchema = z.enum(['1d', '15m']);
+export type StockExportInterval = z.infer<typeof StockExportIntervalSchema>;
+
+export const StockExportResponseSchema = z.object({
+  filename: z.string(),
+  rows: z.number(),
+  csv: z.string(),
+});
+export type StockExportResponse = z.infer<typeof StockExportResponseSchema>;
+
 /** Saved news plotted on the chart. */
 export const StockMarkerSchema = z.object({
   articleId: z.string(),
@@ -83,6 +95,20 @@ export interface VolumeAnomalyOptions {
 /** UTC-midnight daily candle time -> YYYY-MM-DD. */
 export function candleDate(time: number): string {
   return new Date(time * 1000).toISOString().slice(0, 10);
+}
+
+/**
+ * Bars as CSV (CRLF rows), oldest first, numbers unformatted. Daily bars carry their IDX trading
+ * date, 15-minute bars their start time in `timeZone` (the exec's clock). No cell needs quoting.
+ */
+export function stockCsv(symbol: string, interval: StockExportInterval, candles: Candle[], timeZone: string): StockExportResponse {
+  const sorted = [...candles].sort((a, b) => a.time - b.time);
+  const stamp = (time: number) => (interval === '1d' ? candleDate(time) : dateTimeInZone(timeZone, new Date(time * 1000)));
+  const header = [interval === '1d' ? 'Date' : `Time (${timeZoneLabel(timeZone)})`, 'Open', 'High', 'Low', 'Close', 'Volume'];
+  const lines = [header, ...sorted.map((c) => [stamp(c.time), c.open, c.high, c.low, c.close, c.volume])].map((r) => r.join(','));
+  const day = (time: number) => stamp(time).slice(0, 10);
+  const span = sorted.length ? `_${day(sorted[0]!.time)}_${day(sorted.at(-1)!.time)}` : '';
+  return { filename: `${symbol}_${interval === '1d' ? 'daily' : '15min'}${span}.csv`, rows: sorted.length, csv: `${lines.join('\r\n')}\r\n` };
 }
 
 /** Average volume of the `window` candles before index `i` (zero-volume days ignored). */

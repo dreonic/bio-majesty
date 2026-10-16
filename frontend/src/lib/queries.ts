@@ -17,6 +17,8 @@ import type {
   Sentiment,
   SettingsUpdate,
   SettingsView,
+  StockExportInterval,
+  StockExportResponse,
   StockHistoryResponse,
   StockMarker,
   StockRange,
@@ -241,6 +243,11 @@ export function useStock(range: StockRange) {
     placeholderData: keepPreviousData,
     refetchInterval: 5 * 60_000,
   });
+}
+
+/** Every stored bar at one granularity as CSV (the downloads; independent of the chart's range). */
+export function useStockExport() {
+  return useMutation({ mutationFn: (interval: StockExportInterval) => api<StockExportResponse>('stock/export', { query: { interval } }) });
 }
 
 export function useStockMarkers(from: string | null) {

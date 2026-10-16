@@ -150,6 +150,7 @@ export class ApiConstruct extends Construct {
     route('/stock/history', { GET: stock });
     route('/stock/markers', { GET: stock });
     route('/stock/anomalies', { GET: stock });
+    route('/stock/export', { GET: stock });
     route('/stock/resync', { POST: stock });
 
     route('/telegram/link', { POST: telegram, DELETE: telegram });

@@ -1,8 +1,10 @@
 import {
   MARKET_TIME_ZONE,
+  StockExportIntervalSchema,
   StockRangeSchema,
   detectVolumeAnomalies,
   effectiveTags,
+  stockCsv,
   type VolumeAnomaly,
   type StockHistoryResponse,
   type StockMarker,
@@ -18,7 +20,7 @@ import { getSettings } from '../../repo/settings';
 import { getQuote, getStockStatus, listAnomalyRecords, queryDaily, queryIntraday } from '../../repo/stock';
 import { ANOMALY_WINDOW } from '../../stock/anomalies';
 import { dailyTime } from '../../stock/provider';
-import { lastSession, planRange, toWeekly } from '../../stock';
+import { HISTORY_START, lastSession, planRange, toWeekly } from '../../stock';
 
 /** Data is stale if the last successful refresh is older than this (covers weekends/holidays loosely). */
 const STALE_AFTER_MS = 3 * 24 * 3600 * 1000;
@@ -84,6 +86,16 @@ export const handler = createRouter({
     for (const r of records) if (!items.some((i) => i.date === r.date)) items.push(r);
     items.sort((a, b) => b.date.localeCompare(a.date));
     return json(200, { items, minRatio: stock.volumeRatio, window: ANOMALY_WINDOW });
+  },
+
+  'GET /stock/export': async (event) => {
+    // Every stored bar at one granularity (not the chart's range), as CSV for the downloads.
+    // About 46 bytes a row: decades of 15-minute bars fit the 6 MB Lambda response limit.
+    const { interval } = parseQuery(event, z.object({ interval: StockExportIntervalSchema }));
+    const { stock } = await getSettings();
+    const now = new Date();
+    const candles = interval === '1d' ? await queryDaily(stock.symbol, HISTORY_START, now) : await queryIntraday(stock.symbol, new Date(0), now);
+    return json(200, stockCsv(stock.symbol, interval, candles, env.timeZone));
   },
 
   'POST /stock/resync': async () => {
