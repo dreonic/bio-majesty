@@ -10,6 +10,8 @@
     "synth": "cdk synth --quiet",
     "deploy": "cdk deploy --all",
     "diff": "cdk diff",
+    "synth:github-ci": "cdk synth --quiet --app \"npx tsx bin/github-ci.ts\"",
+    "deploy:github-ci": "cdk deploy --app \"npx tsx bin/github-ci.ts\"",
     "smoke:models": "tsx scripts/smoke-models.ts",
     "eval:tagging": "tsx scripts/eval-tagging.ts",
     "try:classify": "tsx scripts/try-classify.ts",
