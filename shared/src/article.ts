@@ -128,5 +128,7 @@ export const BulkReviewResponseSchema = z.object({
 export const PendingCountsSchema = z.object({
   pending: z.number(),
   filtered: z.number(),
+  /** Skipped by the exec (the recycle bin). */
+  skipped: z.number(),
 });
 export type PendingCounts = z.infer<typeof PendingCountsSchema>;

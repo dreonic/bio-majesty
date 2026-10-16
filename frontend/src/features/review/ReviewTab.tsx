@@ -1,15 +1,18 @@
 import { type Article, type Category } from '@bio-majesty/shared';
-import { Check, ChevronDown, ChevronRight, Inbox, Keyboard, RotateCcw } from 'lucide-react';
+import { Check, ChevronDown, ChevronRight, Inbox, Keyboard, RotateCcw, Trash2 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { Sheet } from '../../components/overlays';
 import { useToast } from '../../components/toast';
 import { Button, EmptyState, Spinner } from '../../components/ui';
-import { formatDate, formatDateTime } from '../../lib/format';
+import { cn } from '../../lib/cn';
+import { formatDate, formatDateTime, relativeTime } from '../../lib/format';
 import { useBulkReview, useCategories, useCounts, useNews, useReview } from '../../lib/queries';
 import { ArticleCard, type ArticleCardHandle } from '../news/ArticleCard';
 
 /**
  * Review queue: every AI-suggested article waits here until the exec saves
- * (with optional edits) or skips it. Keyboard: J/K move, S save, X skip, E details.
+ * (with optional edits) or skips it. Skipped articles go to the recycle bin,
+ * where they can be restored. Keyboard: J/K move, S save, X skip, E details.
  */
 export function ReviewTab() {
   const pending = useNews({ status: 'PENDING', limit: 100 });
@@ -20,7 +23,9 @@ export function ReviewTab() {
   const items = useMemo(() => pending.data?.pages.flatMap((p) => p.items) ?? [], [pending.data]);
   const groups = useMemo(() => groupByOrigin(items, categories), [items, categories]);
   const [focus, setFocus] = useState(0);
+  const [binOpen, setBinOpen] = useState(false);
   const cardRefs = useRef(new Map<string, ArticleCardHandle>());
+  const skipped = counts.data?.skipped ?? 0;
 
   useEffect(() => {
     if (focus >= items.length) setFocus(Math.max(0, items.length - 1));
@@ -64,12 +69,23 @@ export function ReviewTab() {
         <span className="hidden items-center gap-1 text-xs text-muted md:inline-flex" title="Keyboard shortcuts">
           <Keyboard className="size-3.5" aria-hidden /> J/K move · S save · X skip · E details
         </span>
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-2">
+          <Button size="sm" variant="ghost" onClick={() => setBinOpen(true)} icon={<Trash2 className="size-4" />} title="News you skipped">
+            Recycle bin{skipped ? ` (${skipped})` : ''}
+          </Button>
           <Button size="sm" onClick={saveAll} loading={bulk.isPending} disabled={!items.some((a) => a.suggestion)} icon={<Check className="size-4" />}>
             Save all as suggested
           </Button>
         </div>
       </div>
+      <Sheet
+        open={binOpen}
+        onOpenChange={setBinOpen}
+        title="Recycle bin"
+        description="News you skipped. It stays here so later runs don't bring it back; restore an article to review it again."
+      >
+        <RestorableList status="REJECTED" />
+      </Sheet>
 
       <div className="flex-1 overflow-y-auto px-4 py-4">
         {pending.isLoading ? (
@@ -160,19 +176,27 @@ function FilteredSection({ count }: { count: number }) {
         {open ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
         Filtered by AI ({count})
       </button>
-      {open && <FilteredList />}
+      {open && <RestorableList status="FILTERED" className="mt-3" />}
     </section>
   );
 }
 
-function FilteredList() {
-  const filtered = useNews({ status: 'FILTERED', limit: 50 });
+/** Filtered (by the AI) or skipped (by the exec) articles, each restorable to the review queue. */
+function RestorableList({ status, className }: { status: 'FILTERED' | 'REJECTED'; className?: string }) {
+  const list = useNews({ status, limit: 50 });
   const review = useReview();
   const toast = useToast();
-  const items = filtered.data?.pages.flatMap((p) => p.items) ?? [];
-  if (filtered.isLoading) return <Spinner className="mt-3" />;
+  const items = list.data?.pages.flatMap((p) => p.items) ?? [];
+  if (list.isLoading) return <Spinner className={className} />;
+  if (!items.length && status === 'REJECTED') {
+    return (
+      <EmptyState icon={<Trash2 className="size-8" />} title="The recycle bin is empty">
+        Articles you skip in the review queue appear here.
+      </EmptyState>
+    );
+  }
   return (
-    <ul className="mt-3 divide-y divide-hairline rounded-lg border border-hairline bg-raised">
+    <ul className={cn('divide-y divide-hairline rounded-lg border border-hairline bg-raised', className)}>
       {items.map((a) => (
         <li key={a.id} className="flex items-start gap-3 px-4 py-3">
           <div className="min-w-0 flex-1">
@@ -180,7 +204,8 @@ function FilteredList() {
               {a.title}
             </a>
             <p className="mt-0.5 text-xs text-ink-2">
-              {a.sourceName ?? a.sourceDomain} · {formatDateTime(a.publishedAt)} · {a.filterReason}
+              {a.sourceName ?? a.sourceDomain} · {formatDateTime(a.publishedAt)} ·{' '}
+              {status === 'FILTERED' ? a.filterReason : a.reviewedAt ? `skipped ${relativeTime(a.reviewedAt)}` : 'skipped'}
             </p>
           </div>
           <Button
@@ -193,9 +218,9 @@ function FilteredList() {
           </Button>
         </li>
       ))}
-      {filtered.hasNextPage && (
+      {list.hasNextPage && (
         <li className="px-4 py-2">
-          <Button size="sm" variant="ghost" onClick={() => void filtered.fetchNextPage()} loading={filtered.isFetchingNextPage}>
+          <Button size="sm" variant="ghost" onClick={() => void list.fetchNextPage()} loading={list.isFetchingNextPage}>
             Load more
           </Button>
         </li>

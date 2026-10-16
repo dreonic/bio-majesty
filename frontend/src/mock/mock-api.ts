@@ -228,6 +228,7 @@ async function route(method: string, url: URL, body: unknown): Promise<Response>
     return json({
       pending: state.articles.filter((a) => a.status === 'PENDING').length,
       filtered: state.articles.filter((a) => a.status === 'FILTERED').length,
+      skipped: state.articles.filter((a) => a.status === 'REJECTED').length,
     });
   }
   if (seg[0] === 'news' && seg[1] && seg[1] !== 'bulk') {

@@ -90,8 +90,8 @@ export const handler = createRouter({
   },
 
   'GET /news/counts': async () => {
-    const [pending, filtered] = await Promise.all([countByStatus('PENDING'), countByStatus('FILTERED')]);
-    return json(200, { pending, filtered });
+    const [pending, filtered, skipped] = await Promise.all([countByStatus('PENDING'), countByStatus('FILTERED'), countByStatus('REJECTED')]);
+    return json(200, { pending, filtered, skipped });
   },
 
   'GET /news/{id}': async (event) => {

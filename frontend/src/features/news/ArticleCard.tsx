@@ -11,6 +11,8 @@ import { formatDateTime, relativeTime } from '../../lib/format';
 import { useReview } from '../../lib/queries';
 import { useOpenArticle } from './ArticleSheet';
 
+const SKIPPED = 'Skipped · moved to the recycle bin';
+
 export interface ArticleCardHandle {
   save: () => void;
   skip: () => void;
@@ -59,28 +61,26 @@ export function ArticleCard({
     setRationale(effectiveRationale(article));
   };
 
+  // mutateAsync, not mutate(…, callbacks): Save/Skip remove the card at once, and
+  // per-call callbacks do not fire once the component has unmounted.
   const send = (action: 'approve' | 'reject' | 'update' | 'unsave', message: string) =>
-    review.mutate(
-      {
+    review
+      .mutateAsync({
         id: article.id,
         action,
         categoryIds,
         sentiment,
         ...(summary.trim() !== aiSummary.trim() ? { summary } : {}),
         ...(rationale.trim() !== aiRationale.trim() ? { rationale } : {}),
-      },
-      {
-        onSuccess: () => {
-          toast.success(message);
-          setEditingSaved(false);
-        },
-        onError: toast.error,
-      },
-    );
+      })
+      .then(() => {
+        toast.success(message);
+        setEditingSaved(false);
+      }, toast.error);
 
   useEffect(() => {
     if (!handleRef) return;
-    handleRef({ save: () => send('approve', 'Saved'), skip: () => send('reject', 'Skipped'), details: () => openArticle(article.id) });
+    handleRef({ save: () => send('approve', 'Saved'), skip: () => send('reject', SKIPPED), details: () => openArticle(article.id) });
     return () => handleRef(null);
   });
 
@@ -156,7 +156,7 @@ export function ArticleCard({
           <div className="ml-auto flex items-center gap-2">
             {mode === 'review' ? (
               <>
-                <Button size="sm" variant="ghost" onClick={() => send('reject', 'Skipped')} disabled={review.isPending} icon={<X className="size-4" />}>
+                <Button size="sm" variant="ghost" onClick={() => send('reject', SKIPPED)} disabled={review.isPending} icon={<X className="size-4" />}>
                   Skip
                 </Button>
                 <Button size="sm" variant="good" onClick={() => send('approve', 'Saved')} loading={review.isPending} icon={<Check className="size-4" />}>

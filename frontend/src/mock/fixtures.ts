@@ -97,7 +97,7 @@ function makeArticle(i: number, status: Article['status'], daysAgo: number): Art
     origin: { type: daysAgo > 12 ? 'backfill' : 'daily', runId: daysAgo > 12 ? 'r-1' : 'r-2', categoryId: cats[0] ?? null },
     foundBy: [{ provider: 'gnews', query: `"${categories[0]!.name}"` }],
     createdAt: iso(Math.min(daysAgo, 1) * DAY),
-    reviewedAt: status === 'APPROVED' ? iso(daysAgo * DAY - 3600_000) : null,
+    reviewedAt: status === 'APPROVED' || status === 'REJECTED' ? iso(daysAgo * DAY - 3600_000) : null,
     indexedAt: status === 'APPROVED' ? iso(daysAgo * DAY - 3500_000) : null,
   };
 }
@@ -109,6 +109,7 @@ export const articles: Article[] = [
     ...makeArticle(i, 'FILTERED', 1),
     title: `Sample: unrelated "Prodia" result #${i + 1}`,
   })),
+  ...Array.from({ length: 2 }, (_, i) => makeArticle(i + 10, 'REJECTED', 3 + i * 2)),
 ];
 
 export const articleText = (a: Article) =>
