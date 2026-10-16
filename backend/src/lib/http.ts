@@ -1,3 +1,4 @@
+import { ACCESS_GROUP, hasAccess } from '@bio-majesty/shared';
 import type { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import type { z } from 'zod';
 import { env } from './env';
@@ -15,6 +16,7 @@ export class HttpError extends Error {
 }
 
 export const badRequest = (message: string, details?: unknown) => new HttpError(400, 'bad_request', message, details);
+export const forbidden = (message: string) => new HttpError(403, 'forbidden', message);
 export const notFound = (message = 'Not found') => new HttpError(404, 'not_found', message);
 export const conflict = (message: string) => new HttpError(409, 'conflict', message);
 
@@ -103,6 +105,14 @@ export function getUser(event: APIGatewayProxyEvent): AuthUser {
   const claims = (event.requestContext.authorizer?.claims ?? {}) as Record<string, string>;
   if (!claims.sub) throw new HttpError(401, 'unauthorized', 'Missing identity');
   return { sub: claims.sub, email: claims.email ?? null };
+}
+
+/** Every route needs the dashboard group: signing in alone is not enough (any Google account can). */
+export function requireAccess(event: Pick<APIGatewayProxyEvent, 'requestContext'>): void {
+  const claims = (event.requestContext?.authorizer?.claims ?? {}) as Record<string, unknown>;
+  if (!hasAccess(claims['cognito:groups'])) {
+    throw forbidden(`This account has no access to the dashboard yet. An admin can add it to the ${ACCESS_GROUP} group in Cognito.`);
+  }
 }
 
 export function errorResponse(err: unknown): APIGatewayProxyResult {

@@ -16,7 +16,7 @@ import type { ReadableStream as NodeReadableStream } from 'node:stream/web';
 import { buildChatTools, chatInstructions } from '../ai/chat-agent';
 import { resolveWithFallback } from '../ai/fallback';
 import { mergeProviderOptions } from '../ai/run-task';
-import { corsHeaders, getUser, HttpError, parseBody, setRequestOrigin } from '../lib/http';
+import { corsHeaders, getUser, HttpError, parseBody, requireAccess, setRequestOrigin } from '../lib/http';
 import { errorMessage, logger } from '../lib/logger';
 import { listCategories } from '../repo/categories';
 import { getConversation, loadMessages, saveConversation } from '../repo/chats';
@@ -41,6 +41,7 @@ function titleFrom(message: UIMessage): string {
 export const handler = awslambda.streamifyResponse(async (event: APIGatewayProxyEvent, responseStream) => {
   setRequestOrigin(event);
   try {
+    requireAccess(event);
     const user = getUser(event);
     const body = parseBody(event, ChatRequestSchema);
     const [settings, categories, previous, existing] = await Promise.all([

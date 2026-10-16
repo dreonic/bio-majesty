@@ -24,6 +24,8 @@ export interface AppConfig {
   alarmEmail: string | null;
   customDomainName: string | null;
   customDomainCertificateArn: string | null;
+  /** Google OAuth client ID: adds "Sign in with Google" (client secret in Secrets Manager, see googleClientSecretName). */
+  googleClientId: string | null;
   /** Keep data (table, buckets, secret, user pool) when the stack is deleted. */
   retainData: boolean;
   /** Extra origin allowed to call the API and to receive Cognito redirects (local dev). */
@@ -59,6 +61,11 @@ export function loadConfig(app: App): AppConfig {
     throw new Error(`embeddingDimensions for ${embeddingModel} must be one of ${model.dimensions.join(', ')}`);
   }
 
+  const googleClientId = ctx(app, 'googleClientId') || null;
+  if (googleClientId && !googleClientId.endsWith('.apps.googleusercontent.com')) {
+    throw new Error(`Invalid googleClientId "${googleClientId}" (expected ...apps.googleusercontent.com)`);
+  }
+
   return {
     stage,
     region,
@@ -70,7 +77,13 @@ export function loadConfig(app: App): AppConfig {
     alarmEmail: ctx(app, 'alarmEmail') || null,
     customDomainName: ctx(app, 'customDomainName') || null,
     customDomainCertificateArn: ctx(app, 'customDomainCertificateArn') || null,
+    googleClientId,
     retainData: stage === 'prod' || ctx(app, 'retainData') === 'true',
     localDevOrigin: stage === 'prod' ? null : ctx(app, 'localDevOrigin') || 'http://localhost:5173',
   };
+}
+
+/** Secrets Manager secret (plain string) holding the Google OAuth client secret; create it before deploying with googleClientId. */
+export function googleClientSecretName(stage: string): string {
+  return `bio-majesty/${stage}/google-client-secret`;
 }

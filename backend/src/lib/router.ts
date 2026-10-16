@@ -1,5 +1,5 @@
 import type { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
-import { errorResponse, noContent, notFound, setRequestOrigin } from './http';
+import { errorResponse, noContent, notFound, requireAccess, setRequestOrigin } from './http';
 import { logger } from './logger';
 
 export type RouteHandler = (event: APIGatewayProxyEvent) => Promise<APIGatewayProxyResult>;
@@ -15,6 +15,7 @@ export function createRouter(routes: Record<string, RouteHandler>) {
     if (event.httpMethod === 'OPTIONS') return noContent();
     const handler = routes[key];
     try {
+      requireAccess(event);
       if (!handler) throw notFound(`No route for ${key}`);
       return await handler(event);
     } catch (err) {

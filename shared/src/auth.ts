@@ -1,0 +1,22 @@
+/**
+ * Cognito group whose members may use the dashboard. Signing in is not enough (with Google
+ * login, any Google account gets a Cognito user): add people to this group in the Cognito console.
+ */
+export const ACCESS_GROUP = 'dashboard-users';
+
+/**
+ * Groups from a `cognito:groups` claim: an array in the ID token, a string in API Gateway's
+ * authorizer claims ("a", "a,b" or "[a b]").
+ */
+export function claimGroups(claim: unknown): string[] {
+  if (Array.isArray(claim)) return claim.map(String);
+  if (typeof claim !== 'string') return [];
+  return claim
+    .replace(/^\[|\]$/g, '')
+    .split(/[,\s]+/)
+    .filter(Boolean);
+}
+
+export function hasAccess(groupsClaim: unknown): boolean {
+  return claimGroups(groupsClaim).includes(ACCESS_GROUP);
+}

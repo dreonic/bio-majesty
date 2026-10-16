@@ -21,7 +21,13 @@ vi.mock('../src/repo/stock', () => ({
 const { handler } = await import('../src/handlers/api/stock');
 
 const request = (query: Record<string, string>) =>
-  handler({ httpMethod: 'GET', resource: '/stock/export', headers: {}, queryStringParameters: query } as unknown as APIGatewayProxyEvent);
+  handler({
+    httpMethod: 'GET',
+    resource: '/stock/export',
+    headers: {},
+    queryStringParameters: query,
+    requestContext: { authorizer: { claims: { sub: 'u1', 'cognito:groups': 'dashboard-users' } } },
+  } as unknown as APIGatewayProxyEvent);
 
 describe('GET /stock/export', () => {
   it('exports every daily bar since listing', async () => {

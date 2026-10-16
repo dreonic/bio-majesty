@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   CATEGORY_COLORS,
+  claimGroups,
+  hasAccess,
   CategoryInputSchema,
   DEFAULT_SETTINGS,
   SettingsSchema,
@@ -69,5 +71,18 @@ describe('detectVolumeAnomalies', () => {
     const found = detectVolumeAnomalies(daily, { minRatio: 2.5 });
     expect(found.map((a) => a.date)).toEqual(['2026-01-16']);
     expect(found[0]!.averageVolume).toBe(100);
+  });
+});
+
+describe('dashboard access group', () => {
+  it('reads cognito:groups from an ID token or from API Gateway claims', () => {
+    expect(claimGroups(['dashboard-users', 'admins'])).toEqual(['dashboard-users', 'admins']);
+    expect(claimGroups('dashboard-users')).toEqual(['dashboard-users']);
+    expect(claimGroups('[admins dashboard-users]')).toEqual(['admins', 'dashboard-users']);
+    expect(claimGroups('admins,dashboard-users')).toEqual(['admins', 'dashboard-users']);
+    expect(claimGroups(undefined)).toEqual([]);
+    expect(hasAccess(['dashboard-users'])).toBe(true);
+    expect(hasAccess('[admins]')).toBe(false);
+    expect(hasAccess(undefined)).toBe(false);
   });
 });

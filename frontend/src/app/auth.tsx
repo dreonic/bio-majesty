@@ -1,5 +1,6 @@
+import { ACCESS_GROUP, hasAccess } from '@bio-majesty/shared';
 import { WebStorageStateStore } from 'oidc-client-ts';
-import { useEffect, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { AuthProvider, useAuth } from 'react-oidc-context';
 import { Button, Card, Spinner } from '../components/ui';
 import { configureApi } from '../lib/api';
@@ -83,8 +84,48 @@ function AuthGate({ config, children }: { config: RuntimeConfig; children: React
     });
   };
 
+  // The API refuses anyone outside the access group (any Google account can sign in).
+  if (!hasAccess(auth.user?.profile['cognito:groups'])) {
+    return <NoAccess email={auth.user?.profile.email ?? null} checkAgain={() => auth.signinSilent()} signOut={signOut} />;
+  }
+
   return (
     <SessionContext.Provider value={{ email: auth.user?.profile.email ?? null, signOut, demo: false }}>{children}</SessionContext.Provider>
+  );
+}
+
+/** Signed in, but not (yet) in the dashboard's Cognito group. */
+function NoAccess({ email, checkAgain, signOut }: { email: string | null; checkAgain: () => Promise<unknown>; signOut: () => void }) {
+  const [checking, setChecking] = useState(false);
+  const [stillNo, setStillNo] = useState(false);
+  // A fresh token carries the groups as they are now.
+  const recheck = () => {
+    setChecking(true);
+    void checkAgain()
+      .catch(() => undefined)
+      .finally(() => {
+        setChecking(false);
+        setStillNo(true);
+      });
+  };
+  return (
+    <div className="flex h-full items-center justify-center p-6">
+      <Card className="w-full max-w-sm p-8 text-center">
+        <img src="/favicon.svg" alt="" className="mx-auto size-10" />
+        <h1 className="mt-4 text-lg font-semibold text-ink">No access yet</h1>
+        <p className="mt-2 text-sm text-ink-2">
+          You're signed in{email ? ` as ${email}` : ''}, but this account hasn't been given access to the dashboard. Ask an admin to add it to the{' '}
+          <span className="font-medium text-ink">{ACCESS_GROUP}</span> group, then check again.
+        </p>
+        {stillNo && !checking && <p className="mt-3 text-xs text-ink-2">Still no access.</p>}
+        <Button variant="primary" className="mt-6 w-full" onClick={recheck} loading={checking}>
+          Check again
+        </Button>
+        <Button variant="ghost" className="mt-2 w-full" onClick={signOut}>
+          Sign out
+        </Button>
+      </Card>
+    </div>
   );
 }
 

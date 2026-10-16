@@ -28,6 +28,28 @@ describe('DashboardStack', () => {
     });
   });
 
+  it('creates the dashboard access group and no Google login by default', () => {
+    template.hasResourceProperties('AWS::Cognito::UserPoolGroup', { GroupName: 'dashboard-users' });
+    template.resourceCountIs('AWS::Cognito::UserPoolIdentityProvider', 0);
+    template.hasResourceProperties('AWS::Cognito::UserPoolClient', { SupportedIdentityProviders: ['COGNITO'] });
+  });
+
+  it('adds Sign in with Google when googleClientId is set', () => {
+    const t = synth({ googleClientId: '1234-abc.apps.googleusercontent.com' });
+    t.hasResourceProperties('AWS::Cognito::UserPoolIdentityProvider', {
+      ProviderName: 'Google',
+      ProviderType: 'Google',
+      ProviderDetails: Match.objectLike({
+        client_id: '1234-abc.apps.googleusercontent.com',
+        client_secret: '{{resolve:secretsmanager:bio-majesty/test/google-client-secret:SecretString:::}}',
+        authorize_scopes: 'openid email profile',
+      }),
+      AttributeMapping: { email: 'email', email_verified: 'email_verified', name: 'name' },
+    });
+    t.hasResourceProperties('AWS::Cognito::UserPoolClient', { SupportedIdentityProviders: ['COGNITO', 'Google'] });
+    expect(() => loadConfig(new App({ context: { googleClientId: 'not-a-client-id' } }))).toThrow(/Invalid googleClientId/);
+  }, 60_000);
+
   it('protects every non-preflight API method with the Cognito authorizer', () => {
     const methods = template.findResources('AWS::ApiGateway::Method');
     const unprotected = Object.values(methods).filter(

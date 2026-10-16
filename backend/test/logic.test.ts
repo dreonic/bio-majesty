@@ -219,11 +219,27 @@ describe('http helpers', () => {
     expect(parseQuery(event({}), schema, ['categories'])).toEqual({});
   });
 
+  const signedIn = (groups?: string) => ({ authorizer: { claims: { sub: 'u1', ...(groups !== undefined && { 'cognito:groups': groups }) } } });
+
   it('routes by method + resource and answers preflight', async () => {
     const router = createRouter({ 'GET /ping': async () => ({ statusCode: 200, body: 'pong' }) });
-    const base = { headers: {}, resource: '/ping' };
+    const base = { headers: {}, resource: '/ping', requestContext: signedIn('dashboard-users') };
     expect((await router({ ...base, httpMethod: 'GET' } as unknown as APIGatewayProxyEvent)).body).toBe('pong');
     expect((await router({ ...base, httpMethod: 'OPTIONS' } as unknown as APIGatewayProxyEvent)).statusCode).toBe(204);
     expect((await router({ ...base, httpMethod: 'POST' } as unknown as APIGatewayProxyEvent)).statusCode).toBe(404);
+  });
+
+  it('lets only members of the dashboard group in', async () => {
+    const router = createRouter({ 'GET /ping': async () => ({ statusCode: 200, body: 'pong' }) });
+    const call = (requestContext: unknown) =>
+      router({ headers: {}, resource: '/ping', httpMethod: 'GET', requestContext } as unknown as APIGatewayProxyEvent);
+    const denied = await call(signedIn());
+    expect(denied.statusCode).toBe(403);
+    expect(JSON.parse(denied.body)).toMatchObject({ error: 'forbidden' });
+    expect((await call(signedIn('other-team'))).statusCode).toBe(403);
+    expect((await call({})).statusCode).toBe(403);
+    // API Gateway passes several groups as one string.
+    expect((await call(signedIn('[admins dashboard-users]'))).statusCode).toBe(200);
+    expect((await call(signedIn('admins,dashboard-users'))).statusCode).toBe(200);
   });
 });
