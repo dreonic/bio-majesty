@@ -7,6 +7,7 @@ const template = Template.fromStack(
   new GitHubCiStack(new App(), 'Ci', {
     env: { account: '111122223333', region: 'ap-southeast-1' },
     repository: 'acme/dashboard',
+    subjectPrefix: 'repo:acme@11/dashboard@22',
     branch: 'main',
   }),
 );
@@ -23,7 +24,7 @@ describe('GitHubCiStack', () => {
             Condition: {
               StringEquals: {
                 'token.actions.githubusercontent.com:aud': 'sts.amazonaws.com',
-                'token.actions.githubusercontent.com:sub': 'repo:acme/dashboard:ref:refs/heads/main',
+                'token.actions.githubusercontent.com:sub': 'repo:acme@11/dashboard@22:ref:refs/heads/main',
               },
             },
           },

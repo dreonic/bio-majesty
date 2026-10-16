@@ -8,6 +8,13 @@ export const GITHUB_DEPLOY_ROLE_NAME = 'bio-majesty-github-deploy';
 export interface GitHubCiStackProps extends StackProps {
   /** GitHub repository allowed to deploy, as owner/name. */
   repository: string;
+  /**
+   * Start of the OIDC `sub` claim GitHub issues for that repository. With immutable
+   * subjects it carries the owner and repository IDs (repo:owner@123/name@456), so a
+   * renamed or re-created repository can't deploy. Look it up with
+   * `gh api repos/<owner>/<name>/actions/oidc/customization/sub` (sub_claim_prefix).
+   */
+  subjectPrefix: string;
   /** Only workflows running on this branch may deploy. */
   branch: string;
   /** CDK bootstrap qualifier of the target account/region. */
@@ -41,7 +48,7 @@ export class GitHubCiStack extends Stack {
       assumedBy: new iam.WebIdentityPrincipal(provider.oidcProviderArn, {
         StringEquals: {
           [`${issuer}:aud`]: 'sts.amazonaws.com',
-          [`${issuer}:sub`]: `repo:${props.repository}:ref:refs/heads/${props.branch}`,
+          [`${issuer}:sub`]: `${props.subjectPrefix}:ref:refs/heads/${props.branch}`,
         },
       }),
     });
