@@ -236,10 +236,18 @@ export function useRunDaily() {
   });
 }
 
+/**
+ * Prices change at most every 15 minutes, so stock data stays fresh for 5 and is kept for 30:
+ * switching ranges back and forth reuses what was loaded instead of asking the API again.
+ * (Markers are also refreshed whenever a review decision changes the saved news.)
+ */
+const STOCK_CACHE = { staleTime: 5 * 60_000, gcTime: 30 * 60_000 };
+
 export function useStock(range: StockRange) {
   return useQuery({
     queryKey: qk.stock(range),
     queryFn: () => api<StockHistoryResponse>('stock/history', { query: { range } }),
+    ...STOCK_CACHE,
     placeholderData: keepPreviousData,
     refetchInterval: 5 * 60_000,
   });
@@ -256,6 +264,7 @@ export function useStockMarkers(from: string | null) {
     queryFn: () => api<{ items: StockMarker[] }>('stock/markers', { query: { from: from! } }),
     select: (d) => d.items,
     enabled: Boolean(from),
+    ...STOCK_CACHE,
   });
 }
 
@@ -265,6 +274,7 @@ export function useAnomalies(from: string | null) {
     queryKey: qk.anomalies(from ?? ''),
     queryFn: () => api<{ items: VolumeAnomaly[]; minRatio: number; window: number }>('stock/anomalies', { query: { from: from! } }),
     enabled: Boolean(from),
+    ...STOCK_CACHE,
     placeholderData: keepPreviousData,
     refetchInterval: 10 * 60_000,
   });
