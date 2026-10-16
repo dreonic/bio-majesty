@@ -1,6 +1,7 @@
 import {
   BatchGetCommand,
   BatchWriteCommand,
+  DeleteCommand,
   GetCommand,
   PutCommand,
   QueryCommand,
@@ -8,6 +9,7 @@ import {
   type QueryCommandOutput,
 } from '@aws-sdk/lib-dynamodb';
 import {
+  DELETABLE_STATUSES,
   effectiveTags,
   type Article,
   type ArticleStatus,
@@ -193,6 +195,59 @@ function matches(a: Article, categories?: string[], sentiments?: Sentiment[], te
     if (!terms.every((t) => hay.includes(t))) return false;
   }
   return true;
+}
+
+/** Pages of ids of every article with this status, newest first. */
+export async function* articleIdPages(status: ArticleStatus): AsyncGenerator<string[]> {
+  let startKey: Record<string, unknown> | undefined;
+  do {
+    const res: QueryCommandOutput = await ddb().send(
+      new QueryCommand({
+        TableName: table(),
+        IndexName: 'GSI1',
+        KeyConditionExpression: 'GSI1PK = :pk',
+        ExpressionAttributeValues: { ':pk': `STATUS#${status}` },
+        ProjectionExpression: 'PK',
+        ScanIndexForward: false,
+        ExclusiveStartKey: startKey,
+      }),
+    );
+    const ids = (res.Items ?? []).map((item) => String(item.PK).replace(/^ART#/, ''));
+    if (ids.length) yield ids;
+    startKey = res.LastEvaluatedKey;
+  } while (startKey);
+}
+
+/**
+ * Delete articles for good, but only those still skipped or filtered (checked by
+ * DynamoDB, so pending and saved news can't be deleted even in a race). Alias records
+ * stay, so later runs still recognise the links and don't bring the articles back.
+ */
+export async function deleteArticles(ids: string[]): Promise<{ deleted: string[]; notDeletable: string[] }> {
+  const deleted: string[] = [];
+  const notDeletable: string[] = [];
+  for (const batch of chunk([...new Set(ids)], 25)) {
+    await Promise.all(
+      batch.map(async (id) => {
+        try {
+          await ddb().send(
+            new DeleteCommand({
+              TableName: table(),
+              Key: keys.article(id),
+              ConditionExpression: `#status IN (${DELETABLE_STATUSES.map((_, i) => `:s${i}`).join(', ')})`,
+              ExpressionAttributeNames: { '#status': 'status' },
+              ExpressionAttributeValues: Object.fromEntries(DELETABLE_STATUSES.map((s, i) => [`:s${i}`, s])),
+            }),
+          );
+          deleted.push(id);
+        } catch (err) {
+          if ((err as { name?: string }).name !== 'ConditionalCheckFailedException') throw err;
+          notDeletable.push(id);
+        }
+      }),
+    );
+  }
+  return { deleted, notDeletable };
 }
 
 export async function countByStatus(status: ArticleStatus): Promise<number> {

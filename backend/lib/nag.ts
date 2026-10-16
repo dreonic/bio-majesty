@@ -52,6 +52,8 @@ export function applyNagSuppressions(stack: Stack, refs: NagRefs): void {
   for (const bucket of refs.buckets) {
     rules[`AwsSolutions-IAM5[Resource::<${logicalId(bucket)}.Arn>/*]`] = grantReason;
     rules[`AwsSolutions-IAM5[Resource::arn:<AWS::Partition>:s3:::<${logicalId(bucket)}>/*]`] = grantReason;
+    // The News API deletes only extracted article texts (articles/*) when news is deleted.
+    rules[`AwsSolutions-IAM5[Resource::<${logicalId(bucket)}.Arn>/articles/*]`] = grantReason;
   }
   for (const fn of refs.invokedFunctions) {
     rules[`AwsSolutions-IAM5[Resource::<${logicalId(fn)}.Arn>:*]`] =

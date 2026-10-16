@@ -1,9 +1,11 @@
 import {
   BulkReviewRequestSchema,
+  DeleteNewsRequestSchema,
   NewsQuerySchema,
   ReviewRequestSchema,
   type Article,
   type ArticleDetail,
+  type DeleteNewsResponse,
   type FinalTags,
   type ReviewRequest,
 } from '@bio-majesty/shared';
@@ -12,11 +14,19 @@ import { buildFeedback } from '../../feedback/build';
 import { errorMessage, logger } from '../../lib/logger';
 import { createRouter } from '../../lib/router';
 import { parseDateInput } from '../../lib/time';
-import { applyReview, countByStatus, getArticle, listArticles, type ReviewChange } from '../../repo/articles';
+import {
+  applyReview,
+  articleIdPages,
+  countByStatus,
+  deleteArticles,
+  getArticle,
+  listArticles,
+  type ReviewChange,
+} from '../../repo/articles';
 import { listCategories } from '../../repo/categories';
 import { latestDigests } from '../../repo/digests';
 import { feedbackStats, putFeedback } from '../../repo/feedback';
-import { getJson, s3Keys } from '../../storage/s3';
+import { deleteObjects, getJson, s3Keys } from '../../storage/s3';
 import type { StoredArticleText } from '../../vectors/indexer';
 
 /** Translate a review action into a status/tag change, validating transitions. */
@@ -57,6 +67,9 @@ export function reviewChange(article: Article, req: ReviewRequest, knownCategori
 }
 
 const FEEDBACK_DECISIONS = { approve: 'approved', reject: 'rejected', update: 'edited' } as const;
+
+/** A delete by status stops after this long (API Gateway gives up at 29 s) and reports `more`. */
+const DELETE_TIME_BUDGET_MS = 20_000;
 
 /** Store the decision as training data (never fails the request). */
 async function recordFeedback(before: Article, after: Article, action: ReviewRequest['action']): Promise<void> {
@@ -128,6 +141,38 @@ export const handler = createRouter({
       }
     }
     return json(200, { updated, failed });
+  },
+
+  'POST /news/delete': async (event) => {
+    const req = parseBody(event, DeleteNewsRequestSchema);
+    const deadline = Date.now() + DELETE_TIME_BUDGET_MS;
+    const res: DeleteNewsResponse = { deleted: 0, failed: [], more: false };
+    const deletedIds: string[] = [];
+    const remove = async (ids: string[]) => {
+      const { deleted, notDeletable } = await deleteArticles(ids);
+      res.deleted += deleted.length;
+      deletedIds.push(...deleted);
+      res.failed.push(...notDeletable.map((id) => ({ id, error: 'not skipped or filtered' })));
+    };
+    if ('ids' in req) {
+      await remove(req.ids);
+    } else {
+      // Each page continues after the last key read, so deleting as we go doesn't disturb the listing.
+      for await (const ids of articleIdPages(req.status)) {
+        await remove(ids);
+        if (Date.now() > deadline) {
+          res.more = true;
+          break;
+        }
+      }
+    }
+    // The extracted text of skipped articles; missing objects (filtered articles have none) are fine.
+    try {
+      await deleteObjects(deletedIds.map((id) => s3Keys.articleText(id)));
+    } catch (err) {
+      logger.error('Failed to delete article texts', { error: errorMessage(err), count: deletedIds.length });
+    }
+    return json(200, res);
   },
 
   'GET /feedback/stats': async () => json(200, await feedbackStats()),

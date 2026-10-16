@@ -85,6 +85,8 @@ export class ApiConstruct extends Construct {
 
     const news = make('News', 'api/news.ts');
     data.dataBucket.grantRead(news);
+    // Deleting skipped/filtered articles also removes their extracted text.
+    data.dataBucket.grantDelete(news, 'articles/*');
 
     const categories = make('Categories', 'api/categories.ts', {
       environment: { BACKFILL_STATE_MACHINE_ARN: pipeline.backfillMachine.stateMachineArn },
@@ -135,6 +137,7 @@ export class ApiConstruct extends Construct {
     route('/news', { GET: news });
     route('/news/counts', { GET: news });
     route('/news/bulk', { POST: news });
+    route('/news/delete', { POST: news });
     route('/news/{id}', { GET: news, PATCH: news });
     route('/digest/latest', { GET: news });
     route('/feedback/stats', { GET: news });

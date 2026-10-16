@@ -1,25 +1,26 @@
-import { type Article, type Category } from '@bio-majesty/shared';
+import { type Article, type Category, type DeletableStatus } from '@bio-majesty/shared';
 import { Check, ChevronDown, ChevronRight, Inbox, Keyboard, RotateCcw, Trash2 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Sheet } from '../../components/overlays';
 import { useToast } from '../../components/toast';
-import { Button, EmptyState, Spinner } from '../../components/ui';
+import { Button, Checkbox, EmptyState, Spinner } from '../../components/ui';
 import { cn } from '../../lib/cn';
 import { formatDate, formatDateTime, relativeTime } from '../../lib/format';
-import { useBulkReview, useCategories, useCounts, useNews, useReview } from '../../lib/queries';
+import { useBulkReview, useCategories, useCounts, useDeleteNews, useNews, useReview } from '../../lib/queries';
 import { ArticleCard, type ArticleCardHandle } from '../news/ArticleCard';
 import { useChartFocus } from '../stock/chart-focus';
 
 /**
  * Review queue: every AI-suggested article waits here until the exec saves
  * (with optional edits) or skips it. Skipped articles go to the recycle bin,
- * where they can be restored. Keyboard: J/K move, S save, X skip, E details.
+ * where they can be restored or deleted for good. Keyboard: J/K move, S save, X skip, E details.
  */
 export function ReviewTab() {
   const pending = useNews({ status: 'PENDING', limit: 100 });
   const categories = useCategories().data ?? [];
   const counts = useCounts();
   const bulk = useBulkReview();
+  const purge = useDeleteNews();
   const toast = useToast();
   const items = useMemo(() => pending.data?.pages.flatMap((p) => p.items) ?? [], [pending.data]);
   const groups = useMemo(() => groupByOrigin(items, categories), [items, categories]);
@@ -71,6 +72,14 @@ export function ReviewTab() {
     );
   };
 
+  const emptyBin = () => {
+    if (!window.confirm(`Delete all ${articleCount(skipped)} in the recycle bin for good? This can't be undone.`)) return;
+    purge.mutate(
+      { status: 'REJECTED' },
+      { onSuccess: (res) => toast.success(`Deleted ${articleCount(res.deleted)}`), onError: toast.error },
+    );
+  };
+
   return (
     <div className="flex h-full flex-col">
       <div className="flex shrink-0 flex-wrap items-center gap-3 border-b border-hairline bg-surface px-4 py-3">
@@ -93,7 +102,14 @@ export function ReviewTab() {
         open={binOpen}
         onOpenChange={setBinOpen}
         title="Recycle bin"
-        description="News you skipped. It stays here so later runs don't bring it back; restore an article to review it again."
+        description="News you skipped. It stays here until you delete it; restore an article to review it again. Later runs don't bring skipped or deleted news back."
+        footer={
+          <div className="flex justify-end">
+            <Button size="sm" variant="danger" onClick={emptyBin} loading={purge.isPending} disabled={!skipped} icon={<Trash2 className="size-4" />}>
+              Delete all
+            </Button>
+          </div>
+        }
       >
         <RestorableList status="REJECTED" />
       </Sheet>
@@ -180,7 +196,7 @@ function ReviewItem({
   );
 }
 
-/** Items the AI prefilter dropped — visible and restorable for 30 days. */
+/** Items the AI prefilter dropped: kept for 30 days, to restore to review or delete sooner. */
 function FilteredSection({ count }: { count: number }) {
   const [open, setOpen] = useState(false);
   if (!count) return null;
@@ -190,17 +206,31 @@ function FilteredSection({ count }: { count: number }) {
         {open ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
         Filtered by AI ({count})
       </button>
-      {open && <RestorableList status="FILTERED" className="mt-3" />}
+      {open && <RestorableList status="FILTERED" selectable className="mt-3" />}
     </section>
   );
 }
 
-/** Filtered (by the AI) or skipped (by the exec) articles, each restorable to the review queue. */
-function RestorableList({ status, className }: { status: 'FILTERED' | 'REJECTED'; className?: string }) {
+const articleCount = (n: number) => `${n} article${n === 1 ? '' : 's'}`;
+
+/**
+ * Filtered (by the AI) or skipped (by the exec) articles, each restorable to the review
+ * queue. With `selectable`, articles can also be deleted for good (not to the recycle bin),
+ * one at a time or picked with checkboxes and restored or deleted together.
+ */
+function RestorableList({ status, selectable = false, className }: { status: DeletableStatus; selectable?: boolean; className?: string }) {
   const list = useNews({ status, limit: 50 });
   const review = useReview();
+  const bulk = useBulkReview();
+  const removeOne = useDeleteNews();
+  const removeChosen = useDeleteNews();
   const toast = useToast();
+  const [selected, setSelected] = useState<ReadonlySet<string>>(() => new Set());
   const items = list.data?.pages.flatMap((p) => p.items) ?? [];
+  // Restored or deleted articles leave the list, and with it the selection.
+  const chosen = items.filter((a) => selected.has(a.id)).map((a) => a.id);
+  const allChosen = items.length > 0 && chosen.length === items.length;
+
   if (list.isLoading) return <Spinner className={className} />;
   if (!items.length && status === 'REJECTED') {
     return (
@@ -209,36 +239,106 @@ function RestorableList({ status, className }: { status: 'FILTERED' | 'REJECTED'
       </EmptyState>
     );
   }
+
+  const toggle = (id: string) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (!next.delete(id)) next.add(id);
+      return next;
+    });
+  const restoreChosen = () =>
+    bulk.mutate(
+      { ids: chosen, action: 'restore' },
+      {
+        onSuccess: (res) => {
+          setSelected(new Set());
+          toast.success(`Restored ${articleCount(res.updated)} to review`);
+        },
+        onError: toast.error,
+      },
+    );
+  const deleteChosen = () => {
+    if (!window.confirm(`Delete ${articleCount(chosen.length)} for good? They won't go to the recycle bin.`)) return;
+    removeChosen.mutate(
+      { ids: chosen },
+      {
+        onSuccess: (res) => {
+          setSelected(new Set());
+          toast.success(`Deleted ${articleCount(res.deleted)}`);
+        },
+        onError: toast.error,
+      },
+    );
+  };
+
   return (
-    <ul className={cn('divide-y divide-hairline rounded-lg border border-hairline bg-raised', className)}>
-      {items.map((a) => (
-        <li key={a.id} className="flex items-start gap-3 px-4 py-3">
-          <div className="min-w-0 flex-1">
-            <a href={a.url} target="_blank" rel="noreferrer noopener" className="text-sm font-medium text-ink hover:underline">
-              {a.title}
-            </a>
-            <p className="mt-0.5 text-xs text-ink-2">
-              {a.sourceName ?? a.sourceDomain} · {formatDateTime(a.publishedAt)} ·{' '}
-              {status === 'FILTERED' ? a.filterReason : a.reviewedAt ? `skipped ${relativeTime(a.reviewedAt)}` : 'skipped'}
-            </p>
+    <div className={cn('rounded-lg border border-hairline bg-raised', className)}>
+      {selectable && items.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 border-b border-hairline px-4 py-2">
+          <label className="flex cursor-pointer items-center gap-3 text-sm text-ink-2">
+            <Checkbox
+              aria-label="Select all"
+              checked={allChosen}
+              indeterminate={chosen.length > 0 && !allChosen}
+              onChange={() => setSelected(allChosen ? new Set() : new Set(items.map((a) => a.id)))}
+            />
+            {chosen.length ? `${chosen.length} selected` : 'Select all'}
+          </label>
+          <div className="ml-auto flex items-center gap-1">
+            <Button size="sm" variant="ghost" icon={<RotateCcw className="size-4" />} disabled={!chosen.length} loading={bulk.isPending} onClick={restoreChosen}>
+              Restore
+            </Button>
+            <Button size="sm" variant="danger" icon={<Trash2 className="size-4" />} disabled={!chosen.length} loading={removeChosen.isPending} onClick={deleteChosen}>
+              Delete
+            </Button>
           </div>
-          <Button
-            size="sm"
-            variant="ghost"
-            icon={<RotateCcw className="size-4" />}
-            onClick={() => review.mutate({ id: a.id, action: 'restore' }, { onSuccess: () => toast.success('Restored to review'), onError: toast.error })}
-          >
-            Restore
-          </Button>
-        </li>
-      ))}
-      {list.hasNextPage && (
-        <li className="px-4 py-2">
-          <Button size="sm" variant="ghost" onClick={() => void list.fetchNextPage()} loading={list.isFetchingNextPage}>
-            Load more
-          </Button>
-        </li>
+        </div>
       )}
-    </ul>
+      <ul className="divide-y divide-hairline">
+        {items.map((a) => (
+          <li key={a.id} className="flex items-start gap-3 px-4 py-3">
+            {selectable && <Checkbox className="mt-0.5" aria-label={`Select "${a.title}"`} checked={selected.has(a.id)} onChange={() => toggle(a.id)} />}
+            <div className="min-w-0 flex-1">
+              <a href={a.url} target="_blank" rel="noreferrer noopener" className="text-sm font-medium text-ink hover:underline">
+                {a.title}
+              </a>
+              <p className="mt-0.5 text-xs text-ink-2">
+                {a.sourceName ?? a.sourceDomain} · {formatDateTime(a.publishedAt)} ·{' '}
+                {status === 'FILTERED' ? a.filterReason : a.reviewedAt ? `skipped ${relativeTime(a.reviewedAt)}` : 'skipped'}
+              </p>
+            </div>
+            <div className="flex shrink-0 items-center gap-1">
+              <Button
+                size="sm"
+                variant="ghost"
+                icon={<RotateCcw className="size-4" />}
+                onClick={() => review.mutate({ id: a.id, action: 'restore' }, { onSuccess: () => toast.success('Restored to review'), onError: toast.error })}
+              >
+                Restore
+              </Button>
+              {selectable && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="hover:text-critical"
+                  icon={<Trash2 className="size-4" />}
+                  title="Delete for good (it doesn't go to the recycle bin)"
+                  onClick={() => removeOne.mutate({ ids: [a.id] }, { onSuccess: () => toast.success('Deleted'), onError: toast.error })}
+                >
+                  Delete
+                </Button>
+              )}
+            </div>
+          </li>
+        ))}
+        {list.hasNextPage && (
+          <li className="px-4 py-2">
+            <Button size="sm" variant="ghost" onClick={() => void list.fetchNextPage()} loading={list.isFetchingNextPage}>
+              Load more
+            </Button>
+          </li>
+        )}
+      </ul>
+    </div>
   );
 }

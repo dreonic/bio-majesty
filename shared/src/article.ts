@@ -2,6 +2,7 @@ import { z } from 'zod';
 import {
   ArticleStatusSchema,
   IdSchema,
+  type ArticleStatus,
   IsoDateTime,
   SentimentSchema,
   paginated,
@@ -116,7 +117,7 @@ export type ReviewRequest = z.infer<typeof ReviewRequestSchema>;
 export const BulkReviewRequestSchema = z.object({
   ids: z.array(IdSchema).min(1).max(100),
   /** Bulk actions always use each item's current suggestion. */
-  action: z.enum(['approve', 'reject']),
+  action: z.enum(['approve', 'reject', 'restore']),
 });
 export type BulkReviewRequest = z.infer<typeof BulkReviewRequestSchema>;
 
@@ -124,6 +125,26 @@ export const BulkReviewResponseSchema = z.object({
   updated: z.number(),
   failed: z.array(z.object({ id: z.string(), error: z.string() })),
 });
+
+/** Statuses whose articles can be deleted for good: skipped by the exec (the recycle bin) or filtered by the AI. */
+export const DELETABLE_STATUSES = ['REJECTED', 'FILTERED'] as const satisfies readonly ArticleStatus[];
+export type DeletableStatus = (typeof DELETABLE_STATUSES)[number];
+
+/** Delete chosen articles, or every article with one status (e.g. empty the recycle bin). */
+export const DeleteNewsRequestSchema = z.union([
+  z.object({ ids: z.array(IdSchema).min(1).max(100) }),
+  z.object({ status: z.enum(DELETABLE_STATUSES) }),
+]);
+export type DeleteNewsRequest = z.infer<typeof DeleteNewsRequestSchema>;
+
+export const DeleteNewsResponseSchema = z.object({
+  deleted: z.number(),
+  /** Articles left alone: already gone, or neither skipped nor filtered (pending and saved news is never deleted). */
+  failed: z.array(z.object({ id: z.string(), error: z.string() })),
+  /** A delete by status stopped early (time limit); send it again to delete the rest. */
+  more: z.boolean(),
+});
+export type DeleteNewsResponse = z.infer<typeof DeleteNewsResponseSchema>;
 
 export const PendingCountsSchema = z.object({
   pending: z.number(),

@@ -1,13 +1,16 @@
 import {
   CATEGORY_COLORS,
   DEFAULT_TIME_ZONE,
+  DELETABLE_STATUSES,
   detectVolumeAnomalies,
   effectiveTags,
   midnightInZone,
   SENTIMENTS,
   stockCsv,
   type Article,
+  type BulkReviewRequest,
   type Category,
+  type DeleteNewsRequest,
   type Sentiment,
   type StockRange,
 } from '@bio-majesty/shared';
@@ -232,19 +235,30 @@ async function route(method: string, url: URL, body: unknown): Promise<Response>
       skipped: state.articles.filter((a) => a.status === 'REJECTED').length,
     });
   }
-  if (seg[0] === 'news' && seg[1] && seg[1] !== 'bulk') {
+  if (seg[0] === 'news' && seg[1] && seg[1] !== 'bulk' && seg[1] !== 'delete') {
     const article = state.articles.find((a) => a.id === seg[1]);
     if (!article) return json({ error: 'not_found', message: 'Article not found' }, 404);
     if (method === 'GET') return json({ ...article, text: fx.articleText(article) });
     if (method === 'PATCH') return json(review(article, body as Parameters<typeof review>[1]));
   }
   if (method === 'POST' && path === 'news/bulk') {
-    const req = body as { ids: string[]; action: 'approve' | 'reject' };
+    const req = body as BulkReviewRequest;
     for (const id of req.ids) {
       const a = state.articles.find((x) => x.id === id);
       if (a) review(a, { action: req.action });
     }
     return json({ updated: req.ids.length, failed: [] });
+  }
+  if (method === 'POST' && path === 'news/delete') {
+    // Like the API: only skipped or filtered articles are deleted.
+    const req = body as DeleteNewsRequest;
+    const deletable = (a: Article) => (DELETABLE_STATUSES as readonly string[]).includes(a.status);
+    const doomed = new Set(
+      state.articles.filter((a) => deletable(a) && ('ids' in req ? req.ids.includes(a.id) : a.status === req.status)).map((a) => a.id),
+    );
+    state.articles = state.articles.filter((a) => !doomed.has(a.id));
+    const failed = 'ids' in req ? req.ids.filter((id) => !doomed.has(id)).map((id) => ({ id, error: 'not skipped or filtered' })) : [];
+    return json({ deleted: doomed.size, failed, more: false });
   }
   if (method === 'GET' && path === 'digest/latest') return json({ digest: fx.digest });
 

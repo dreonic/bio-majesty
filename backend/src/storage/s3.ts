@@ -1,5 +1,6 @@
 import {
   DeleteObjectCommand,
+  DeleteObjectsCommand,
   GetObjectCommand,
   ListObjectsV2Command,
   NoSuchKey,
@@ -35,6 +36,19 @@ export async function getJson<T>(key: string): Promise<T | null> {
 
 export async function deleteObject(key: string): Promise<void> {
   await s3().send(new DeleteObjectCommand({ Bucket: env.dataBucket, Key: key }));
+}
+
+/** Delete many objects (missing keys are fine). */
+export async function deleteObjects(keys: string[]): Promise<void> {
+  for (let i = 0; i < keys.length; i += 1000) {
+    const res = await s3().send(
+      new DeleteObjectsCommand({
+        Bucket: env.dataBucket,
+        Delete: { Objects: keys.slice(i, i + 1000).map((Key) => ({ Key })), Quiet: true },
+      }),
+    );
+    if (res.Errors?.length) throw new Error(`Could not delete ${res.Errors.length} object(s): ${res.Errors[0]?.Message ?? 'unknown error'}`);
+  }
 }
 
 export async function listKeys(prefix: string): Promise<string[]> {

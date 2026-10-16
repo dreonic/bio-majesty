@@ -8,6 +8,9 @@ import type {
   CategoryInput,
   CategoryUpdate,
   Conversation,
+  DeletableStatus,
+  DeleteNewsRequest,
+  DeleteNewsResponse,
   Digest,
   FeedbackStats,
   NewsListResponse,
@@ -119,14 +122,74 @@ export function useReview() {
   });
 }
 
+/** The bulk endpoints take at most this many ids per request. */
+const BULK_LIMIT = 100;
+
+function chunks<T>(items: T[], size: number): T[][] {
+  return Array.from({ length: Math.ceil(items.length / size) }, (_, i) => items.slice(i * size, (i + 1) * size));
+}
+
+/** Save, skip or restore any number of articles (sent in batches the API accepts). */
 export function useBulkReview() {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: (body: BulkReviewRequest) =>
-      api<{ updated: number; failed: { id: string; error: string }[] }>('news/bulk', { method: 'POST', body }),
+    mutationFn: async ({ ids, action }: BulkReviewRequest) => {
+      const total = { updated: 0, failed: [] as { id: string; error: string }[] };
+      for (const batch of chunks(ids, BULK_LIMIT)) {
+        const res = await api<{ updated: number; failed: { id: string; error: string }[] }>('news/bulk', {
+          method: 'POST',
+          body: { ids: batch, action },
+        });
+        total.updated += res.updated;
+        total.failed.push(...res.failed);
+      }
+      return total;
+    },
     onMutate: async ({ ids }) => {
       await client.cancelQueries({ queryKey: qk.newsAll });
       for (const id of ids) dropFromLists(client, id);
+    },
+    onSettled: () => {
+      void client.invalidateQueries({ queryKey: qk.newsAll });
+      void client.invalidateQueries({ queryKey: qk.counts });
+    },
+  });
+}
+
+/**
+ * Delete skipped or filtered articles for good: chosen ids, or every article with a
+ * status (repeated while the API reports more, e.g. a very full recycle bin).
+ */
+export function useDeleteNews() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: async (target: { ids: string[] } | { status: DeletableStatus }) => {
+      const total: DeleteNewsResponse = { deleted: 0, failed: [], more: false };
+      const send = async (body: DeleteNewsRequest) => {
+        const res = await api<DeleteNewsResponse>('news/delete', { method: 'POST', body });
+        total.deleted += res.deleted;
+        total.failed.push(...res.failed);
+        return res;
+      };
+      if ('ids' in target) {
+        for (const ids of chunks(target.ids, BULK_LIMIT)) await send({ ids });
+      } else {
+        let res: DeleteNewsResponse;
+        do res = await send({ status: target.status });
+        while (res.more && res.deleted > 0);
+      }
+      return total;
+    },
+    onMutate: async (target) => {
+      await client.cancelQueries({ queryKey: qk.newsAll });
+      if ('ids' in target) {
+        for (const id of target.ids) dropFromLists(client, id);
+      } else {
+        client.setQueriesData<InfiniteData<NewsListResponse>>(
+          { queryKey: qk.newsAll, predicate: (q) => (q.queryKey[1] as NewsFilters | undefined)?.status === target.status },
+          (data) => (data ? { ...data, pages: data.pages.map((p) => ({ ...p, items: [] })) } : data),
+        );
+      }
     },
     onSettled: () => {
       void client.invalidateQueries({ queryKey: qk.newsAll });

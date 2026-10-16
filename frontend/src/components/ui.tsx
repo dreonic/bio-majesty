@@ -1,5 +1,5 @@
 import { Loader2 } from 'lucide-react';
-import { forwardRef, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react';
+import { forwardRef, useEffect, useRef, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react';
 import { cn } from '../lib/cn';
 
 type Variant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'good';
@@ -116,6 +116,15 @@ export function Switch({
       <span className="text-ink">{label}</span>
     </label>
   );
+}
+
+/** Native checkbox; `indeterminate` shows the "some selected" state of a select-all box. */
+export function Checkbox({ indeterminate = false, className, ...rest }: Omit<InputHTMLAttributes<HTMLInputElement>, 'type'> & { indeterminate?: boolean }) {
+  const ref = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (ref.current) ref.current.indeterminate = indeterminate;
+  }, [indeterminate]);
+  return <input ref={ref} type="checkbox" className={cn('size-4 shrink-0 cursor-pointer accent-accent disabled:cursor-not-allowed', className)} {...rest} />;
 }
 
 export function Card({ className, children }: { className?: string; children: ReactNode }) {
