@@ -1,4 +1,5 @@
-import type { Category } from '@bio-majesty/shared';
+import { getErrorMessage } from '@ai-sdk/provider';
+import type { Category, TaskModelSettings } from '@bio-majesty/shared';
 import { tool } from 'ai';
 import { env } from '../lib/env';
 import { localDate } from '../lib/time';
@@ -13,6 +14,39 @@ import {
   searchNewsInput,
 } from '../tools/news-tools';
 import { categoriesBlock, COMPANY_CONTEXT, UNTRUSTED_NOTE } from './prompts';
+import { mergeProviderOptions } from './run-task';
+
+/**
+ * Error text for the chat's UI message stream. The AI SDK also saves it as a failed
+ * tool's result, which is replayed to the model with the next message, so it must be
+ * exactly the text the model saw (the SDK's own getErrorMessage). Any other text
+ * changes the history behind Claude's earlier reasoning, and the follow-up is rejected
+ * ("thinking block is bound to a different conversation").
+ */
+export function chatErrorText(error: unknown): string {
+  return getErrorMessage(error);
+}
+
+/**
+ * Provider options for the chat. Claude's thinking blocks are bound to the exact
+ * conversation that produced them; on Anthropic models, a history that no longer
+ * matches drops the stale reasoning (`drop_block`) instead of failing the answer.
+ * The thinking config is spelled out because setting it replaces the one the AI SDK
+ * derives from the reasoning level; every catalog Claude model takes adaptive thinking.
+ */
+export function chatProviderOptions(
+  modelRef: string,
+  user: TaskModelSettings['providerOptions'],
+): Record<string, Record<string, unknown>> | undefined {
+  const merged = mergeProviderOptions(modelRef, user);
+  if (!modelRef.startsWith('anthropic:')) return merged;
+  const anthropic = merged?.anthropic ?? {};
+  const thinking = (anthropic.thinking as Record<string, unknown> | undefined) ?? { type: 'adaptive', display: 'summarized' };
+  return {
+    ...merged,
+    anthropic: { ...anthropic, thinking: { blockBinding: { prefixMismatchBehavior: 'drop_block' }, ...thinking } },
+  };
+}
 
 /** Read-only tools exposed to the chat model (built on the shared news-tools module). */
 export function buildChatTools(symbol: string) {

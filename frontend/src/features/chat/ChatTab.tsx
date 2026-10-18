@@ -148,7 +148,7 @@ function ChatSession({ id, initialMessages, config }: { id: string; initialMessa
             )}
             {error && (
               <div className="rounded-md bg-critical-wash px-3 py-2 text-sm text-ink">
-                {error.message || 'The assistant failed to answer.'}{' '}
+                {error.message ? `The assistant hit an error: ${error.message}` : 'The assistant failed to answer.'}{' '}
                 <button className="font-medium underline" onClick={() => void regenerate()}>
                   Try again
                 </button>

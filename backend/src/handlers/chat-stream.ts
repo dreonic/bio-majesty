@@ -13,9 +13,8 @@ import type { APIGatewayProxyEvent } from 'aws-lambda';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import type { ReadableStream as NodeReadableStream } from 'node:stream/web';
-import { buildChatTools, chatInstructions } from '../ai/chat-agent';
+import { buildChatTools, chatErrorText, chatInstructions, chatProviderOptions } from '../ai/chat-agent';
 import { resolveWithFallback } from '../ai/fallback';
-import { mergeProviderOptions } from '../ai/run-task';
 import { corsHeaders, getUser, HttpError, parseBody, requireAccess, setRequestOrigin } from '../lib/http';
 import { errorMessage, logger } from '../lib/logger';
 import { listCategories } from '../repo/categories';
@@ -72,8 +71,14 @@ export const handler = awslambda.streamifyResponse(async (event: APIGatewayProxy
       tools,
       stopWhen: isStepCount(8),
       reasoning: chat.reasoning,
-      providerOptions: mergeProviderOptions(chat.model, chat.providerOptions) as never,
+      providerOptions: chatProviderOptions(chat.model, chat.providerOptions) as never,
       maxRetries: 2,
+      onStepFinish: ({ providerMetadata }) => {
+        const dropped = providerMetadata?.anthropic?.inputTransformations;
+        if (Array.isArray(dropped) && dropped.length) {
+          logger.warn('Chat history no longer matched earlier reasoning; Claude answered without it', { inputTransformations: dropped });
+        }
+      },
       onError: ({ error }) => logger.error('Chat stream error', { error: errorMessage(error) }),
     });
     // Keep generating (and persist the answer) even if the browser disconnects.
@@ -91,7 +96,8 @@ export const handler = awslambda.streamifyResponse(async (event: APIGatewayProxy
             logger.error('Failed to save conversation', { error: errorMessage(err) });
           }
         },
-        onError: (error) => `The assistant hit an error: ${errorMessage(error).slice(0, 300)}`,
+        // Also the saved text of failed tool calls, replayed to the model later: keep it verbatim.
+        onError: chatErrorText,
       }),
     });
 
