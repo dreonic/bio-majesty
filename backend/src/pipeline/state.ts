@@ -2,6 +2,8 @@ import type { SearchTask } from '../sources/types';
 
 /** Payload passed between Step Functions states (kept small; bulk data lives in S3). */
 export interface PipelineState {
+  /** The account whose run this is: every read and write uses its data. */
+  sub: string;
   runId: string;
   runType: 'daily' | 'backfill';
   categoryId: string | null;
@@ -14,6 +16,7 @@ export interface PipelineState {
 }
 
 export interface EnrichInput {
+  sub: string;
   runId: string;
   runType: 'daily' | 'backfill';
   categoryId: string | null;

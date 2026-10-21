@@ -1,41 +1,34 @@
 import { GetCommand, PutCommand, QueryCommand, UpdateCommand, type QueryCommandOutput } from '@aws-sdk/lib-dynamodb';
 import { EMPTY_STATS, type Run, type RunStats, type UsageEntry } from '@bio-majesty/shared';
 import { randomId } from '../lib/ids';
-import { ddb, stripKeys, table, ttlInDays } from './client';
-import { keys } from './keys';
+import { ddb, queryPrefix, stripKeys, table, ttlInDays } from './client';
+import { accountPk, keys } from './keys';
 
-export async function createRun(run: Omit<Run, 'stats' | 'usage' | 'finishedAt' | 'error' | 'status'>): Promise<Run> {
+export async function createRun(sub: string, run: Omit<Run, 'stats' | 'usage' | 'finishedAt' | 'error' | 'status'>): Promise<Run> {
   const full: Run = { ...run, status: 'running', stats: { ...EMPTY_STATS }, usage: [], finishedAt: null, error: null };
-  await ddb().send(new PutCommand({ TableName: table(), Item: { ...keys.run(run.id), ...full } }));
+  await ddb().send(new PutCommand({ TableName: table(), Item: { ...keys.run(sub, run.id), ...full } }));
   return full;
 }
 
-export async function getRun(id: string): Promise<Run | null> {
-  const res = await ddb().send(new GetCommand({ TableName: table(), Key: keys.run(id) }));
+export async function getRun(sub: string, id: string): Promise<Run | null> {
+  const res = await ddb().send(new GetCommand({ TableName: table(), Key: keys.run(sub, id) }));
   return res.Item ? (stripKeys(res.Item) as unknown as Run) : null;
 }
 
-export async function listRuns(limit = 20): Promise<Run[]> {
-  const res = await ddb().send(
-    new QueryCommand({
-      TableName: table(),
-      KeyConditionExpression: 'PK = :pk',
-      ExpressionAttributeValues: { ':pk': 'RUN' },
-      ScanIndexForward: false,
-      Limit: limit,
-    }),
-  );
-  return (res.Items ?? []).map((i) => stripKeys(i) as unknown as Run);
+/** The account's runs, newest first (run ids sort by start time). */
+export async function listRuns(sub: string, limit = 20): Promise<Run[]> {
+  const items = await queryPrefix(accountPk(sub), 'RUN#', { descending: true, limit });
+  return items.map((i) => stripKeys(i) as unknown as Run);
 }
 
-export async function lastSuccessfulDailyRun(): Promise<Run | null> {
+export async function lastSuccessfulDailyRun(sub: string): Promise<Run | null> {
   let startKey: Record<string, unknown> | undefined;
   for (let page = 0; page < 5; page++) {
     const res = await ddb().send(
       new QueryCommand({
         TableName: table(),
-        KeyConditionExpression: 'PK = :pk',
-        ExpressionAttributeValues: { ':pk': 'RUN' },
+        KeyConditionExpression: 'PK = :pk AND begins_with(SK, :p)',
+        ExpressionAttributeValues: { ':pk': accountPk(sub), ':p': 'RUN#' },
         ScanIndexForward: false,
         Limit: 50,
         ExclusiveStartKey: startKey,
@@ -52,7 +45,7 @@ export async function lastSuccessfulDailyRun(): Promise<Run | null> {
 }
 
 /** Atomically add counters to the run stats. */
-export async function addRunStats(id: string, delta: Partial<RunStats>): Promise<void> {
+export async function addRunStats(sub: string, id: string, delta: Partial<RunStats>): Promise<void> {
   const entries = Object.entries(delta).filter(([, v]) => typeof v === 'number' && v !== 0);
   if (!entries.length) return;
   const names: Record<string, string> = { '#stats': 'stats' };
@@ -65,7 +58,7 @@ export async function addRunStats(id: string, delta: Partial<RunStats>): Promise
   await ddb().send(
     new UpdateCommand({
       TableName: table(),
-      Key: keys.run(id),
+      Key: keys.run(sub, id),
       UpdateExpression: `ADD ${parts.join(', ')}`,
       ExpressionAttributeNames: names,
       ExpressionAttributeValues: values,
@@ -102,7 +95,7 @@ export function mergeUsage(entries: UsageEntry[]): UsageEntry[] {
   return [...merged.values()];
 }
 
-export async function aggregateRunUsage(runId: string): Promise<UsageEntry[]> {
+export async function aggregateRunUsage(sub: string, runId: string): Promise<UsageEntry[]> {
   const all: UsageEntry[] = [];
   let startKey: Record<string, unknown> | undefined;
   do {
@@ -121,7 +114,7 @@ export async function aggregateRunUsage(runId: string): Promise<UsageEntry[]> {
   await ddb().send(
     new UpdateCommand({
       TableName: table(),
-      Key: keys.run(runId),
+      Key: keys.run(sub, runId),
       UpdateExpression: 'SET #usage = :u',
       ExpressionAttributeNames: { '#usage': 'usage' },
       ExpressionAttributeValues: { ':u': usage },
@@ -130,11 +123,11 @@ export async function aggregateRunUsage(runId: string): Promise<UsageEntry[]> {
   return usage;
 }
 
-export async function finishRun(id: string, status: 'succeeded' | 'failed', error: string | null = null): Promise<void> {
+export async function finishRun(sub: string, id: string, status: 'succeeded' | 'failed', error: string | null = null): Promise<void> {
   await ddb().send(
     new UpdateCommand({
       TableName: table(),
-      Key: keys.run(id),
+      Key: keys.run(sub, id),
       UpdateExpression: 'SET #status = :s, finishedAt = :f, #error = :e',
       ExpressionAttributeNames: { '#status': 'status', '#error': 'error' },
       ExpressionAttributeValues: { ':s': status, ':f': new Date().toISOString(), ':e': error },

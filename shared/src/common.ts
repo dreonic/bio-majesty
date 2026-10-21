@@ -1,9 +1,9 @@
 import { z } from 'zod';
 
 /**
- * Sentiment of a news item with respect to the PRDA share price:
- * positive / negative = likely to help / hurt the price, neutral = no
- * meaningful effect expected, undecided = mixed or unclear.
+ * Sentiment of a news item, judged as the account's profile says (the price of one of its
+ * assets, or the subject's business outlook): positive / negative = likely to help / hurt,
+ * neutral = no meaningful effect expected, undecided = mixed or unclear.
  */
 export const SENTIMENTS = ['positive', 'negative', 'neutral', 'undecided'] as const;
 export const SentimentSchema = z.enum(SENTIMENTS);
@@ -13,7 +13,7 @@ export type Sentiment = z.infer<typeof SentimentSchema>;
  * Lifecycle of a discovered article.
  * - PENDING: suggested by the pipeline, waiting for the exec's review
  * - APPROVED: saved by the exec (shown in the News tab, indexed for chat)
- * - REJECTED: skipped by the exec (kept so it never resurfaces)
+ * - REJECTED: skipped by the exec (the recycle bin; later runs drop it while it is there)
  * - FILTERED: dropped by the AI headline prefilter (restorable for 30 days)
  */
 export const ARTICLE_STATUSES = ['PENDING', 'APPROVED', 'REJECTED', 'FILTERED'] as const;

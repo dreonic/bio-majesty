@@ -1,4 +1,4 @@
-import { effectiveSummary, effectiveTags, MARKET_TIME_ZONE, SentimentSchema, type Article, type Category, type Sentiment } from '@bio-majesty/shared';
+import { effectiveSummary, effectiveTags, SentimentSchema, type Article, type Category, type Sentiment, type StockAsset } from '@bio-majesty/shared';
 import { z } from 'zod';
 import { env } from '../lib/env';
 import { localDate, parseDateInput } from '../lib/time';
@@ -11,13 +11,13 @@ import type { StoredArticleText } from '../vectors/indexer';
 import { queryVectors } from '../vectors/store';
 
 /**
- * Read-only tools over the saved (approved) news. Plain async functions with
- * zod input schemas so they can back the in-app chat agent today and an MCP
- * endpoint or other agents later.
+ * Read-only tools over one account's saved (approved) news and tracked assets. Plain
+ * async functions with zod input schemas so they can back the in-app chat agent today
+ * and an MCP endpoint or other agents later. Every function takes the account (`sub`).
  */
 
 const DateInput = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).describe(`YYYY-MM-DD (${env.timeZone})`);
-const TradingDateInput = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).describe('YYYY-MM-DD (IDX trading date)');
+const TradingDateInput = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).describe("YYYY-MM-DD (the asset's trading date)");
 
 export const searchNewsInput = z.object({
   query: z.string().min(2).describe('What to look for, in English or Indonesian'),
@@ -39,10 +39,15 @@ export const listNewsInput = z.object({
 
 export const getArticleInput = z.object({ id: z.string().describe('Article id from a previous tool result') });
 
-export const getStockPricesInput = z.object({
-  from: TradingDateInput,
-  to: TradingDateInput.optional(),
-});
+/** Price-tool input for an account's assets (at least one). */
+export function stockPricesInput(symbols: [string, ...string[]]) {
+  return z.object({
+    symbol: z.enum(symbols).describe('Which tracked asset'),
+    from: TradingDateInput,
+    to: TradingDateInput.optional(),
+  });
+}
+export type StockPricesInput = z.infer<ReturnType<typeof stockPricesInput>>;
 
 export interface ToolArticle {
   id: string;
@@ -69,14 +74,15 @@ function toToolArticle(a: Article, names: Map<string, string>): ToolArticle {
   };
 }
 
-async function categoryNames(): Promise<Map<string, string>> {
-  return new Map((await listCategories()).map((c) => [c.id, c.name]));
+async function categoryNames(sub: string): Promise<Map<string, string>> {
+  return new Map((await listCategories(sub)).map((c) => [c.id, c.name]));
 }
 
-export async function searchNews(input: z.infer<typeof searchNewsInput>) {
+export async function searchNews(sub: string, input: z.infer<typeof searchNewsInput>) {
   const limit = input.limit ?? 8;
   const vector = await embedQuery(input.query);
   const hits = await queryVectors(vector, Math.min(100, limit * 5), {
+    owner: sub,
     from: input.from ? parseDateInput(input.from) : undefined,
     to: input.to ? parseDateInput(input.to, true) : undefined,
     categoryIds: input.categoryIds,
@@ -90,8 +96,8 @@ export async function searchNews(input: z.infer<typeof searchNewsInput>) {
     best.set(h.metadata.articleId, cur);
   }
   const ranked = [...best.entries()].sort((a, b) => a[1].distance - b[1].distance).slice(0, limit);
-  const articles = (await batchGetArticles(ranked.map(([id]) => id))).filter((a) => a.status === 'APPROVED');
-  const names = await categoryNames();
+  const articles = (await batchGetArticles(sub, ranked.map(([id]) => id))).filter((a) => a.status === 'APPROVED');
+  const names = await categoryNames(sub);
   const byId = new Map(articles.map((a) => [a.id, a]));
   return {
     results: ranked
@@ -104,9 +110,9 @@ export async function searchNews(input: z.infer<typeof searchNewsInput>) {
   };
 }
 
-export async function listNews(input: z.infer<typeof listNewsInput>) {
+export async function listNews(sub: string, input: z.infer<typeof listNewsInput>) {
   const limit = input.limit ?? 25;
-  const { items, nextCursor } = await listArticles({
+  const { items, nextCursor } = await listArticles(sub, {
     status: 'APPROVED',
     from: input.from ? parseDateInput(input.from) : undefined,
     to: input.to ? parseDateInput(input.to, true) : undefined,
@@ -115,15 +121,15 @@ export async function listNews(input: z.infer<typeof listNewsInput>) {
     q: input.keyword,
     limit,
   });
-  const names = await categoryNames();
+  const names = await categoryNames(sub);
   return { count: items.length, truncated: nextCursor !== null, articles: items.map((a) => toToolArticle(a, names)) };
 }
 
-export async function getArticleTool(input: z.infer<typeof getArticleInput>) {
-  const article = await getArticle(input.id);
+export async function getArticleTool(sub: string, input: z.infer<typeof getArticleInput>) {
+  const article = await getArticle(sub, input.id);
   if (!article || article.status !== 'APPROVED') return { error: 'Article not found among saved news.' };
-  const stored = await getJson<StoredArticleText>(s3Keys.articleText(article.id));
-  const names = await categoryNames();
+  const stored = await getJson<StoredArticleText>(s3Keys.articleText(sub, article.id));
+  const names = await categoryNames(sub);
   return {
     ...toToolArticle(article, names),
     rationale: article.final?.rationale ?? article.suggestion?.rationale ?? null,
@@ -131,11 +137,12 @@ export async function getArticleTool(input: z.infer<typeof getArticleInput>) {
   };
 }
 
-export async function getStockPrices(input: z.infer<typeof getStockPricesInput>, symbol: string) {
-  // Trading dates are Jakarta days; a Singapore midnight would fall on the previous trading date.
-  const from = parseDateInput(input.from, false, MARKET_TIME_ZONE);
-  const to = input.to ? parseDateInput(input.to, true, MARKET_TIME_ZONE) : new Date();
-  const candles = await queryDaily(symbol, from, to);
+export async function getStockPrices(input: Pick<StockPricesInput, 'from' | 'to'>, asset: Pick<StockAsset, 'symbol' | 'timeZone'>) {
+  const { symbol } = asset;
+  // Trading dates are days on the asset's exchange clock (e.g. a Singapore midnight is the previous Jakarta date).
+  const from = parseDateInput(input.from, false, asset.timeZone);
+  const to = input.to ? parseDateInput(input.to, true, asset.timeZone) : new Date();
+  const candles = await queryDaily(symbol, from, to, asset.timeZone);
   const quote = await getQuote(symbol);
   if (!candles.length) return { symbol, candles: [], summary: null, latestQuote: quote };
   const first = candles[0]!;
@@ -161,6 +168,6 @@ export async function getStockPrices(input: z.infer<typeof getStockPricesInput>,
   };
 }
 
-export async function listCategoriesTool(): Promise<Pick<Category, 'id' | 'name' | 'description'>[]> {
-  return (await listCategories()).map(({ id, name, description }) => ({ id, name, description }));
+export async function listCategoriesTool(sub: string): Promise<Pick<Category, 'id' | 'name' | 'description'>[]> {
+  return (await listCategories(sub)).map(({ id, name, description }) => ({ id, name, description }));
 }

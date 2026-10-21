@@ -66,7 +66,8 @@ export async function listKeys(prefix: string): Promise<string[]> {
 
 /** Object key layout in the data bucket. */
 export const s3Keys = {
-  articleText: (id: string) => `articles/${id}.json`,
+  /** Extracted text of an account's article (each account fetches its own copy). */
+  articleText: (sub: string, id: string) => `users/${sub}/articles/${id}.json`,
   rawResults: (runId: string, taskId: string) => `raw/${runId}/${taskId}.json`,
   rawPrefix: (runId: string) => `raw/${runId}/`,
   candidates: (runId: string) => `runs/${runId}/candidates.json`,

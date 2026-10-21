@@ -1,10 +1,11 @@
 import type { Digest } from '@bio-majesty/shared';
+import { loadProfileContext } from '../ai/profile';
 import { digestCounts, writeDigest } from '../ai/tasks/digest';
 import { UsageCollector } from '../ai/usage';
 import { errorMessage, logger } from '../lib/logger';
 import { localDate } from '../lib/time';
 import { formatDigestMessage, escapeHtml } from '../notify/telegram';
-import { notifyExec } from '../notify/notify';
+import { notifyAccount } from '../notify/notify';
 import { batchGetArticles, listRunItems } from '../repo/articles';
 import { getCategory, listCategories } from '../repo/categories';
 import { putDigest } from '../repo/digests';
@@ -12,18 +13,19 @@ import { recordRunUsage } from '../repo/runs';
 import { getSettings } from '../repo/settings';
 import type { PipelineState } from './state';
 
-/** Summarize what the run found, store the digest, and notify the exec on Telegram. */
+/** Summarize what the run found, store the account's digest, and notify it on Telegram. */
 export async function digestRun(state: PipelineState): Promise<PipelineState> {
+  const { sub } = state;
   const ids = await listRunItems(state.runId);
-  const articles = (await batchGetArticles(ids)).filter((a) => a.status === 'PENDING');
-  const [categories, settings] = await Promise.all([listCategories(), getSettings()]);
-  const category = state.categoryId ? await getCategory(state.categoryId) : null;
+  const articles = (await batchGetArticles(sub, ids)).filter((a) => a.status === 'PENDING');
+  const [categories, settings] = await Promise.all([listCategories(sub), getSettings(sub)]);
+  const category = state.categoryId ? await getCategory(sub, state.categoryId) : null;
 
   if (!articles.length) {
     if (state.runType === 'backfill') {
-      await notifyExec(`🔎 Backfill for <b>${escapeHtml(category?.name ?? 'category')}</b> finished: no new items to review.`);
+      await notifyAccount(sub, `🔎 Backfill for <b>${escapeHtml(category?.name ?? 'category')}</b> finished: no new items to review.`);
     } else if (settings.notifications.notifyWhenEmpty) {
-      await notifyExec('📰 Daily news run finished: no new items today.');
+      await notifyAccount(sub, '📰 Daily news run finished: no new items today.');
     }
     return { ...state, pending: 0 };
   }
@@ -37,6 +39,7 @@ export async function digestRun(state: PipelineState): Promise<PipelineState> {
       categories,
       { runType: state.runType, categoryName: category?.name },
       settings.models.digest,
+      await loadProfileContext(settings),
       usage,
     );
   } catch (err) {
@@ -59,7 +62,7 @@ export async function digestRun(state: PipelineState): Promise<PipelineState> {
     counts,
     createdAt: new Date().toISOString(),
   };
-  await putDigest(digest);
-  await notifyExec(formatDigestMessage(digest), { buttonText: 'Open review queue', path: '/?tab=review' });
+  await putDigest(sub, digest);
+  await notifyAccount(sub, formatDigestMessage(digest), { buttonText: 'Open review queue', path: '/?tab=review' });
   return { ...state, pending: articles.length };
 }

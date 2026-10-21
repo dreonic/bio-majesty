@@ -1,5 +1,5 @@
 import { logger } from '../lib/logger';
-import { extractGoogleNewsId } from './google-news-rss';
+import { extractGoogleNewsId } from '../lib/url';
 import { BROWSER_HEADERS, fetchWithRetry, jitter } from './http-fetch';
 
 /**

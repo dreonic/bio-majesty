@@ -1,10 +1,11 @@
 import type { Article, Feedback } from '@bio-majesty/shared';
+import { loadProfileContext } from '../ai/profile';
 import { classifyArticle } from '../ai/tasks/classify';
 import { UsageCollector } from '../ai/usage';
 import { fetchArticle, type ExtractedArticle } from '../extract/fetch-article';
 import { errorMessage, logger } from '../lib/logger';
 import { aliasKeys, cleanUrl, domainOf, isGoogleNewsUrl } from '../lib/url';
-import { addRunItem, aliasId, createArticle, existingAliases, putAliases } from '../repo/articles';
+import { addRunItem, aliasId, createArticle, existingAliases } from '../repo/articles';
 import { listCategories } from '../repo/categories';
 import { listFeedback } from '../repo/feedback';
 import { addRunStats, recordRunUsage } from '../repo/runs';
@@ -18,14 +19,15 @@ import type { EnrichInput } from './state';
 export type EnrichOutcome = 'pending' | 'filtered' | 'duplicate' | 'missing';
 
 const EXAMPLES_TTL_MS = 10 * 60 * 1000;
-let examplesCache: { at: number; limit: number; items: Feedback[] } | undefined;
+const examplesCache = new Map<string, { at: number; limit: number; items: Feedback[] }>();
 
-/** The exec's most recent corrections (cached per Lambda instance). */
-async function correctionExamples(limit: number): Promise<Feedback[]> {
-  if (examplesCache && examplesCache.limit === limit && Date.now() - examplesCache.at < EXAMPLES_TTL_MS) return examplesCache.items;
+/** The account's most recent corrections (cached per Lambda instance). */
+async function correctionExamples(sub: string, limit: number): Promise<Feedback[]> {
+  const cached = examplesCache.get(sub);
+  if (cached && cached.limit === limit && Date.now() - cached.at < EXAMPLES_TTL_MS) return cached.items;
   try {
-    const items = await listFeedback({ limit, onlyCorrections: true });
-    examplesCache = { at: Date.now(), limit, items };
+    const items = await listFeedback(sub, { limit, onlyCorrections: true });
+    examplesCache.set(sub, { at: Date.now(), limit, items });
     return items;
   } catch (err) {
     logger.warn('Could not load correction examples; tagging without them', { error: errorMessage(err) });
@@ -35,6 +37,7 @@ async function correctionExamples(limit: number): Promise<Feedback[]> {
 
 /** Resolve the publisher URL, fetch the article, tag it with the LLM, and store it for review. */
 export async function enrichCandidate(input: EnrichInput): Promise<{ outcome: EnrichOutcome; articleId?: string }> {
+  const { sub } = input;
   const candidate = await getJson<MergedCandidate>(s3Keys.relevantItem(input.runId, input.candidateId));
   if (!candidate) return { outcome: 'missing' };
 
@@ -59,9 +62,9 @@ export async function enrichCandidate(input: EnrichInput): Promise<{ outcome: En
 
   // 2. The real URL may reveal a duplicate the collect step could not see.
   if (url !== candidate.url) {
-    const known = await existingAliases(aliases);
+    const known = await existingAliases(sub, aliases);
     if (aliases.some((a) => known.has(aliasId(a)))) {
-      await addRunStats(input.runId, { duplicates: 1 });
+      await addRunStats(sub, input.runId, { duplicates: 1 });
       return { outcome: 'duplicate' };
     }
   }
@@ -71,9 +74,10 @@ export async function enrichCandidate(input: EnrichInput): Promise<{ outcome: En
   if (!isGoogleNewsUrl(url)) extracted = await fetchArticle(url);
 
   // 4. Tag with the LLM.
-  const [categories, settings] = await Promise.all([listCategories(), getSettings()]);
+  const [categories, settings] = await Promise.all([listCategories(sub), getSettings(sub)]);
   const usage = new UsageCollector();
-  const examples = settings.learning.useFeedbackContext ? await correctionExamples(settings.learning.maxExamples) : [];
+  const examples = settings.learning.useFeedbackContext ? await correctionExamples(sub, settings.learning.maxExamples) : [];
+  const profile = await loadProfileContext(settings);
   let article: Article;
   try {
     const classification = await classifyArticle(
@@ -88,6 +92,7 @@ export async function enrichCandidate(input: EnrichInput): Promise<{ outcome: En
       },
       categories,
       settings.models.tagging,
+      profile,
       usage,
       examples,
     );
@@ -104,7 +109,7 @@ export async function enrichCandidate(input: EnrichInput): Promise<{ outcome: En
       lang: extracted?.lang ?? candidate.lang,
       snippet: candidate.snippet ?? extracted?.excerpt ?? null,
       textStatus: extracted ? extracted.status : 'skipped',
-      filterReason: classification.relevant ? null : 'Tagger: not about the Prodia group or any category',
+      filterReason: classification.relevant ? null : `Tagger: not about ${settings.profile.subject} or any category`,
       suggestion: {
         categoryIds: classification.categoryIds,
         sentiment: classification.sentiment,
@@ -118,7 +123,7 @@ export async function enrichCandidate(input: EnrichInput): Promise<{ outcome: En
   } catch (err) {
     // Keep the item reviewable even if every model attempt failed.
     logger.error('Tagging failed; storing article without suggestion', { error: errorMessage(err) });
-    await addRunStats(input.runId, { errors: 1 });
+    await addRunStats(sub, input.runId, { errors: 1 });
     article = articleFromCandidate(candidate, {
       status: 'PENDING',
       runId: input.runId,
@@ -133,24 +138,23 @@ export async function enrichCandidate(input: EnrichInput): Promise<{ outcome: En
 
   // 5. Persist.
   if (extracted?.text) {
-    await putJson(s3Keys.articleText(article.id), {
+    await putJson(s3Keys.articleText(sub, article.id), {
       url,
       title: extracted.title,
       text: extracted.text,
       extractedAt: new Date().toISOString(),
     });
   }
-  const created = await createArticle(article);
-  await putAliases(article.id, aliases);
+  const created = await createArticle(sub, article, aliases);
   if (!created) {
-    await addRunStats(input.runId, { duplicates: 1 });
+    await addRunStats(sub, input.runId, { duplicates: 1 });
     return { outcome: 'duplicate', articleId: article.id };
   }
   if (article.status === 'PENDING') {
     await addRunItem(input.runId, article.id);
-    await addRunStats(input.runId, { pending: 1 });
+    await addRunStats(sub, input.runId, { pending: 1 });
     return { outcome: 'pending', articleId: article.id };
   }
-  await addRunStats(input.runId, { filtered: 1 });
+  await addRunStats(sub, input.runId, { filtered: 1 });
   return { outcome: 'filtered', articleId: article.id };
 }

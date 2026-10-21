@@ -1,5 +1,5 @@
 import { useChat } from '@ai-sdk/react';
-import type { Sentiment } from '@bio-majesty/shared';
+import { displaySymbol, type Sentiment } from '@bio-majesty/shared';
 import { useQueryClient } from '@tanstack/react-query';
 import { DefaultChatTransport, isToolUIPart, type UIMessage } from 'ai';
 import { Loader2, MessageSquarePlus, Search, SendHorizontal, Square, Trash2 } from 'lucide-react';
@@ -201,7 +201,7 @@ const TOOL_LABELS: Record<string, string> = {
   searchNews: 'Searched saved news',
   listNews: 'Listed saved news',
   getArticle: 'Read an article',
-  getStockPrices: 'Checked PRDA prices',
+  getStockPrices: 'Checked prices',
 };
 
 function Message({ message }: { message: UIMessage }) {
@@ -220,8 +220,9 @@ function Message({ message }: { message: UIMessage }) {
         if (part.type === 'text') return <Markdown key={i} text={part.text} />;
         if (!isToolUIPart(part)) return null;
         const name = part.type.replace(/^tool-/, '');
-        const input = part.input as { query?: string; keyword?: string; from?: string; to?: string } | undefined;
-        const detail = input?.query ?? input?.keyword ?? (input?.from ? `${input.from} → ${input.to ?? 'today'}` : '');
+        const input = part.input as { query?: string; keyword?: string; symbol?: string; from?: string; to?: string } | undefined;
+        const range = input?.from ? `${input.from} → ${input.to ?? 'today'}` : '';
+        const detail = input?.query ?? input?.keyword ?? (input?.symbol ? `${displaySymbol(input.symbol)} ${range}`.trim() : range);
         const running = part.state === 'input-streaming' || part.state === 'input-available';
         const articles = extractArticles(part.state === 'output-available' ? part.output : undefined);
         return (

@@ -1,6 +1,6 @@
-import type { SuggestQueriesResponse, TaskModelSettings } from '@bio-majesty/shared';
+import type { Profile, SuggestQueriesResponse, TaskModelSettings } from '@bio-majesty/shared';
 import { z } from 'zod';
-import { COMPANY_CONTEXT } from '../prompts';
+import { profileContext } from '../prompts';
 import { runStructured } from '../run-task';
 import type { UsageCollector } from '../usage';
 
@@ -19,13 +19,16 @@ const OutputSchema = z.object({
   exclude: z.array(z.string()).describe('Words or phrases that indicate an unrelated result (may be empty).'),
 });
 
-const INSTRUCTIONS = `${COMPANY_CONTEXT}
+function instructions(profile: Profile): string {
+  return `${profileContext(profile)}
 
-You help configure a news monitor. Given a category name and optional description, propose Google News search queries that will find relevant articles with good precision. Prefer specific entity names and common Indonesian phrasing used by local business media; include English variants only where English coverage is plausible. Avoid queries so broad that they would return mostly unrelated news (for example the bare word "Prodia" also matches an unrelated AI company).`;
+You help configure a news monitor. Given a category name and optional description, propose Google News search queries that will find relevant articles with good precision. Prefer specific entity names and the phrasing local business media use (Indonesian for Indonesian subjects); include English variants only where English coverage is plausible. Avoid queries so broad that they would return mostly unrelated news (a bare company name may also match unrelated businesses, such as the look-alikes listed above).`;
+}
 
 export async function suggestQueries(
   input: { name: string; description: string },
   settings: TaskModelSettings,
+  profile: Profile,
   usage?: UsageCollector,
 ): Promise<SuggestQueriesResponse> {
   const { output } = await runStructured({
@@ -33,7 +36,7 @@ export async function suggestQueries(
     settings,
     schema: OutputSchema,
     name: 'category_search_config',
-    instructions: INSTRUCTIONS,
+    instructions: instructions(profile),
     prompt: `Category name: ${input.name}\nDescription: ${input.description || '(none provided)'}`,
     maxOutputTokens: 4000,
     usage,

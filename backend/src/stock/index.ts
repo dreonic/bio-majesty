@@ -1,4 +1,4 @@
-import type { Candle, StockRange } from '@bio-majesty/shared';
+import { dateInZone, MARKET_TIME_ZONE, type Candle, type StockAsset, type StockRange } from '@bio-majesty/shared';
 import { env } from '../lib/env';
 import { addDays, addMonths } from '../lib/time';
 import { EodhdStockProvider } from './eodhd';
@@ -12,8 +12,35 @@ export function stockProvider(): StockProvider {
   return provider;
 }
 
-/** PRDA listed on IDX in December 2016. */
-export const HISTORY_START = new Date('2016-12-01T00:00:00Z');
+/** Yahoo serves intraday bars for the last 60 days: what the intraday CSV download asks for. */
+export const INTRADAY_DOWNLOAD_DAYS = 59;
+
+/** Where an asset's daily history starts (the source's first trade date when known). */
+export function historyStart(asset: Pick<StockAsset, 'firstTradeDate'>): Date {
+  return asset.firstTradeDate ? new Date(asset.firstTradeDate) : new Date('1970-01-01T00:00:00Z');
+}
+
+/**
+ * Metadata to work with before the source has been asked (e.g. an asset kept from before
+ * metadata existed); the next refresh replaces it.
+ */
+export function fallbackAsset(symbol: string): StockAsset {
+  const idx = symbol.endsWith('.JK');
+  return {
+    symbol,
+    name: null,
+    exchange: idx ? 'Jakarta' : null,
+    type: null,
+    currency: idx ? 'IDR' : null,
+    timeZone: idx ? MARKET_TIME_ZONE : 'UTC',
+    session: idx ? { start: '09:00', end: '16:15', days: 'weekdays' } : { start: '00:00', end: '23:59', days: 'weekdays' },
+    intradayInterval: '15m',
+    decimals: idx ? 0 : 2,
+    hasVolume: true,
+    firstTradeDate: null,
+    updatedAt: new Date(0).toISOString(),
+  };
+}
 
 export interface RangePlan {
   source: 'intraday' | 'daily';
@@ -21,7 +48,7 @@ export interface RangePlan {
   from: Date;
 }
 
-export function planRange(range: StockRange, now = new Date()): RangePlan {
+export function planRange(range: StockRange, now: Date, historyFrom: Date): RangePlan {
   switch (range) {
     case '1D':
       return { source: 'intraday', interval: '15m', from: addDays(now, -4) };
@@ -38,14 +65,14 @@ export function planRange(range: StockRange, now = new Date()): RangePlan {
     case '5Y':
       return { source: 'daily', interval: '1wk', from: addMonths(now, -60) };
     case 'MAX':
-      return { source: 'daily', interval: '1wk', from: HISTORY_START };
+      return { source: 'daily', interval: '1wk', from: historyFrom };
   }
 }
 
-/** Keep only the most recent trading session (for the 1D view). */
-export function lastSession(candles: Candle[]): Candle[] {
+/** Keep only the most recent trading session (for the 1D view), by trading date in `timeZone`. */
+export function lastSession(candles: Candle[], timeZone: string): Candle[] {
   if (!candles.length) return candles;
-  const dayOf = (t: number) => new Date((t + 7 * 3600) * 1000).toISOString().slice(0, 10);
+  const dayOf = (t: number) => dateInZone(timeZone, new Date(t * 1000));
   const lastDay = dayOf(candles[candles.length - 1]!.time);
   return candles.filter((c) => dayOf(c.time) === lastDay);
 }

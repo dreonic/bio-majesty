@@ -1,7 +1,7 @@
-import type { Category, TaskModelSettings } from '@bio-majesty/shared';
+import type { Category, Profile, TaskModelSettings } from '@bio-majesty/shared';
 import { z } from 'zod';
 import { errorMessage, logger } from '../../lib/logger';
-import { categoriesBlock, COMPANY_CONTEXT, UNTRUSTED_NOTE, untrusted } from '../prompts';
+import { categoriesBlock, profileContext, UNTRUSTED_NOTE, untrusted } from '../prompts';
 import { runStructured } from '../run-task';
 import type { UsageCollector } from '../usage';
 
@@ -33,10 +33,10 @@ const OutputSchema = z.object({
 
 const BATCH_SIZE = 50;
 
-function instructions(categories: Category[], exclude: string[]): string {
-  return `${COMPANY_CONTEXT}
+function instructions(categories: Category[], exclude: string[], profile: Profile): string {
+  return `${profileContext(profile)}
 
-You screen search results before articles are fetched and read in full. Mark a headline relevant if it is plausibly about the Prodia group, its businesses, or a topic covered by one of the categories below (for example regulation or competitors affecting Prodia). Mark it irrelevant when it clearly concerns something else — when unsure, keep it (relevant = true), because a person reviews everything that passes.
+You screen search results before articles are fetched and read in full. Mark a headline relevant if it is plausibly about ${profile.subject}, its businesses, or a topic covered by one of the categories below (for example regulation or competitors affecting ${profile.subject}). Mark it irrelevant when it clearly concerns something else — when unsure, keep it (relevant = true), because a person reviews everything that passes.
 ${exclude.length ? `\nResults mentioning any of these are usually unrelated: ${exclude.join(', ')}.` : ''}
 
 ${categoriesBlock(categories)}
@@ -54,6 +54,7 @@ export async function prefilterHeadlines(
   categories: Category[],
   exclude: string[],
   settings: TaskModelSettings,
+  profile: Profile,
   usage?: UsageCollector,
 ): Promise<PrefilterDecision[]> {
   const known = new Set(categories.map((c) => c.id));
@@ -69,7 +70,7 @@ export async function prefilterHeadlines(
         settings,
         schema: OutputSchema,
         name: 'headline_screening',
-        instructions: instructions(categories, exclude),
+        instructions: instructions(categories, exclude, profile),
         prompt: untrusted('search-results', listing),
         maxOutputTokens: 8000,
         usage,

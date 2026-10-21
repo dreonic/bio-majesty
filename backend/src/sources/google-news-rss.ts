@@ -2,9 +2,11 @@ import type { Lang } from '@bio-majesty/shared';
 import { XMLParser } from 'fast-xml-parser';
 import { hashId } from '../lib/ids';
 import { addDays, jakartaDate } from '../lib/time';
-import { displayTitle, domainOf } from '../lib/url';
+import { displayTitle, domainOf, extractGoogleNewsId } from '../lib/url';
 import { BROWSER_HEADERS, fetchWithRetry } from './http-fetch';
 import type { RawCandidate } from './types';
+
+export { extractGoogleNewsId };
 
 /**
  * Google News RSS search (free, unofficial). Supports the same operators as
@@ -91,17 +93,6 @@ export function parseGoogleNewsRss(
   return out;
 }
 
-/** Article token from news.google.com/rss/articles/<id> (or /articles/, /read/). */
-export function extractGoogleNewsId(link: string): string | null {
-  try {
-    const url = new URL(link);
-    if (url.hostname !== 'news.google.com') return null;
-    const match = url.pathname.match(/\/(?:rss\/)?(?:articles|read)\/([^/?#]+)/);
-    return match?.[1] ?? null;
-  } catch {
-    return null;
-  }
-}
 
 function decodeEntities(s: string): string {
   return s

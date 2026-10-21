@@ -126,7 +126,11 @@ export const BulkReviewResponseSchema = z.object({
   failed: z.array(z.object({ id: z.string(), error: z.string() })),
 });
 
-/** Statuses whose articles can be deleted for good: skipped by the exec (the recycle bin) or filtered by the AI. */
+/**
+ * Statuses whose articles can be deleted: skipped by the exec (the recycle bin: deleted for good and
+ * forgotten, so a later run or backfill can find them again) or filtered by the AI (soft-deleted:
+ * hidden but remembered, so later runs keep filtering them out).
+ */
 export const DELETABLE_STATUSES = ['REJECTED', 'FILTERED'] as const satisfies readonly ArticleStatus[];
 export type DeletableStatus = (typeof DELETABLE_STATUSES)[number];
 
@@ -138,6 +142,7 @@ export const DeleteNewsRequestSchema = z.union([
 export type DeleteNewsRequest = z.infer<typeof DeleteNewsRequestSchema>;
 
 export const DeleteNewsResponseSchema = z.object({
+  /** Recycle-bin articles deleted plus filtered articles hidden. */
   deleted: z.number(),
   /** Articles left alone: already gone, or neither skipped nor filtered (pending and saved news is never deleted). */
   failed: z.array(z.object({ id: z.string(), error: z.string() })),

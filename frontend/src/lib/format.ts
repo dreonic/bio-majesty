@@ -70,14 +70,24 @@ export function relativeTime(iso: string): string {
   return formatDate(iso);
 }
 
-const intFmt = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 });
 const compactFmt = new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 });
 const pctFmt = new Intl.NumberFormat('en-US', { maximumFractionDigits: 2, minimumFractionDigits: 2, signDisplay: 'exceptZero' });
+const priceFmts = new Map<number, Intl.NumberFormat>();
 
-export const formatPrice = (n: number) => intFmt.format(n);
+/** Price with the asset's decimals (0 for whole-rupiah IDX stocks, 2 for USD, 4 for most FX). */
+function priceFmt(decimals: number): Intl.NumberFormat {
+  let fmt = priceFmts.get(decimals);
+  if (!fmt) {
+    fmt = new Intl.NumberFormat('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+    priceFmts.set(decimals, fmt);
+  }
+  return fmt;
+}
+
+export const formatPrice = (n: number, decimals = 0) => priceFmt(decimals).format(n);
 export const formatCompact = (n: number) => compactFmt.format(n);
 export const formatPercent = (n: number) => `${pctFmt.format(n)}%`;
-export const formatSigned = (n: number) => `${n > 0 ? '+' : n < 0 ? '−' : ''}${intFmt.format(Math.abs(n))}`;
+export const formatSigned = (n: number, decimals = 0) => `${n > 0 ? '+' : n < 0 ? '−' : ''}${priceFmt(decimals).format(Math.abs(n))}`;
 
 /** YYYY-MM-DD in the display time zone, for news date filters. */
 export function localYmd(date: Date): string {

@@ -9,6 +9,7 @@ import {
   type Run,
   type Sentiment,
   type SettingsView,
+  type StockAsset,
 } from '@bio-majesty/shared';
 
 /**
@@ -182,8 +183,76 @@ export const intradayCandles: Candle[] = (() => {
   return out;
 })();
 
+interface SampleSeries {
+  daily: Candle[];
+  intraday: Candle[];
+}
+
+/**
+ * A random walk for the other sample assets, generated after PRDA's so its numbers stay
+ * the same. `offsetH` is the exchange's UTC offset, `open` its session start (minutes).
+ */
+function sampleSeries(o: { start: number; swing: number; decimals: number; volume: number; everyDay: boolean; offsetH: number; open: number; bars: number }): SampleSeries {
+  const round = (n: number) => Number(n.toFixed(o.decimals));
+  const midnight = (ms: number) => {
+    const d = new Date(ms + o.offsetH * 3600_000);
+    return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()) / 1000;
+  };
+  const volume = (scale: number) => (o.volume ? Math.round(o.volume * scale * (0.4 + rand())) : 0);
+  const daily: Candle[] = [];
+  let price = o.start;
+  for (let d = 1200; d >= 0; d--) {
+    const t = now - d * DAY;
+    const weekday = new Date(t + o.offsetH * 3600_000).getUTCDay();
+    if (!o.everyDay && (weekday === 0 || weekday === 6)) continue;
+    const open = price;
+    const close = round(open * (1 + (rand() - 0.49) * o.swing));
+    const high = round(Math.max(open, close) * (1 + (rand() * o.swing) / 3));
+    const low = round(Math.min(open, close) * (1 - (rand() * o.swing) / 3));
+    daily.push({ time: midnight(t), open, high, low, close, volume: volume(1) });
+    price = close;
+  }
+  const intraday: Candle[] = [];
+  price = daily[daily.length - 1]!.open;
+  for (const dayOffset of [1, 0]) {
+    const base = (midnight(now - dayOffset * DAY) - o.offsetH * 3600) * 1000; // local midnight
+    for (let slot = 0; slot < o.bars; slot++) {
+      const t = base + (o.open + slot * 15) * 60_000;
+      if (t > now) break;
+      const open = price;
+      const close = round(open * (1 + ((rand() - 0.49) * o.swing) / 6));
+      intraday.push({ time: Math.floor(t / 1000), open, high: round(Math.max(open, close) * 1.001), low: round(Math.min(open, close) * 0.999), close, volume: volume(1 / 40) });
+      price = close;
+    }
+  }
+  return { daily, intraday };
+}
+
+const asset = (a: Pick<StockAsset, 'symbol' | 'name' | 'exchange' | 'type' | 'currency' | 'timeZone' | 'session' | 'decimals' | 'hasVolume'>): StockAsset => ({
+  ...a,
+  intradayInterval: '15m',
+  firstTradeDate: null,
+  updatedAt: iso(0),
+});
+
+/** Sample assets: the first three are in the demo account's list, the currency can be added in Settings. */
+export const sampleAssets: StockAsset[] = [
+  asset({ symbol: 'PRDA.JK', name: 'PT Prodia Widyahusada Tbk', exchange: 'Jakarta', type: 'EQUITY', currency: 'IDR', timeZone: 'Asia/Jakarta', session: { start: '09:00', end: '16:15', days: 'weekdays' }, decimals: 0, hasVolume: true }),
+  asset({ symbol: '^JKSE', name: 'IDX Composite', exchange: 'Jakarta', type: 'INDEX', currency: 'IDR', timeZone: 'Asia/Jakarta', session: { start: '09:00', end: '16:15', days: 'weekdays' }, decimals: 2, hasVolume: false }),
+  asset({ symbol: 'BTC-USD', name: 'Bitcoin USD', exchange: 'CCC', type: 'CRYPTOCURRENCY', currency: 'USD', timeZone: 'UTC', session: { start: '00:00', end: '23:59', days: 'daily' }, decimals: 2, hasVolume: true }),
+  asset({ symbol: 'USDIDR=X', name: 'USD/IDR', exchange: 'CCY', type: 'CURRENCY', currency: 'IDR', timeZone: 'Europe/London', session: { start: '00:00', end: '23:59', days: 'weekdays' }, decimals: 4, hasVolume: false }),
+];
+
+export const sampleCandles: Record<string, SampleSeries> = {
+  'PRDA.JK': { daily: dailyCandles, intraday: intradayCandles },
+  '^JKSE': sampleSeries({ start: 7100, swing: 0.012, decimals: 2, volume: 0, everyDay: false, offsetH: 7, open: 9 * 60, bars: 26 }),
+  'BTC-USD': sampleSeries({ start: 62_000, swing: 0.04, decimals: 2, volume: 30_000_000_000, everyDay: true, offsetH: 0, open: 0, bars: 96 }),
+  'USDIDR=X': sampleSeries({ start: 16_100, swing: 0.004, decimals: 4, volume: 0, everyDay: false, offsetH: 1, open: 0, bars: 96 }),
+};
+
 export const settings: SettingsView = {
   ...DEFAULT_SETTINGS,
+  stock: { ...DEFAULT_SETTINGS.stock, symbols: ['PRDA.JK', '^JKSE', 'BTC-USD'] },
   updatedAt: null,
   embedding: { model: 'google:gemini-embedding-2', dimensions: 768 },
   telegram: { configured: true, linked: false, chatTitle: null, linkedAt: null },

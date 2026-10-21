@@ -131,13 +131,21 @@ describe('volume anomalies', () => {
     const now = new Date('2026-10-14T05:00:00Z'); // 12:00 WIB
     const prior = days(Array(20).fill(1_000_000), Date.UTC(2026, 8, 10) / 1000);
     const quote = { volume: 2_800_000, marketTime: '2026-10-14T04:55:00Z', price: 3100, changePercent: 1.234 };
-    expect(intradayVolumeAnomaly(quote, prior, 2.5, now)).toMatchObject({ date: '2026-10-14', ratio: 2.8, source: 'intraday', changePercent: 1.23 });
-    expect(intradayVolumeAnomaly({ ...quote, volume: 1_500_000 }, prior, 2.5, now)).toBeNull();
-    expect(intradayVolumeAnomaly({ ...quote, marketTime: '2026-10-10T08:00:00Z' }, prior, 2.5, now)).toBeNull();
+    expect(intradayVolumeAnomaly(quote, prior, 2.5, 'Asia/Jakarta', now)).toMatchObject({ date: '2026-10-14', ratio: 2.8, source: 'intraday', changePercent: 1.23 });
+    expect(intradayVolumeAnomaly({ ...quote, volume: 1_500_000 }, prior, 2.5, 'Asia/Jakarta', now)).toBeNull();
+    expect(intradayVolumeAnomaly({ ...quote, marketTime: '2026-10-10T08:00:00Z' }, prior, 2.5, 'Asia/Jakarta', now)).toBeNull();
+  });
+
+  it("dates intraday volume on the asset's own calendar", () => {
+    // 01:00 UTC on the 14th is still the 13th in New York.
+    const now = new Date('2026-10-14T01:00:00Z');
+    const prior = days(Array(20).fill(1_000_000), Date.UTC(2026, 8, 10) / 1000);
+    const quote = { volume: 2_800_000, marketTime: '2026-10-14T00:30:00Z', price: 230.5, changePercent: 1 };
+    expect(intradayVolumeAnomaly(quote, prior, 2.5, 'America/New_York', now)).toMatchObject({ date: '2026-10-13' });
   });
 
   it('writes a readable Telegram alert', () => {
-    const text = formatVolumeAlert('PRDA.JK', {
+    const text = formatVolumeAlert({ symbol: 'PRDA.JK', type: 'EQUITY', decimals: 0 }, {
       date: '2026-10-14',
       time: 0,
       volume: 3_200_000,
@@ -150,5 +158,21 @@ describe('volume anomalies', () => {
     expect(text).toContain('Unusual PRDA trading volume today');
     expect(text).toContain('3.2M shares traded so far — 3.2× the 20-day average (1M)');
     expect(text).toContain('Price 3,150 (+2.50%)');
+  });
+
+  it('words alerts for assets that are not shares, with their decimals', () => {
+    const text = formatVolumeAlert({ symbol: 'BTC-USD', type: 'CRYPTOCURRENCY', decimals: 2 }, {
+      date: '2026-10-14',
+      time: 0,
+      volume: 52_000_000_000,
+      averageVolume: 20_000_000_000,
+      ratio: 2.6,
+      close: 67_123.4,
+      changePercent: -1.5,
+      source: 'eod',
+    });
+    expect(text).toContain('Unusual BTC-USD trading volume on 2026-10-14');
+    expect(text).toContain('52B traded — 2.6×');
+    expect(text).toContain('Price 67,123.40 (-1.50%)');
   });
 });

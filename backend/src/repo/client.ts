@@ -1,5 +1,5 @@
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import { DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
+import { DynamoDBDocumentClient, QueryCommand, type QueryCommandOutput } from '@aws-sdk/lib-dynamodb';
 import { env } from '../lib/env';
 
 let doc: DynamoDBDocumentClient | undefined;
@@ -37,6 +37,31 @@ export function decodeCursor(cursor: string | undefined): Record<string, unknown
 
 export function ttlInDays(days: number): number {
   return Math.floor(Date.now() / 1000) + days * 24 * 60 * 60;
+}
+
+/** Items of one partition whose sort key starts with `prefix`, in sort-key order (newest first with `descending`). */
+export async function queryPrefix(
+  pk: string,
+  prefix: string,
+  opts: { descending?: boolean; limit?: number } = {},
+): Promise<Record<string, unknown>[]> {
+  const out: Record<string, unknown>[] = [];
+  let startKey: Record<string, unknown> | undefined;
+  do {
+    const res: QueryCommandOutput = await ddb().send(
+      new QueryCommand({
+        TableName: table(),
+        KeyConditionExpression: 'PK = :pk AND begins_with(SK, :p)',
+        ExpressionAttributeValues: { ':pk': pk, ':p': prefix },
+        ScanIndexForward: !opts.descending,
+        Limit: opts.limit ? Math.min(opts.limit - out.length, 1000) : undefined,
+        ExclusiveStartKey: startKey,
+      }),
+    );
+    out.push(...(res.Items ?? []));
+    startKey = res.LastEvaluatedKey;
+  } while (startKey && (!opts.limit || out.length < opts.limit));
+  return out;
 }
 
 /** Split an array into chunks (DynamoDB batch limits). */

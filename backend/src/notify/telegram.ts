@@ -1,9 +1,9 @@
-import type { Digest, VolumeAnomaly } from '@bio-majesty/shared';
+import { displaySymbol, type Digest, type StockAsset, type VolumeAnomaly } from '@bio-majesty/shared';
 import { getSecret } from '../lib/secrets';
 
 /**
  * Minimal Telegram Bot API client. Linking uses getUpdates (no public webhook):
- * the exec opens t.me/<bot>?start=<code>, presses Start, and the dashboard
+ * a user opens t.me/<bot>?start=<code>, presses Start, and the dashboard
  * polls /telegram/link/verify until the /start message is seen.
  */
 const API = 'https://api.telegram.org';
@@ -115,17 +115,19 @@ export function formatDigestMessage(digest: Digest): string {
   return lines.join('\n');
 }
 
-const numberFmt = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 });
 const compactFmt = new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 });
 
-export function formatVolumeAlert(symbol: string, a: Omit<VolumeAnomaly, 'notifiedAt'>): string {
-  const ticker = escapeHtml(symbol.replace(/\.JK$/, ''));
+export function formatVolumeAlert(asset: Pick<StockAsset, 'symbol' | 'type' | 'decimals'>, a: Omit<VolumeAnomaly, 'notifiedAt'>): string {
+  const ticker = escapeHtml(displaySymbol(asset.symbol));
+  const priceFmt = new Intl.NumberFormat('en-US', { minimumFractionDigits: asset.decimals, maximumFractionDigits: asset.decimals });
   const change = a.changePercent !== null ? ` (${a.changePercent > 0 ? '+' : ''}${a.changePercent.toFixed(2)}%)` : '';
-  const price = a.close !== null ? ` Price ${numberFmt.format(a.close)}${change}.` : '';
+  const price = a.close !== null ? ` Price ${priceFmt.format(a.close)}${change}.` : '';
   const ratio = `${a.ratio.toFixed(1)}× the 20-day average (${compactFmt.format(a.averageVolume)})`;
+  // Stocks and ETFs trade shares; crypto, futures and the like trade other units.
+  const shares = asset.type === 'EQUITY' || asset.type === 'ETF';
   return a.source === 'intraday'
-    ? `📊 <b>Unusual ${ticker} trading volume today</b>\n${compactFmt.format(a.volume)} shares traded so far — ${ratio}.${price}`
-    : `📊 <b>Unusual ${ticker} trading volume on ${a.date}</b>\n${compactFmt.format(a.volume)} shares — ${ratio}.${price}`;
+    ? `📊 <b>Unusual ${ticker} trading volume today</b>\n${compactFmt.format(a.volume)} ${shares ? 'shares traded' : 'traded'} so far — ${ratio}.${price}`
+    : `📊 <b>Unusual ${ticker} trading volume on ${a.date}</b>\n${compactFmt.format(a.volume)} ${shares ? 'shares' : 'traded'} — ${ratio}.${price}`;
 }
 
 export function formatFailureMessage(kind: string, error: string): string {

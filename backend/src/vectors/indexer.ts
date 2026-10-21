@@ -23,19 +23,21 @@ export function articleChunks(article: Article, text: string | null): string[] {
   return [head, ...body];
 }
 
-export async function indexArticle(article: Article, usage?: UsageCollector): Promise<number> {
-  const stored = await getJson<StoredArticleText>(s3Keys.articleText(article.id));
+/** Index one of an account's saved articles (its vectors carry the account as `owner`). */
+export async function indexArticle(sub: string, article: Article, usage?: UsageCollector): Promise<number> {
+  const stored = await getJson<StoredArticleText>(s3Keys.articleText(sub, article.id));
   const chunks = articleChunks(article, stored?.text ?? null);
   const vectors = await embedDocuments(chunks, usage);
   const tags = effectiveTags(article);
   const publishedAt = Math.floor(new Date(article.publishedAt).getTime() / 1000);
   // Remove stale chunks first (the article may have had more chunks before).
-  await deleteArticleVectors(article.id);
+  await deleteArticleVectors(sub, article.id);
   await putChunkVectors(
     vectors.map((vector, i) => ({
-      key: vectorKey(article.id, i),
+      key: vectorKey(sub, article.id, i),
       vector,
       metadata: {
+        owner: sub,
         articleId: article.id,
         chunk: i,
         publishedAt,

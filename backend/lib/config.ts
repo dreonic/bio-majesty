@@ -15,7 +15,7 @@ import type { App } from 'aws-cdk-lib';
 export interface AppConfig {
   stage: string;
   region: string;
-  /** IANA time zone of the exec. Stock schedules always follow IDX hours (Asia/Jakarta). */
+  /** IANA time zone of the exec (daily-run times, displayed times). Market data follows each asset's exchange clock. */
   timeZone: string;
   account: string | undefined;
   stockProvider: 'yahoo' | 'eodhd';

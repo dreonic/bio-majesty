@@ -1,12 +1,65 @@
 import { z } from 'zod';
-import { IsoDateTime, SentimentSchema } from './common';
+import { IsoDateTime } from './common';
 import { dateTimeInZone, timeZoneLabel } from './time';
 
 export const STOCK_RANGES = ['1D', '5D', '1M', '3M', '6M', '1Y', '5Y', 'MAX'] as const;
 export const StockRangeSchema = z.enum(STOCK_RANGES);
 export type StockRange = z.infer<typeof StockRangeSchema>;
+/** Ranges drawn from intraday bars (hidden for assets that only have daily bars). */
+export const INTRADAY_RANGES: readonly StockRange[] = ['1D', '5D'];
 
-/** OHLCV candle. `time` is UNIX seconds (UTC). Daily candles use 00:00 Asia/Jakarta of that date. */
+/** A Yahoo Finance symbol: PRDA.JK, AAPL, ^JKSE, USDIDR=X, BTC-USD, GC=F … (stored upper-case). */
+export const SymbolSchema = z
+  .string()
+  .trim()
+  .toUpperCase()
+  .regex(/^[A-Z0-9^][A-Z0-9.\-=^&]{0,19}$/, 'expected a Yahoo Finance symbol, e.g. PRDA.JK');
+
+/** Ticker as people say it: the exchange suffix dropped ("PRDA.JK" -> "PRDA"); others unchanged ("BTC-USD", "^JKSE"). */
+export function displaySymbol(symbol: string): string {
+  return symbol.replace(/\.[A-Z]{1,3}$/, '');
+}
+
+/** An asset's regular trading session on its exchange's clock. */
+export const TradingSessionSchema = z.object({
+  /** HH:mm in the asset's `timeZone`. */
+  start: z.string(),
+  end: z.string(),
+  /** Mon–Fri, or every day (crypto). */
+  days: z.enum(['weekdays', 'daily']),
+});
+export type TradingSession = z.infer<typeof TradingSessionSchema>;
+
+/** What the market-data source says about a symbol (shared by every account that tracks it). */
+export const StockAssetSchema = z.object({
+  symbol: z.string(),
+  name: z.string().nullable(),
+  exchange: z.string().nullable(),
+  /** Yahoo's instrument type: EQUITY, ETF, INDEX, CURRENCY, CRYPTOCURRENCY, FUTURE, MUTUALFUND … */
+  type: z.string().nullable(),
+  currency: z.string().nullable(),
+  /** The exchange's IANA time zone: trading dates and the session are on this clock. */
+  timeZone: z.string(),
+  session: TradingSessionSchema,
+  /** Interval of the intraday bars ("15m"), or null when the source only has daily bars (e.g. mutual funds). */
+  intradayInterval: z.string().nullable(),
+  /** Decimal places for prices: 0 for whole-rupiah IDX stocks, 2 for USD, 4 for most FX. */
+  decimals: z.number().int().min(0).max(8),
+  /** False when the asset has no trading volume (FX, most indices): no unusual-volume checks. */
+  hasVolume: z.boolean(),
+  /** First daily bar the source has. */
+  firstTradeDate: IsoDateTime.nullable(),
+  updatedAt: IsoDateTime,
+});
+export type StockAsset = z.infer<typeof StockAssetSchema>;
+
+export const StockAssetsResponseSchema = z.object({ items: z.array(StockAssetSchema) });
+export type StockAssetsResponse = z.infer<typeof StockAssetsResponseSchema>;
+
+export const AddAssetRequestSchema = z.object({ symbol: SymbolSchema });
+export const StockSymbolRequestSchema = z.object({ symbol: SymbolSchema });
+
+/** OHLCV candle. `time` is UNIX seconds (UTC). Daily candles use 00:00 UTC of the trading date (the exchange's calendar). */
 export const CandleSchema = z.object({
   time: z.number(),
   open: z.number(),
@@ -46,9 +99,20 @@ export const StockHistoryResponseSchema = z.object({
 });
 export type StockHistoryResponse = z.infer<typeof StockHistoryResponseSchema>;
 
-/** CSV download: every stored bar at one granularity. */
-export const StockExportIntervalSchema = z.enum(['1d', '15m']);
+/**
+ * CSV downloads: every stored daily bar, or the intraday bars the market-data source still has
+ * (the last 60 days, fetched live: intraday bars are kept only briefly).
+ */
+export const StockExportIntervalSchema = z.enum(['1d', 'intraday']);
 export type StockExportInterval = z.infer<typeof StockExportIntervalSchema>;
+
+/** Button text for a bar interval: "15m" -> "15-min", "1h" -> "1-hour", "1d" -> "Daily". */
+export function intervalLabel(interval: string): string {
+  if (interval === '1d') return 'Daily';
+  const m = /^(\d+)([mh])$/.exec(interval);
+  if (!m) return interval;
+  return `${m[1]}-${m[2] === 'm' ? 'min' : 'hour'}`;
+}
 
 export const StockExportResponseSchema = z.object({
   filename: z.string(),
@@ -57,18 +121,9 @@ export const StockExportResponseSchema = z.object({
 });
 export type StockExportResponse = z.infer<typeof StockExportResponseSchema>;
 
-/** Saved news plotted on the chart. */
-export const StockMarkerSchema = z.object({
-  articleId: z.string(),
-  time: z.number(),
-  sentiment: SentimentSchema,
-  title: z.string(),
-});
-export type StockMarker = z.infer<typeof StockMarkerSchema>;
-
 /** A trading day whose volume is far above its recent average. */
 export const VolumeAnomalySchema = z.object({
-  /** YYYY-MM-DD (Asia/Jakarta trading date). */
+  /** YYYY-MM-DD (the asset's trading date). */
   date: z.string(),
   time: z.number(),
   volume: z.number(),
@@ -98,17 +153,20 @@ export function candleDate(time: number): string {
 }
 
 /**
- * Bars as CSV (CRLF rows), oldest first, numbers unformatted. Daily bars carry their IDX trading
- * date, 15-minute bars their start time in `timeZone` (the exec's clock). No cell needs quoting.
+ * Bars as CSV (CRLF rows), oldest first, numbers unformatted. `interval` is "1d" or the intraday bar
+ * interval ("15m"). Daily bars carry their trading date, intraday bars their start time in
+ * `timeZone` (the exec's clock). No cell needs quoting.
  */
-export function stockCsv(symbol: string, interval: StockExportInterval, candles: Candle[], timeZone: string): StockExportResponse {
+export function stockCsv(symbol: string, interval: string, candles: Candle[], timeZone: string): StockExportResponse {
+  const daily = interval === '1d';
   const sorted = [...candles].sort((a, b) => a.time - b.time);
-  const stamp = (time: number) => (interval === '1d' ? candleDate(time) : dateTimeInZone(timeZone, new Date(time * 1000)));
-  const header = [interval === '1d' ? 'Date' : `Time (${timeZoneLabel(timeZone)})`, 'Open', 'High', 'Low', 'Close', 'Volume'];
+  const stamp = (time: number) => (daily ? candleDate(time) : dateTimeInZone(timeZone, new Date(time * 1000)));
+  const header = [daily ? 'Date' : `Time (${timeZoneLabel(timeZone)})`, 'Open', 'High', 'Low', 'Close', 'Volume'];
   const lines = [header, ...sorted.map((c) => [stamp(c.time), c.open, c.high, c.low, c.close, c.volume])].map((r) => r.join(','));
   const day = (time: number) => stamp(time).slice(0, 10);
   const span = sorted.length ? `_${day(sorted[0]!.time)}_${day(sorted.at(-1)!.time)}` : '';
-  return { filename: `${symbol}_${interval === '1d' ? 'daily' : '15min'}${span}.csv`, rows: sorted.length, csv: `${lines.join('\r\n')}\r\n` };
+  const slug = daily ? 'daily' : intervalLabel(interval).replace('-', '');
+  return { filename: `${symbol}_${slug}${span}.csv`, rows: sorted.length, csv: `${lines.join('\r\n')}\r\n` };
 }
 
 /** Average volume of the `window` candles before index `i` (zero-volume days ignored). */

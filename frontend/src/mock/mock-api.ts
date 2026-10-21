@@ -1,5 +1,6 @@
 import {
   CATEGORY_COLORS,
+  dateInZone,
   DEFAULT_TIME_ZONE,
   DELETABLE_STATUSES,
   detectVolumeAnomalies,
@@ -62,34 +63,39 @@ function list(url: URL) {
   return { items, nextCursor: null };
 }
 
-function stock(range: StockRange) {
+/** The demo account's assets, in its list order. */
+const ownAssets = () => state.settings.stock.symbols.flatMap((s) => fx.sampleAssets.find((a) => a.symbol === s) ?? []);
+
+function stock(symbol: string, range: StockRange) {
+  const asset = fx.sampleAssets.find((a) => a.symbol === symbol) ?? fx.sampleAssets[0]!;
+  const series = fx.sampleCandles[asset.symbol]!;
   const intraday = range === '1D' || range === '5D';
   const days: Record<StockRange, number> = { '1D': 4, '5D': 8, '1M': 31, '3M': 92, '6M': 183, '1Y': 366, '5Y': 1830, MAX: 4000 };
   const cutoff = Date.now() / 1000 - days[range] * 86400;
-  let candles = (intraday ? fx.intradayCandles : fx.dailyCandles).filter((c) => c.time >= cutoff);
-  if (range === '1D') {
-    const lastDay = new Date((candles[candles.length - 1]!.time + 7 * 3600) * 1000).toISOString().slice(0, 10);
-    candles = candles.filter((c) => new Date((c.time + 7 * 3600) * 1000).toISOString().slice(0, 10) === lastDay);
+  let candles = (intraday ? series.intraday : series.daily).filter((c) => c.time >= cutoff);
+  if (range === '1D' && candles.length) {
+    const lastDay = dateInZone(asset.timeZone, new Date(candles[candles.length - 1]!.time * 1000));
+    candles = candles.filter((c) => dateInZone(asset.timeZone, new Date(c.time * 1000)) === lastDay);
   }
-  const last = fx.dailyCandles[fx.dailyCandles.length - 1]!;
-  const prev = fx.dailyCandles[fx.dailyCandles.length - 2]!;
+  const last = series.daily[series.daily.length - 1]!;
+  const prev = series.daily[series.daily.length - 2]!;
   // Like a real quote: the time of the last trade (the latest 15-minute bar), not the time of the request.
-  const lastBar = fx.intradayCandles[fx.intradayCandles.length - 1];
+  const lastBar = series.intraday[series.intraday.length - 1];
   return {
-    symbol: state.settings.stock.symbol,
+    symbol: asset.symbol,
     range,
     interval: intraday ? '15m' : range === '5Y' || range === 'MAX' ? '1wk' : '1d',
     candles,
     quote: {
-      symbol: state.settings.stock.symbol,
+      symbol: asset.symbol,
       price: last.close,
       previousClose: prev.close,
       change: last.close - prev.close,
       changePercent: ((last.close - prev.close) / prev.close) * 100,
       dayHigh: last.high,
       dayLow: last.low,
-      volume: last.volume,
-      currency: 'IDR',
+      volume: asset.hasVolume ? last.volume : null,
+      currency: asset.currency,
       marketTime: lastBar ? new Date(lastBar.time * 1000).toISOString() : new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       provider: 'demo',
@@ -104,13 +110,6 @@ function stock(range: StockRange) {
 function jakartaDay(iso: string): number {
   const d = new Date(new Date(iso).getTime() + 7 * 3600_000);
   return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()) / 1000;
-}
-
-function markers(from: string | null) {
-  const fromIso = from ? new Date(`${from}T00:00:00+07:00`).toISOString() : '';
-  return state.articles
-    .filter((a) => a.status === 'APPROVED' && a.publishedAt >= fromIso)
-    .map((a) => ({ articleId: a.id, time: jakartaDay(a.publishedAt), sentiment: effectiveTags(a).sentiment, title: a.title }));
 }
 
 // Keywords that map a chat question to a demo category (the real chat uses semantic search).
@@ -323,16 +322,38 @@ async function route(method: string, url: URL, body: unknown): Promise<Response>
   if (path === 'runs') return json({ items: fx.runs });
   if (path === 'runs/daily') return json({ executionArn: 'demo' }, 202);
 
-  if (path === 'stock/history') return json(stock((url.searchParams.get('range') as StockRange) ?? '3M'));
-  if (path === 'stock/export') {
-    const interval = url.searchParams.get('interval') === '15m' ? '15m' : '1d';
-    return json(stockCsv(state.settings.stock.symbol, interval, interval === '1d' ? fx.dailyCandles : fx.intradayCandles, DEFAULT_TIME_ZONE));
+  const symbol = (url.searchParams.get('symbol') ?? '').toUpperCase();
+  if (path === 'stock/assets' && method === 'GET') return json({ items: ownAssets() });
+  if (path === 'stock/assets' && method === 'POST') {
+    const wanted = String((body as { symbol: string }).symbol).toUpperCase();
+    if (state.settings.stock.symbols.includes(wanted)) return json({ error: 'conflict', message: `${wanted} is already in your list` }, 409);
+    if (!fx.sampleAssets.some((a) => a.symbol === wanted)) {
+      return json({ error: 'bad_request', message: `The demo only has sample prices for ${fx.sampleAssets.map((a) => a.symbol).join(', ')}` }, 400);
+    }
+    state.settings.stock.symbols = [...state.settings.stock.symbols, wanted];
+    return json({ items: ownAssets() }, 201);
   }
-  if (path === 'stock/markers') return json({ items: markers(url.searchParams.get('from')) });
+  if (seg[0] === 'stock' && seg[1] === 'assets' && seg[2] && method === 'DELETE') {
+    const gone = decodeURIComponent(seg[2]);
+    if (state.settings.profile.sentimentSymbol === gone) {
+      return json({ error: 'bad_request', message: `Sentiment is judged against ${gone}. Pick another asset (or the business outlook) in Settings → Profile first.` }, 400);
+    }
+    state.settings.stock.symbols = state.settings.stock.symbols.filter((s) => s !== gone);
+    return json({ items: ownAssets() });
+  }
+  if (path === 'stock/history') return json(stock(symbol, (url.searchParams.get('range') as StockRange) ?? '3M'));
+  if (path === 'stock/export') {
+    // Like the API: the intraday CSV is what the source still has; daily is every stored bar.
+    const series = fx.sampleCandles[symbol] ?? fx.sampleCandles['PRDA.JK']!;
+    const intraday = url.searchParams.get('interval') === 'intraday';
+    return json(stockCsv(symbol, intraday ? '15m' : '1d', intraday ? series.intraday : series.daily, DEFAULT_TIME_ZONE));
+  }
   if (path === 'stock/resync') return json({ started: true }, 202);
   if (path === 'stock/anomalies') {
     const from = url.searchParams.get('from') ?? new Date(Date.now() - 366 * 86400_000).toISOString().slice(0, 10);
-    const items = detectVolumeAnomalies(fx.dailyCandles, { minRatio: state.settings.stock.volumeRatio })
+    const asset = fx.sampleAssets.find((a) => a.symbol === symbol);
+    const daily = asset?.hasVolume ? fx.sampleCandles[symbol]!.daily : [];
+    const items = detectVolumeAnomalies(daily, { minRatio: state.settings.stock.volumeRatio })
       .map((a, i) => ({ ...a, notifiedAt: i % 2 ? new Date(a.time * 1000 + 10 * 3600_000).toISOString() : null }))
       .filter((a) => a.date >= from)
       .reverse();

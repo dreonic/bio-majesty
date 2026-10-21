@@ -12,7 +12,7 @@ import {
 import { generateText } from 'ai';
 import { configuredProviders, languageModel } from '../../ai/registry';
 import { mergeProviderOptions } from '../../ai/run-task';
-import { startDailyRun, updateDailySchedule } from '../../lib/aws';
+import { startDailyRun } from '../../lib/aws';
 import { env } from '../../lib/env';
 import { badRequest, json, parseBody } from '../../lib/http';
 import { errorMessage } from '../../lib/logger';
@@ -20,13 +20,13 @@ import { createRouter } from '../../lib/router';
 import { isTelegramConfigured } from '../../notify/telegram';
 import { listRuns } from '../../repo/runs';
 import { getSettings, mergeSettings, saveSettings } from '../../repo/settings';
-import { getTelegramState } from '../../repo/telegram';
+import { getTelegramLink } from '../../repo/telegram';
 
-async function settingsView(): Promise<SettingsView> {
+async function settingsView(sub: string): Promise<SettingsView> {
   const [settings, providers, telegram, telegramConfigured] = await Promise.all([
-    getSettings(),
+    getSettings(sub),
     configuredProviders(),
-    getTelegramState(),
+    getTelegramLink(sub),
     isTelegramConfigured(),
   ]);
   return {
@@ -45,9 +45,9 @@ async function settingsView(): Promise<SettingsView> {
 }
 
 export const handler = createRouter({
-  'GET /settings': async () => json(200, await settingsView()),
+  'GET /settings': async (_event, user) => json(200, await settingsView(user.sub)),
 
-  'PUT /settings': async (event) => {
+  'PUT /settings': async (event, user) => {
     const update = parseBody(event, SettingsUpdateSchema);
     const providers = await configuredProviders();
     for (const task of AI_TASKS) {
@@ -60,13 +60,15 @@ export const handler = createRouter({
         }
       }
     }
-    const current = await getSettings();
+    const current = await getSettings(user.sub);
     const next = mergeSettings(current, update);
-    const scheduleChanged =
-      next.schedule.dailyTime !== current.schedule.dailyTime || next.schedule.enabled !== current.schedule.enabled;
-    if (scheduleChanged) await updateDailySchedule(next.schedule.dailyTime, next.schedule.enabled);
-    await saveSettings(next);
-    return json(200, await settingsView());
+    const sentiment = next.profile.sentimentSymbol;
+    if (sentiment && !next.stock.symbols.includes(sentiment)) {
+      throw badRequest(`Sentiment can only be judged against one of your assets; add ${sentiment} in Settings → Stock first`);
+    }
+    // The dispatcher reads the schedule from here every 15 minutes: nothing else to update.
+    await saveSettings(user.sub, next);
+    return json(200, await settingsView(user.sub));
   },
 
   'GET /settings/models': async () => {
@@ -96,10 +98,10 @@ export const handler = createRouter({
     return json(200, result);
   },
 
-  'GET /runs': async () => json(200, { items: await listRuns(25) }),
+  'GET /runs': async (_event, user) => json(200, { items: await listRuns(user.sub, 25) }),
 
-  'POST /runs/daily': async () => {
-    const executionArn = await startDailyRun('manual');
+  'POST /runs/daily': async (_event, user) => {
+    const executionArn = await startDailyRun(user.sub, 'manual');
     return json(202, { executionArn });
   },
 });

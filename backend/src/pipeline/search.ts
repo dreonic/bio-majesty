@@ -8,6 +8,7 @@ import type { RawCandidate, SearchTask } from '../sources/types';
 
 /** Execute one search task and store the raw hits in S3. */
 export async function executeSearchTask(
+  sub: string,
   runId: string,
   task: SearchTask,
   deadline: number,
@@ -40,6 +41,6 @@ export async function executeSearchTask(
   candidates = candidates.filter((c) => !c.publishedAt || new Date(c.publishedAt).getTime() >= lower);
 
   await putJson(s3Keys.rawResults(runId, task.id), candidates);
-  await addRunStats(runId, { searched: task.queries.length, errors });
+  await addRunStats(sub, runId, { searched: task.queries.length, errors });
   return { taskId: task.id, count: candidates.length, errors };
 }

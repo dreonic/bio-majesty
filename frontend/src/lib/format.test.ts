@@ -9,6 +9,10 @@ describe('format helpers', () => {
     expect(formatPrice(3145.6)).toBe('3,146');
     expect(formatSigned(55)).toBe('+55');
     expect(formatSigned(-55)).toBe('−55');
+    // Other assets keep their decimals (USD shares, FX rates).
+    expect(formatPrice(230.5, 2)).toBe('230.50');
+    expect(formatPrice(1.08421, 4)).toBe('1.0842');
+    expect(formatSigned(-0.0123, 4)).toBe('−0.0123');
     expect(formatPercent(1.7834)).toBe('+1.78%');
     expect(formatCompact(2_250_000)).toBe('2.3M');
   });

@@ -2,18 +2,20 @@ import { SENTIMENTS, type Category, type Feedback, type Sentiment, type TaskMode
 import { z } from 'zod';
 import {
   categoriesBlock,
-  COMPANY_CONTEXT,
-  SENTIMENT_RUBRIC,
+  profileContext,
+  sentimentBasis,
+  sentimentRubric,
   UNTRUSTED_NOTE,
   untrusted,
+  type ProfileContext,
 } from '../prompts';
 import { runStructured } from '../run-task';
 import type { UsageCollector } from '../usage';
 
 /** Numeric bounds are described rather than enforced in the schema (not all providers support them). */
 export const ClassificationSchema = z.object({
-  relevant: z.boolean().describe('False if the article turns out not to concern the Prodia group or any category'),
-  relevance: z.number().describe('0 to 1: how relevant the article is to the Prodia group'),
+  relevant: z.boolean().describe('False if the article turns out not to concern the subject described above or any category'),
+  relevance: z.number().describe('0 to 1: how relevant the article is to the subject'),
   categoryIds: z.array(z.string()).describe('Ids of matching categories (may be empty)'),
   sentiment: z.enum(SENTIMENTS),
   rationale: z.string().describe('One or two sentences explaining the sentiment call for an executive'),
@@ -47,14 +49,14 @@ export interface ArticleForClassification {
 
 const MAX_TEXT_CHARS = 24_000;
 
-export function classificationInstructions(categories: Category[], examples: Feedback[] = []): string {
-  return `${COMPANY_CONTEXT}
+export function classificationInstructions(categories: Category[], ctx: ProfileContext, examples: Feedback[] = []): string {
+  return `${profileContext(ctx.profile)}
 
-${SENTIMENT_RUBRIC}
+${sentimentRubric(ctx.profile, ctx.asset)}
 
 ${categoriesBlock(categories)}
 
-You tag one news article for the executive's review queue. Suggest the matching categories, judge the sentiment for the PRDA share price, explain the call briefly, and summarise the article in English. If only a headline and snippet are available, work from those and lower your confidence accordingly.
+You tag one news article for the executive's review queue. Suggest the matching categories, judge the sentiment for ${sentimentBasis(ctx.profile, ctx.asset)}, explain the call briefly, and summarise the article in English. If only a headline and snippet are available, work from those and lower your confidence accordingly.
 ${examples.length ? `\n${feedbackExamplesBlock(examples, categories)}\n` : ''}
 ${UNTRUSTED_NOTE}`;
 }
@@ -121,6 +123,7 @@ export async function classifyArticle(
   article: ArticleForClassification,
   categories: Category[],
   settings: TaskModelSettings,
+  ctx: ProfileContext,
   usage?: UsageCollector,
   examples: Feedback[] = [],
 ): Promise<Classification> {
@@ -129,7 +132,7 @@ export async function classifyArticle(
     settings,
     schema: ClassificationSchema,
     name: 'article_tagging',
-    instructions: classificationInstructions(categories, examples),
+    instructions: classificationInstructions(categories, ctx, examples),
     prompt: classificationPrompt(article, categories),
     maxOutputTokens: 6000,
     usage,

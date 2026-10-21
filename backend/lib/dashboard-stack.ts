@@ -41,10 +41,12 @@ export class DashboardStack extends Stack {
       EMBEDDING_MODEL: config.embeddingModel,
       EMBEDDING_DIMENSIONS: String(config.embeddingDimensions),
       STOCK_PROVIDER: config.stockProvider,
+      // Its dashboard-users group is the list of accounts (read by the background jobs).
+      USER_POOL_ID: auth.userPool.userPoolId,
       LOG_LEVEL: 'INFO',
     });
 
-    const pipeline = new PipelineConstruct(this, 'Pipeline', { config, data, functions });
+    const pipeline = new PipelineConstruct(this, 'Pipeline', { config, data, functions, userPool: auth.userPool });
     const api = new ApiConstruct(this, 'Api', {
       config,
       data,
@@ -69,6 +71,7 @@ export class DashboardStack extends Stack {
     new MonitoringConstruct(this, 'Monitoring', {
       config,
       stateMachines: [pipeline.dailyMachine, pipeline.backfillMachine],
+      dispatcher: pipeline.dispatchFn,
       stockIngest: pipeline.stockIngestFn,
       indexer: pipeline.indexerFn,
       apiFunctions: api.functions,
@@ -86,7 +89,7 @@ export class DashboardStack extends Stack {
     applyNagSuppressions(this, {
       table: data.table,
       buckets: [data.dataBucket, web.bucket],
-      invokedFunctions: [...pipeline.pipelineFunctions, pipeline.stockIngestFn],
+      invokedFunctions: [...pipeline.pipelineFunctions, pipeline.stockIngestFn, pipeline.dispatchFn],
       stateMachines: [pipeline.dailyMachine, pipeline.backfillMachine],
     });
   }

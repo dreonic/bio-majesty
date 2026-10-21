@@ -1,45 +1,99 @@
 import {
-  MARKET_TIME_ZONE,
+  AddAssetRequestSchema,
+  dateInZone,
+  detectVolumeAnomalies,
+  MAX_ASSETS,
   StockExportIntervalSchema,
   StockRangeSchema,
-  detectVolumeAnomalies,
-  effectiveTags,
+  StockSymbolRequestSchema,
   stockCsv,
-  type VolumeAnomaly,
+  SymbolSchema,
+  type Settings,
+  type StockAsset,
+  type StockAssetsResponse,
   type StockHistoryResponse,
-  type StockMarker,
+  type VolumeAnomaly,
 } from '@bio-majesty/shared';
 import { z } from 'zod';
 import { invokeAsync } from '../../lib/aws';
 import { env } from '../../lib/env';
-import { json, parseQuery } from '../../lib/http';
+import { badRequest, conflict, json, notFound, parseBody, parseQuery, pathParam, type AuthUser } from '../../lib/http';
+import { errorMessage } from '../../lib/logger';
 import { createRouter } from '../../lib/router';
-import { addDays, addMonths, jakartaDate, parseDateInput } from '../../lib/time';
-import { listArticles } from '../../repo/articles';
-import { getSettings } from '../../repo/settings';
-import { getQuote, getStockStatus, listAnomalyRecords, queryDaily, queryIntraday } from '../../repo/stock';
+import { addDays, addMonths, parseDateInput } from '../../lib/time';
+import { getSettings, saveSettings } from '../../repo/settings';
+import { getAsset, getAssets, getQuote, getStockStatus, listAnomalyRecords, putAsset, queryDaily, queryIntraday } from '../../repo/stock';
 import { ANOMALY_WINDOW } from '../../stock/anomalies';
-import { dailyTime } from '../../stock/provider';
-import { HISTORY_START, lastSession, planRange, toWeekly } from '../../stock';
+import { fallbackAsset, historyStart, INTRADAY_DOWNLOAD_DAYS, lastSession, planRange, stockProvider, toWeekly } from '../../stock';
 
 /** Data is stale if the last successful refresh is older than this (covers weekends/holidays loosely). */
 const STALE_AFTER_MS = 3 * 24 * 3600 * 1000;
 
+const SymbolQuery = z.object({ symbol: SymbolSchema });
+
+/** The caller's asset, or 404: an account only reads market data for the symbols it tracks. */
+async function ownAsset(user: AuthUser, symbol: string): Promise<{ settings: Settings; asset: StockAsset }> {
+  const settings = await getSettings(user.sub);
+  if (!settings.stock.symbols.includes(symbol)) throw notFound(`${symbol} is not one of your assets`);
+  return { settings, asset: (await getAsset(symbol)) ?? fallbackAsset(symbol) };
+}
+
+async function assetList(settings: Settings): Promise<StockAssetsResponse> {
+  const known = new Map((await getAssets(settings.stock.symbols)).map((a) => [a.symbol, a]));
+  return { items: settings.stock.symbols.map((s) => known.get(s) ?? fallbackAsset(s)) };
+}
+
 export const handler = createRouter({
-  'GET /stock/history': async (event) => {
-    const { range } = parseQuery(event, z.object({ range: StockRangeSchema.default('3M') }));
-    const { stock } = await getSettings();
+  'GET /stock/assets': async (_event, user) => json(200, await assetList(await getSettings(user.sub))),
+
+  /** Track another symbol: looked up on the market-data source first, then its history loads in the background. */
+  'POST /stock/assets': async (event, user) => {
+    const { symbol } = parseBody(event, AddAssetRequestSchema);
+    const settings = await getSettings(user.sub);
+    if (settings.stock.symbols.includes(symbol)) throw conflict(`${symbol} is already in your list`);
+    if (settings.stock.symbols.length >= MAX_ASSETS) throw badRequest(`You can track up to ${MAX_ASSETS} assets; remove one first`);
+    let asset = await getAsset(symbol);
+    if (!asset) {
+      try {
+        asset = await stockProvider().lookup(symbol);
+      } catch (err) {
+        throw badRequest(`No market data found for ${symbol} (${errorMessage(err).slice(0, 200)}). Check the symbol on finance.yahoo.com.`);
+      }
+      await putAsset(asset);
+    }
+    const next = await saveSettings(user.sub, { ...settings, stock: { ...settings.stock, symbols: [...settings.stock.symbols, symbol] } });
+    if (!(await getStockStatus(symbol)).historyLoadedAt) await invokeAsync(env.stockIngestFunction, { mode: 'resync', symbol });
+    return json(201, await assetList(next));
+  },
+
+  'DELETE /stock/assets/{symbol}': async (event, user) => {
+    const parsed = SymbolSchema.safeParse(pathParam(event, 'symbol'));
+    if (!parsed.success) throw badRequest('Invalid symbol');
+    const symbol = parsed.data;
+    const settings = await getSettings(user.sub);
+    if (!settings.stock.symbols.includes(symbol)) throw notFound(`${symbol} is not one of your assets`);
+    if (settings.profile.sentimentSymbol === symbol) {
+      throw badRequest(`Sentiment is judged against ${symbol}. Pick another asset (or the business outlook) in Settings → Profile first.`);
+    }
+    const next = await saveSettings(user.sub, {
+      ...settings,
+      stock: { ...settings.stock, symbols: settings.stock.symbols.filter((s) => s !== symbol) },
+    });
+    return json(200, await assetList(next));
+  },
+
+  'GET /stock/history': async (event, user) => {
+    const { symbol, range } = parseQuery(event, SymbolQuery.extend({ range: StockRangeSchema.default('3M') }));
+    const { asset } = await ownAsset(user, symbol);
     const now = new Date();
-    const plan = planRange(range, now);
+    const plan = planRange(range, now, historyStart(asset));
     let candles =
-      plan.source === 'intraday'
-        ? await queryIntraday(stock.symbol, plan.from, now)
-        : await queryDaily(stock.symbol, plan.from, now);
-    if (range === '1D') candles = lastSession(candles);
+      plan.source === 'intraday' ? await queryIntraday(symbol, plan.from, now) : await queryDaily(symbol, plan.from, now, asset.timeZone);
+    if (range === '1D') candles = lastSession(candles, asset.timeZone);
     if (plan.interval === '1wk') candles = toWeekly(candles);
-    const [quote, status] = await Promise.all([getQuote(stock.symbol), getStockStatus(stock.symbol)]);
+    const [quote, status] = await Promise.all([getQuote(symbol), getStockStatus(symbol)]);
     const body: StockHistoryResponse = {
-      symbol: stock.symbol,
+      symbol,
       range,
       interval: plan.interval,
       candles,
@@ -51,35 +105,18 @@ export const handler = createRouter({
     return json(200, body);
   },
 
-  'GET /stock/markers': async (event) => {
-    // `from`/`to` are trading dates (the chart's days), so they are read as Jakarta days.
-    const q = parseQuery(event, z.object({ from: z.string(), to: z.string().optional() }));
-    const { items } = await listArticles({
-      status: 'APPROVED',
-      from: parseDateInput(q.from, false, MARKET_TIME_ZONE),
-      to: q.to ? parseDateInput(q.to, true, MARKET_TIME_ZONE) : undefined,
-      limit: 300,
-    });
-    const markers: StockMarker[] = items.map((a) => ({
-      articleId: a.id,
-      time: dailyTime(new Date(a.publishedAt)),
-      sentiment: effectiveTags(a).sentiment,
-      title: a.title,
-    }));
-    return json(200, { items: markers.sort((a, b) => a.time - b.time) });
-  },
-
-  'GET /stock/anomalies': async (event) => {
+  'GET /stock/anomalies': async (event, user) => {
     // `from` is a trading date (the chart's first day, so the list follows the selected range); default 12 months.
-    const q = parseQuery(event, z.object({ from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional() }));
-    const { stock } = await getSettings();
+    const q = parseQuery(event, SymbolQuery.extend({ from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional() }));
+    const { settings, asset } = await ownAsset(user, q.symbol);
+    const { stock } = settings;
     const now = new Date();
-    const from = q.from ? parseDateInput(q.from, false, MARKET_TIME_ZONE) : addMonths(now, -12);
-    const fromDate = jakartaDate(from);
+    const from = q.from ? parseDateInput(q.from, false, asset.timeZone) : addMonths(now, -12);
+    const fromDate = dateInZone(asset.timeZone, from);
     // Load extra history so the first days in range have a full baseline window.
-    const daily = await queryDaily(stock.symbol, addDays(from, -45), now);
+    const daily = asset.hasVolume ? await queryDaily(q.symbol, addDays(from, -45), now, asset.timeZone) : [];
     const detected = detectVolumeAnomalies(daily, { window: ANOMALY_WINDOW, minRatio: stock.volumeRatio }).filter((a) => a.date >= fromDate);
-    const records = await listAnomalyRecords(stock.symbol, fromDate);
+    const records = await listAnomalyRecords(user.sub, q.symbol, fromDate);
     const byDate = new Map<string, VolumeAnomaly>(records.map((r) => [r.date, r]));
     const items: VolumeAnomaly[] = detected.map((a) => ({ ...a, notifiedAt: byDate.get(a.date)?.notifiedAt ?? null }));
     // Intraday flags for a session whose daily bar is not stored yet.
@@ -88,19 +125,28 @@ export const handler = createRouter({
     return json(200, { items, minRatio: stock.volumeRatio, window: ANOMALY_WINDOW });
   },
 
-  'GET /stock/export': async (event) => {
-    // Every stored bar at one granularity (not the chart's range), as CSV for the downloads.
-    // About 46 bytes a row: decades of 15-minute bars fit the 6 MB Lambda response limit.
-    const { interval } = parseQuery(event, z.object({ interval: StockExportIntervalSchema }));
-    const { stock } = await getSettings();
+  /**
+   * CSV downloads, independent of the chart's range: every stored daily bar, or the intraday bars
+   * the market-data source still has (fetched now: intraday bars are only kept for the charts).
+   * About 46 bytes a row, far below the 6 MB Lambda response limit.
+   */
+  'GET /stock/export': async (event, user) => {
+    const { symbol, interval } = parseQuery(event, SymbolQuery.extend({ interval: StockExportIntervalSchema }));
+    const { asset } = await ownAsset(user, symbol);
     const now = new Date();
-    const candles = interval === '1d' ? await queryDaily(stock.symbol, HISTORY_START, now) : await queryIntraday(stock.symbol, new Date(0), now);
-    return json(200, stockCsv(stock.symbol, interval, candles, env.timeZone));
+    if (interval === '1d') {
+      const candles = await queryDaily(symbol, historyStart(asset), now, asset.timeZone);
+      return json(200, stockCsv(symbol, '1d', candles, env.timeZone));
+    }
+    if (!asset.intradayInterval) throw badRequest(`There are no intraday prices for ${symbol}, only daily ones`);
+    const { candles } = await stockProvider().intraday(symbol, addDays(now, -INTRADAY_DOWNLOAD_DAYS));
+    return json(200, stockCsv(symbol, asset.intradayInterval, candles, env.timeZone));
   },
 
-  'POST /stock/resync': async () => {
-    await invokeAsync(env.stockIngestFunction, { mode: 'resync' });
-    await invokeAsync(env.stockIngestFunction, { mode: 'intraday' });
+  'POST /stock/resync': async (event, user) => {
+    const { symbol } = parseBody(event, StockSymbolRequestSchema);
+    await ownAsset(user, symbol);
+    await invokeAsync(env.stockIngestFunction, { mode: 'resync', symbol });
     return json(202, { started: true });
   },
 });

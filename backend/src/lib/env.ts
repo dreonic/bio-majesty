@@ -22,7 +22,7 @@ export const env = {
   get region() {
     return optional('AWS_REGION', optional('AWS_DEFAULT_REGION', 'ap-southeast-1'));
   },
-  /** The exec's IANA time zone: daily-run time, "today" in chat, news date filters. */
+  /** The exec's IANA time zone: daily-run times, "today" in chat, news date filters. */
   get timeZone() {
     return optional('TIME_ZONE', DEFAULT_TIME_ZONE);
   },
@@ -58,11 +58,9 @@ export const env = {
   get backfillStateMachineArn() {
     return required('BACKFILL_STATE_MACHINE_ARN');
   },
-  get dailyScheduleName() {
-    return required('DAILY_SCHEDULE_NAME');
-  },
-  get dailyScheduleGroup() {
-    return optional('DAILY_SCHEDULE_GROUP', 'default');
+  /** Cognito user pool: its `dashboard-users` group is the list of accounts. */
+  get userPoolId() {
+    return required('USER_POOL_ID');
   },
   get embeddingModel() {
     return optional('EMBEDDING_MODEL', 'google:gemini-embedding-2');

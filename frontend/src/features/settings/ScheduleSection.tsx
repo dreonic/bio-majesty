@@ -1,4 +1,4 @@
-import type { Run } from '@bio-majesty/shared';
+import { quarterHour, type Run } from '@bio-majesty/shared';
 import { CheckCircle2, CircleAlert, Loader2, Play } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useToast } from '../../components/toast';
@@ -24,7 +24,7 @@ export function ScheduleSection() {
     }
   }, [settings.data]);
 
-  const dirty = settings.data && (time !== settings.data.schedule.dailyTime || enabled !== settings.data.schedule.enabled);
+  const dirty = settings.data && (quarterHour(time) !== settings.data.schedule.dailyTime || enabled !== settings.data.schedule.enabled);
   const names = new Map(categories.map((c) => [c.id, c.name]));
 
   return (
@@ -45,7 +45,8 @@ export function ScheduleSection() {
       <div className="flex flex-wrap items-center gap-4 border-b border-hairline px-5 py-4">
         <label className="flex items-center gap-2 text-sm text-ink">
           Run every day at
-          <Input type="time" value={time} onChange={(e) => setTime(e.target.value)} className="w-32" aria-label="Daily run time" />
+          {/* The dispatcher checks every 15 minutes, so run times are quarter hours. */}
+          <Input type="time" step={900} value={time} onChange={(e) => setTime(e.target.value)} className="w-32" aria-label="Daily run time (quarter hours)" />
           <span className="text-ink-2" title={displayTimeZone()}>
             {timeZoneLabel()}
           </span>
@@ -56,7 +57,12 @@ export function ScheduleSection() {
           size="sm"
           disabled={!dirty}
           loading={update.isPending}
-          onClick={() => update.mutate({ schedule: { dailyTime: time, enabled } }, { onSuccess: () => toast.success('Schedule updated'), onError: toast.error })}
+          onClick={() =>
+            update.mutate(
+              { schedule: { dailyTime: quarterHour(time), enabled } },
+              { onSuccess: (s) => toast.success(`Schedule updated: every day at ${s.schedule.dailyTime}`), onError: toast.error },
+            )
+          }
         >
           Save schedule
         </Button>

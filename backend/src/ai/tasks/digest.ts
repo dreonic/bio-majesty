@@ -1,7 +1,7 @@
 import type { Article, Category, Digest, TaskModelSettings } from '@bio-majesty/shared';
 import { effectiveTags } from '@bio-majesty/shared';
 import { z } from 'zod';
-import { COMPANY_CONTEXT } from '../prompts';
+import { profileContext, sentimentBasis, type ProfileContext } from '../prompts';
 import { runStructured } from '../run-task';
 import type { UsageCollector } from '../usage';
 
@@ -13,9 +13,12 @@ const OutputSchema = z.object({
     .describe('Up to 5 most important items, most important first'),
 });
 
-const INSTRUCTIONS = `${COMPANY_CONTEXT}
+function instructions(ctx: ProfileContext): string {
+  const lead = ctx.asset ? `${sentimentBasis(ctx.profile, ctx.asset)} or the business of ${ctx.profile.subject}` : sentimentBasis(ctx.profile, null);
+  return `${profileContext(ctx.profile)}
 
-Write a brief digest of newly found news items for the executive, who will review them in the dashboard. Lead with what could matter most for PRDA's share price or the group's business. Be factual and concise; do not invent details beyond the item summaries.`;
+Write a brief digest of newly found news items for the executive, who will review them in the dashboard. Lead with what could matter most for ${lead}. Be factual and concise; do not invent details beyond the item summaries.`;
+}
 
 export function digestCounts(articles: Article[]): Digest['counts'] {
   const counts = { total: articles.length, positive: 0, negative: 0, neutral: 0, undecided: 0 };
@@ -28,6 +31,7 @@ export async function writeDigest(
   categories: Category[],
   context: { runType: 'daily' | 'backfill'; categoryName?: string },
   settings: TaskModelSettings,
+  ctx: ProfileContext,
   usage?: UsageCollector,
 ): Promise<{ title: string; summary: string; highlights: Digest['highlights'] }> {
   const names = new Map(categories.map((c) => [c.id, c.name]));
@@ -51,7 +55,7 @@ export async function writeDigest(
     settings,
     schema: OutputSchema,
     name: 'news_digest',
-    instructions: INSTRUCTIONS,
+    instructions: instructions(ctx),
     prompt: `${header}\n\n${listing}`,
     maxOutputTokens: 4000,
     usage,

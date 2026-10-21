@@ -15,11 +15,14 @@ import { pipeline } from 'node:stream/promises';
 import type { ReadableStream as NodeReadableStream } from 'node:stream/web';
 import { buildChatTools, chatErrorText, chatInstructions, chatProviderOptions } from '../ai/chat-agent';
 import { resolveWithFallback } from '../ai/fallback';
+import { loadProfileContext } from '../ai/profile';
 import { corsHeaders, getUser, HttpError, parseBody, requireAccess, setRequestOrigin } from '../lib/http';
 import { errorMessage, logger } from '../lib/logger';
 import { listCategories } from '../repo/categories';
 import { getConversation, loadMessages, saveConversation } from '../repo/chats';
 import { getSettings } from '../repo/settings';
+import { getAssets } from '../repo/stock';
+import { fallbackAsset } from '../stock';
 
 const MAX_HISTORY_MESSAGES = 40;
 
@@ -44,12 +47,15 @@ export const handler = awslambda.streamifyResponse(async (event: APIGatewayProxy
     const user = getUser(event);
     const body = parseBody(event, ChatRequestSchema);
     const [settings, categories, previous, existing] = await Promise.all([
-      getSettings(),
-      listCategories(),
+      getSettings(user.sub),
+      listCategories(user.sub),
       loadMessages(user.sub, body.id),
       getConversation(user.sub, body.id),
     ]);
-    const tools = buildChatTools(settings.stock.symbol);
+    // The chat sees only this account's saved news and assets.
+    const known = new Map((await getAssets(settings.stock.symbols)).map((a) => [a.symbol, a]));
+    const assets = settings.stock.symbols.map((s) => known.get(s) ?? fallbackAsset(s));
+    const tools = buildChatTools({ sub: user.sub, assets });
 
     let messages: UIMessage[];
     try {
@@ -66,7 +72,7 @@ export const handler = awslambda.streamifyResponse(async (event: APIGatewayProxy
     const chat = settings.models.chat;
     const result = streamText({
       model: await resolveWithFallback(chat.model, chat.fallbackModel),
-      instructions: chatInstructions(categories, settings.stock.symbol),
+      instructions: chatInstructions(await loadProfileContext(settings), categories, assets),
       messages: await convertToModelMessages(messages.slice(-MAX_HISTORY_MESSAGES)),
       tools,
       stopWhen: isStepCount(8),

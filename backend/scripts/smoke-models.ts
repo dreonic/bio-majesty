@@ -12,6 +12,7 @@ import { DEFAULT_SETTINGS, LANGUAGE_MODELS, type Category } from '@bio-majesty/s
 import { generateText, isStepCount, tool } from 'ai';
 import { z } from 'zod';
 import { configuredProviders, languageModel } from '../src/ai/registry';
+import { DEFAULT_PROFILE_CONTEXT } from '../src/ai/profile';
 import { mergeProviderOptions } from '../src/ai/run-task';
 import { classifyArticle } from '../src/ai/tasks/classify';
 
@@ -50,6 +51,7 @@ async function smoke(model: string): Promise<boolean> {
         { title: f.title, sourceName: 'Smoke test', url: 'https://example.com', publishedAt: null, text: f.text, snippet: null, categoryHints: ['corp'] },
         categories,
         settings,
+        DEFAULT_PROFILE_CONTEXT,
       );
       console.log(`  ✓ tagging (${Date.now() - started} ms): ${c.sentiment}, categories=[${c.categoryIds.join(',')}], conf=${c.confidence.toFixed(2)}`);
     } catch (err) {

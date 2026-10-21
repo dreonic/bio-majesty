@@ -1,9 +1,17 @@
 import { TelegramLinkVerifyRequestSchema, type TelegramLinkStartResponse } from '@bio-majesty/shared';
-import { badRequest, getUser, json, noContent, parseBody } from '../../lib/http';
+import { badRequest, json, noContent, parseBody } from '../../lib/http';
 import { randomId } from '../../lib/ids';
 import { createRouter } from '../../lib/router';
-import { chatTitle, getBotUsername, getUpdates, isTelegramConfigured, sendMessage } from '../../notify/telegram';
-import { deleteLinkCode, getLinkCode, getTelegramState, putLinkCode, putTelegramState, setUpdateOffset } from '../../repo/telegram';
+import { chatTitle, getBotUsername, getUpdates, isTelegramConfigured, sendMessage, type TelegramUpdate } from '../../notify/telegram';
+import {
+  getLinkCode,
+  getTelegramLink,
+  getUpdateOffset,
+  markLinkCodeUsed,
+  putLinkCode,
+  putTelegramLink,
+  setUpdateOffset,
+} from '../../repo/telegram';
 
 const LINK_TTL_MS = 10 * 60 * 1000;
 
@@ -13,10 +21,33 @@ async function requireConfigured(): Promise<void> {
   }
 }
 
+/** "/start <code>" messages in a batch of updates. */
+export function startCodes(updates: TelegramUpdate[]): { code: string; update: TelegramUpdate }[] {
+  return updates.flatMap((update) => {
+    const m = /^\/start\s+(\S+)$/.exec(update.message?.text?.trim() ?? '');
+    return m && update.message ? [{ code: m[1]!, update }] : [];
+  });
+}
+
+/**
+ * Link every account whose /start message is in the batch, not just the caller's: the bot has one
+ * update offset, so a message read here is never returned to another account's check.
+ */
+async function linkStarted(updates: TelegramUpdate[]): Promise<void> {
+  for (const { code, update } of startCodes(updates)) {
+    const link = await getLinkCode(code);
+    if (!link || link.linkedChatTitle) continue;
+    const chat = update.message!.chat;
+    const title = chatTitle(chat);
+    await putTelegramLink(link.sub, { chatId: chat.id, chatTitle: title, linkedAt: new Date().toISOString() });
+    await markLinkCodeUsed(code, title);
+    await sendMessage(chat.id, '✅ Connected. You will receive news digests and alerts here.');
+  }
+}
+
 export const handler = createRouter({
-  'POST /telegram/link': async (event) => {
+  'POST /telegram/link': async (_event, user) => {
     await requireConfigured();
-    const user = getUser(event);
     const code = randomId(24);
     await putLinkCode(code, user.sub);
     const body: TelegramLinkStartResponse = {
@@ -27,44 +58,33 @@ export const handler = createRouter({
     return json(200, body);
   },
 
-  'POST /telegram/link/verify': async (event) => {
+  'POST /telegram/link/verify': async (event, user) => {
     await requireConfigured();
     const { code } = parseBody(event, TelegramLinkVerifyRequestSchema);
     const link = await getLinkCode(code);
-    if (!link) throw badRequest('Link code not found or expired. Start again.');
+    if (!link || link.sub !== user.sub) throw badRequest('Link code not found or expired. Start again.');
 
-    const state = await getTelegramState();
-    const updates = await getUpdates(state.updateOffset);
-    const nextOffset = updates.reduce((max, u) => Math.max(max, u.update_id + 1), state.updateOffset);
-    const match = updates.find((u) => u.message?.text?.trim() === `/start ${code}`);
-    if (!match?.message) {
-      if (nextOffset !== state.updateOffset) await setUpdateOffset(nextOffset);
-      return json(200, { linked: false, chatTitle: null });
+    if (!link.linkedChatTitle) {
+      const offset = await getUpdateOffset();
+      const updates = await getUpdates(offset);
+      await linkStarted(updates);
+      const nextOffset = updates.reduce((max, u) => Math.max(max, u.update_id + 1), offset);
+      if (nextOffset !== offset) await setUpdateOffset(nextOffset);
     }
-
-    const title = chatTitle(match.message.chat);
-    await putTelegramState({
-      chatId: match.message.chat.id,
-      chatTitle: title,
-      linkedAt: new Date().toISOString(),
-      updateOffset: nextOffset,
-    });
-    await deleteLinkCode(code);
-    await sendMessage(match.message.chat.id, '✅ Connected. You will receive news digests and alerts here.');
-    return json(200, { linked: true, chatTitle: title });
+    const after = await getLinkCode(code);
+    return json(200, { linked: Boolean(after?.linkedChatTitle), chatTitle: after?.linkedChatTitle ?? null });
   },
 
-  'DELETE /telegram/link': async () => {
-    const state = await getTelegramState();
-    await putTelegramState({ ...state, chatId: null, chatTitle: null, linkedAt: null });
+  'DELETE /telegram/link': async (_event, user) => {
+    await putTelegramLink(user.sub, { chatId: null, chatTitle: null, linkedAt: null });
     return noContent();
   },
 
-  'POST /telegram/test': async () => {
+  'POST /telegram/test': async (_event, user) => {
     await requireConfigured();
-    const state = await getTelegramState();
-    if (!state.chatId) throw badRequest('Telegram is not linked yet');
-    await sendMessage(state.chatId, '🔔 Test message from the Prodia news dashboard.');
+    const link = await getTelegramLink(user.sub);
+    if (!link.chatId) throw badRequest('Telegram is not linked yet');
+    await sendMessage(link.chatId, '🔔 Test message from your news dashboard.');
     return json(200, { sent: true });
   },
 });

@@ -12,8 +12,10 @@ import { chunk } from '../repo/client';
 let client: S3VectorsClient | undefined;
 const s3v = () => (client ??= new S3VectorsClient({}));
 
-/** Metadata stored with every chunk vector. Filterable: articleId, publishedAt, categoryIds, sentiment. */
+/** Metadata stored with every chunk vector. Filterable: owner, articleId, publishedAt, categoryIds, sentiment. */
 export interface ChunkMetadata {
+  /** The account (Cognito sub) whose saved article this is: every query filters on it. */
+  owner: string;
   articleId: string;
   chunk: number;
   publishedAt: number;
@@ -27,8 +29,8 @@ export interface ChunkMetadata {
 
 export const NON_FILTERABLE_KEYS = ['title', 'text', 'source'] as const;
 
-export function vectorKey(articleId: string, chunkIndex: number): string {
-  return `${articleId}#${chunkIndex}`;
+export function vectorKey(sub: string, articleId: string, chunkIndex: number): string {
+  return `${sub}#${articleId}#${chunkIndex}`;
 }
 
 export async function putChunkVectors(items: { key: string; vector: number[]; metadata: ChunkMetadata }[]): Promise<void> {
@@ -47,9 +49,9 @@ export async function putChunkVectors(items: { key: string; vector: number[]; me
   }
 }
 
-export async function deleteArticleVectors(articleId: string, maxChunks = 64): Promise<void> {
+export async function deleteArticleVectors(sub: string, articleId: string, maxChunks = 64): Promise<void> {
   // Keys are deterministic, so delete the possible range without listing.
-  const keys = Array.from({ length: maxChunks }, (_, i) => vectorKey(articleId, i));
+  const keys = Array.from({ length: maxChunks }, (_, i) => vectorKey(sub, articleId, i));
   for (const batch of chunk(keys, 100)) {
     await s3v().send(
       new DeleteVectorsCommand({ vectorBucketName: env.vectorBucket, indexName: env.vectorIndex, keys: batch }),
@@ -58,6 +60,8 @@ export async function deleteArticleVectors(articleId: string, maxChunks = 64): P
 }
 
 export interface VectorFilter {
+  /** Required: an account only ever searches its own saved news. */
+  owner: string;
   from?: Date;
   to?: Date;
   categoryIds?: string[];
@@ -65,8 +69,8 @@ export interface VectorFilter {
 }
 
 /** Build an S3 Vectors metadata filter ($eq on a list field matches any element). */
-export function buildFilter(f: VectorFilter): Record<string, unknown> | undefined {
-  const clauses: Record<string, unknown>[] = [];
+export function buildFilter(f: VectorFilter): Record<string, unknown> {
+  const clauses: Record<string, unknown>[] = [{ owner: { $eq: f.owner } }];
   if (f.from || f.to) {
     const range: Record<string, number> = {};
     if (f.from) range.$gte = Math.floor(f.from.getTime() / 1000);
@@ -77,8 +81,7 @@ export function buildFilter(f: VectorFilter): Record<string, unknown> | undefine
     clauses.push({ $or: f.categoryIds.map((id) => ({ categoryIds: { $eq: id } })) });
   }
   if (f.sentiments?.length) clauses.push({ sentiment: { $in: f.sentiments } });
-  if (!clauses.length) return undefined;
-  return clauses.length === 1 ? clauses[0] : { $and: clauses };
+  return clauses.length === 1 ? clauses[0]! : { $and: clauses };
 }
 
 export interface VectorHit {

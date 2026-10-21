@@ -121,3 +121,15 @@ export function isGoogleNewsUrl(url: string): boolean {
     return false;
   }
 }
+
+/** Article token from news.google.com/rss/articles/<id> (or /articles/, /read/). */
+export function extractGoogleNewsId(link: string): string | null {
+  try {
+    const url = new URL(link);
+    if (url.hostname !== 'news.google.com') return null;
+    const match = url.pathname.match(/\/(?:rss\/)?(?:articles|read)\/([^/?#]+)/);
+    return match?.[1] ?? null;
+  } catch {
+    return null;
+  }
+}

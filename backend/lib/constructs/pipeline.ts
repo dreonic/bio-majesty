@@ -1,4 +1,5 @@
 import { Duration, TimeZone } from 'aws-cdk-lib';
+import type * as cognito from 'aws-cdk-lib/aws-cognito';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as lambdaEventSources from 'aws-cdk-lib/aws-lambda-event-sources';
@@ -16,6 +17,8 @@ export interface PipelineProps {
   config: AppConfig;
   data: DataConstruct;
   functions: FunctionFactory;
+  /** Its `dashboard-users` group is the list of accounts the background jobs work for. */
+  userPool: cognito.IUserPool;
 }
 
 type PipelineFunctions = Record<
@@ -24,14 +27,15 @@ type PipelineFunctions = Record<
 >;
 
 /**
- * News ingestion (daily + backfill state machines), stock refresh schedules,
- * and the vector indexer fed by the DynamoDB stream.
+ * News ingestion (daily + backfill state machines, one execution per account), the
+ * dispatcher that starts each account's daily run, the stock refresh schedule, and
+ * the vector indexer fed by the DynamoDB stream.
  */
 export class PipelineConstruct extends Construct {
   readonly dailyMachine: sfn.StateMachine;
   readonly backfillMachine: sfn.StateMachine;
-  readonly dailySchedule: scheduler.Schedule;
   readonly schedulerRole: iam.Role;
+  readonly dispatchFn: lambda.IFunction;
   readonly stockIngestFn: lambda.IFunction;
   readonly pipelineFunctions: lambda.IFunction[];
   readonly indexerFn: lambda.IFunction;
@@ -70,49 +74,49 @@ export class PipelineConstruct extends Construct {
     this.dailyMachine = this.buildMachine('Daily', fns, data, logGroup, { searchConcurrency: 3, timeout: Duration.hours(2) });
     this.backfillMachine = this.buildMachine('Backfill', fns, data, logGroup, { searchConcurrency: 2, timeout: Duration.hours(10) });
 
-    // Daily ingest schedule, 06:00 on the exec's clock. The time is editable in Settings
-    // (UpdateSchedule at runtime).
     this.schedulerRole = new iam.Role(this, 'SchedulerRole', {
       assumedBy: new iam.ServicePrincipal('scheduler.amazonaws.com'),
-      description: 'Lets EventBridge Scheduler start the daily news run and stock refreshes',
+      description: 'Lets EventBridge Scheduler run the news dispatcher and stock refreshes',
     });
-    this.dailySchedule = new scheduler.Schedule(this, 'DailyIngestSchedule', {
-      scheduleName: `bio-majesty-${config.stage}-daily-ingest`,
-      description: 'Daily news run (time editable in the dashboard Settings page)',
-      schedule: scheduler.ScheduleExpression.cron({ minute: '0', hour: '6', timeZone: TimeZone.of(config.timeZone) }),
-      target: new schedulerTargets.StepFunctionsStartExecution(this.dailyMachine, {
-        role: this.schedulerRole,
-        input: scheduler.ScheduleTargetInput.fromObject({ mode: 'daily', trigger: 'schedule' }),
-      }),
+    const every15Minutes = scheduler.ScheduleExpression.cron({ minute: '0/15', timeZone: TimeZone.of(config.timeZone) });
+    const readAccounts = (fn: lambda.IFunction) => props.userPool.grant(fn, 'cognito-idp:ListUsersInGroup');
+
+    // Each account picks its daily-run time in Settings (quarter hours on the exec's clock):
+    // every 15 minutes the dispatcher starts the runs that are due.
+    this.dispatchFn = functions.create('NewsDispatch', {
+      entry: 'dispatch.ts',
+      description: "Start each account's daily news run at its chosen time",
+      timeout: Duration.minutes(1),
+    });
+    data.table.grantReadData(this.dispatchFn);
+    readAccounts(this.dispatchFn);
+    this.dailyMachine.grantStartExecution(this.dispatchFn);
+    new scheduler.Schedule(this, 'NewsDispatchSchedule', {
+      scheduleName: `bio-majesty-${config.stage}-news-dispatch`,
+      description: "Starts the accounts' daily news runs (each account's time is in its Settings)",
+      schedule: every15Minutes,
+      target: new schedulerTargets.LambdaInvoke(this.dispatchFn, { role: this.schedulerRole, retryAttempts: 0 }),
     });
 
-    // Stock data refresh (Yahoo by default; ~30 calls/day keeps rate limits happy).
+    // Market data for every symbol any account tracks (Yahoo by default). Each tick only asks
+    // for assets whose market is open, or whose end-of-day refresh is due, to keep requests low.
     this.stockIngestFn = functions.create('StockIngest', {
       entry: 'stock-ingest.ts',
-      description: 'Refresh PRDA prices (intraday / end-of-day / full history)',
-      timeout: Duration.minutes(2),
+      description: 'Refresh market data of the tracked assets (intraday / end-of-day / full history)',
+      timeout: Duration.minutes(5),
     });
     data.table.grantReadWriteData(this.stockIngestFn);
     data.secret.grantRead(this.stockIngestFn);
-    const stockTarget = (mode: string) =>
-      new schedulerTargets.LambdaInvoke(this.stockIngestFn, {
+    readAccounts(this.stockIngestFn);
+    new scheduler.Schedule(this, 'StockRefreshSchedule', {
+      scheduleName: `bio-majesty-${config.stage}-stock-refresh`,
+      description: 'Market-data refresh every 15 minutes (each asset follows its own trading session)',
+      schedule: every15Minutes,
+      target: new schedulerTargets.LambdaInvoke(this.stockIngestFn, {
         role: this.schedulerRole,
-        input: scheduler.ScheduleTargetInput.fromObject({ mode }),
+        input: scheduler.ScheduleTargetInput.fromObject({ mode: 'tick' }),
         retryAttempts: 0,
-      });
-    // IDX trades on Jakarta time wherever the exec is, so these stay on Asia/Jakarta
-    // (09:00–16:45 and 17:30 WIB = 10:00–17:45 and 18:30 in Singapore).
-    new scheduler.Schedule(this, 'StockIntradaySchedule', {
-      scheduleName: `bio-majesty-${config.stage}-stock-intraday`,
-      description: 'PRDA intraday refresh every 15 minutes during IDX trading hours (WIB)',
-      schedule: scheduler.ScheduleExpression.cron({ minute: '0/15', hour: '9-16', weekDay: 'MON-FRI', timeZone: TimeZone.ASIA_JAKARTA }),
-      target: stockTarget('intraday'),
-    });
-    new scheduler.Schedule(this, 'StockEodSchedule', {
-      scheduleName: `bio-majesty-${config.stage}-stock-eod`,
-      description: 'PRDA end-of-day refresh after the IDX close (17:30 WIB)',
-      schedule: scheduler.ScheduleExpression.cron({ minute: '30', hour: '17', weekDay: 'MON-FRI', timeZone: TimeZone.ASIA_JAKARTA }),
-      target: stockTarget('eod'),
+      }),
     });
 
     // Index approved articles into S3 Vectors.
@@ -139,8 +143,10 @@ export class PipelineConstruct extends Construct {
         bisectBatchOnError: true,
         reportBatchItemFailures: true,
         filters: [
-          // Only article items (PK starts with ART#) matter to the index.
-          lambda.FilterCriteria.filter({ dynamodb: { Keys: { PK: { S: lambda.FilterRule.beginsWith('ART#') } } } }),
+          // Only the accounts' article items (USER#<sub> / ART#<id>) matter to the index.
+          lambda.FilterCriteria.filter({
+            dynamodb: { Keys: { PK: { S: lambda.FilterRule.beginsWith('USER#') }, SK: { S: lambda.FilterRule.beginsWith('ART#') } } },
+          }),
         ],
       }),
     );
@@ -175,7 +181,7 @@ export class PipelineConstruct extends Construct {
       new sfn.Map(this, `${name}SearchMap`, {
         itemsPath: '$.tasks',
         maxConcurrency: opts.searchConcurrency,
-        itemSelector: { 'runId.$': '$.runId', 'task.$': '$$.Map.Item.Value' },
+        itemSelector: { 'sub.$': '$.sub', 'runId.$': '$.runId', 'task.$': '$$.Map.Item.Value' },
         resultPath: sfn.JsonPath.DISCARD,
       }),
     );
@@ -191,6 +197,7 @@ export class PipelineConstruct extends Construct {
       new sfn.DistributedMap(this, `${name}EnrichMap`, {
         itemReader: new sfn.S3JsonItemReader({ bucket: data.dataBucket, key: sfn.JsonPath.stringAt('$.relevantKey') }),
         itemSelector: {
+          'sub.$': '$.sub',
           'runId.$': '$.runId',
           'runType.$': '$.runType',
           'categoryId.$': '$.categoryId',

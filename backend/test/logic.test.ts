@@ -3,8 +3,8 @@ import type { APIGatewayProxyEvent } from 'aws-lambda';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { reviewChange } from '../src/handlers/api/news';
-import { decideAction } from '../src/handlers/indexer';
-import { dailyCron } from '../src/lib/aws';
+import { isDue, quarterSlot } from '../src/handlers/dispatch';
+import { decideAction, image } from '../src/handlers/indexer';
 import { parseQuery } from '../src/lib/http';
 import { createRouter } from '../src/lib/router';
 import { jakartaDate, localDate, parseDateInput } from '../src/lib/time';
@@ -13,7 +13,8 @@ import { escapeHtml, formatDigestMessage } from '../src/notify/telegram';
 import { mergeSettings } from '../src/repo/settings';
 import { lastSession, planRange, toWeekly } from '../src/stock';
 import { rollup } from '../src/stock/eodhd';
-import { dailyTime } from '../src/stock/provider';
+import { dailyTime, priceDecimals } from '../src/stock/provider';
+import { deriveSession, refreshPlan } from '../src/stock/session';
 import { chunkText } from '../src/vectors/chunk';
 import { buildFilter } from '../src/vectors/store';
 
@@ -76,16 +77,26 @@ describe('indexer decisions', () => {
     expect(decideAction(approved, { ...approved, indexedAt: '2026-10-14T00:00:00Z' })).toBe('none');
     expect(decideAction(article(), article({ status: 'FILTERED' }))).toBe('none');
   });
+
+  it("reads only accounts' article items from the stream, with their owner", () => {
+    const raw = (pk: string, sk: string) => ({ PK: { S: pk }, SK: { S: sk }, id: { S: 'a1' }, status: { S: 'APPROVED' } });
+    expect(image(raw('USER#u1', 'ART#a1'))).toMatchObject({ sub: 'u1', article: { id: 'a1', status: 'APPROVED' } });
+    expect(image(raw('USER#u1', 'SETTINGS'))).toBeNull();
+    expect(image(raw('ART#a1', 'META'))).toBeNull();
+  });
 });
 
 describe('vector filters', () => {
-  it('builds S3 Vectors metadata filters', () => {
-    expect(buildFilter({})).toBeUndefined();
-    expect(buildFilter({ sentiments: ['negative'] })).toEqual({ sentiment: { $in: ['negative'] } });
+  it('always filters by owner, then by date, category and sentiment', () => {
+    expect(buildFilter({ owner: 'u1' })).toEqual({ owner: { $eq: 'u1' } });
+    expect(buildFilter({ owner: 'u1', sentiments: ['negative'] })).toEqual({
+      $and: [{ owner: { $eq: 'u1' } }, { sentiment: { $in: ['negative'] } }],
+    });
     expect(
-      buildFilter({ from: new Date('2026-01-01T00:00:00Z'), categoryIds: ['a', 'b'] }),
+      buildFilter({ owner: 'u1', from: new Date('2026-01-01T00:00:00Z'), categoryIds: ['a', 'b'] }),
     ).toEqual({
       $and: [
+        { owner: { $eq: 'u1' } },
         { publishedAt: { $gte: 1767225600 } },
         { $or: [{ categoryIds: { $eq: 'a' } }, { categoryIds: { $eq: 'b' } }] },
       ],
@@ -127,24 +138,41 @@ describe('dates', () => {
 });
 
 describe('stock helpers', () => {
-  it('normalizes daily bars to the Jakarta trading date', () => {
+  const utcDay = (time: number) => new Date(time * 1000).toISOString();
+
+  it("normalizes daily bars to the asset's trading date", () => {
     // 2026-10-13 02:00 UTC = 09:00 WIB on the 13th
-    expect(new Date(dailyTime(new Date('2026-10-13T02:00:00Z')) * 1000).toISOString()).toBe('2026-10-13T00:00:00.000Z');
+    expect(utcDay(dailyTime(new Date('2026-10-13T02:00:00Z'), 'Asia/Jakarta'))).toBe('2026-10-13T00:00:00.000Z');
     // 2026-10-13 18:00 UTC = 01:00 WIB on the 14th
-    expect(new Date(dailyTime(new Date('2026-10-13T18:00:00Z')) * 1000).toISOString()).toBe('2026-10-14T00:00:00.000Z');
+    expect(utcDay(dailyTime(new Date('2026-10-13T18:00:00Z'), 'Asia/Jakarta'))).toBe('2026-10-14T00:00:00.000Z');
+    // ...but still the 13th in New York (14:00 EDT), and for a UTC-dated crypto bar.
+    expect(utcDay(dailyTime(new Date('2026-10-13T18:00:00Z'), 'America/New_York'))).toBe('2026-10-13T00:00:00.000Z');
+    expect(utcDay(dailyTime(new Date('2026-10-13T00:00:00Z'), 'UTC'))).toBe('2026-10-13T00:00:00.000Z');
   });
 
   it('plans ranges', () => {
-    expect(planRange('1D').source).toBe('intraday');
-    expect(planRange('1Y')).toMatchObject({ source: 'daily', interval: '1d' });
-    expect(planRange('MAX').interval).toBe('1wk');
+    const now = new Date('2026-10-21T00:00:00Z');
+    const listed = new Date('2016-12-09T00:00:00Z');
+    expect(planRange('1D', now, listed).source).toBe('intraday');
+    expect(planRange('1Y', now, listed)).toMatchObject({ source: 'daily', interval: '1d' });
+    expect(planRange('MAX', now, listed)).toEqual({ source: 'daily', interval: '1wk', from: listed });
+  });
+
+  it('shows whole-number prices without decimals and others with the source hint', () => {
+    expect(priceDecimals([2870, 2900, 2850], 2)).toBe(0);
+    expect(priceDecimals([230.5, 231], 2)).toBe(2);
+    expect(priceDecimals([16543.2], 4)).toBe(4);
+    expect(priceDecimals([], undefined)).toBe(2);
   });
 
   it('keeps only the last session for 1D and aggregates weeks', () => {
     const t = (iso: string) => Date.parse(iso) / 1000;
     const c = (time: number, close: number) => ({ time, open: close, high: close + 1, low: close - 1, close, volume: 10 });
     const intraday = [c(t('2026-10-12T03:00:00Z'), 1), c(t('2026-10-13T03:00:00Z'), 2), c(t('2026-10-13T04:00:00Z'), 3)];
-    expect(lastSession(intraday).map((x) => x.close)).toEqual([2, 3]);
+    expect(lastSession(intraday, 'Asia/Jakarta').map((x) => x.close)).toEqual([2, 3]);
+    // A New York session runs past UTC midnight: 19:30 EDT on the 12th is still the 12th there.
+    const ny = [c(t('2026-10-12T19:30:00Z'), 1), c(t('2026-10-13T19:30:00Z'), 2), c(t('2026-10-13T23:45:00Z'), 3)];
+    expect(lastSession(ny, 'America/New_York').map((x) => x.close)).toEqual([2, 3]);
     const daily = [c(t('2026-10-12T00:00:00Z'), 10), c(t('2026-10-13T00:00:00Z'), 12), c(t('2026-10-19T00:00:00Z'), 11)];
     const weekly = toWeekly(daily);
     expect(weekly).toHaveLength(2);
@@ -155,6 +183,46 @@ describe('stock helpers', () => {
     const bars = [0, 300, 600, 900].map((s, i) => ({ time: 1_760_000_100 + s, open: i, high: i + 1, low: i - 1, close: i, volume: 1 }));
     const out = rollup(bars, 900);
     expect(out.reduce((s, b) => s + b.volume, 0)).toBe(4);
+  });
+});
+
+describe('trading sessions', () => {
+  // Regular periods Yahoo reported on 2026-10-21 (UTC), as in the asset probe.
+  const period = (start: string, end: string) => ({ start: new Date(start), end: new Date(end) });
+
+  it('turns a reported session into a daily pattern on the exchange clock', () => {
+    expect(deriveSession(period('2026-10-21T02:00:00Z', '2026-10-21T09:15:00Z'), 'Asia/Jakarta', 'EQUITY')).toEqual({ start: '09:00', end: '16:15', days: 'weekdays' });
+    expect(deriveSession(period('2026-10-20T13:30:00Z', '2026-10-20T20:00:00Z'), 'America/New_York', 'EQUITY')).toEqual({ start: '09:30', end: '16:00', days: 'weekdays' });
+    expect(deriveSession(period('2026-10-21T00:00:00Z', '2026-10-21T23:59:00Z'), 'UTC', 'CRYPTOCURRENCY')).toEqual({ start: '00:00', end: '23:59', days: 'daily' });
+    expect(deriveSession(period('2026-10-20T23:00:00Z', '2026-10-21T22:59:00Z'), 'Europe/London', 'CURRENCY')).toEqual({ start: '00:00', end: '23:59', days: 'weekdays' });
+  });
+
+  const idx = { timeZone: 'Asia/Jakarta', session: { start: '09:00', end: '16:15', days: 'weekdays' as const }, intradayInterval: '15m' };
+  const at = (iso: string) => new Date(iso);
+
+  it('refreshes intraday bars during the session and just after the close', () => {
+    expect(refreshPlan(idx, '2026-10-20', at('2026-10-21T01:45:00Z')).intraday).toBe(false); // 08:45 WIB
+    expect(refreshPlan(idx, '2026-10-20', at('2026-10-21T05:00:00Z')).intraday).toBe(true); // 12:00 WIB
+    expect(refreshPlan(idx, '2026-10-20', at('2026-10-21T09:30:00Z')).intraday).toBe(true); // 16:30 WIB, last bar
+    expect(refreshPlan(idx, '2026-10-20', at('2026-10-21T09:45:00Z')).intraday).toBe(false);
+    expect(refreshPlan(idx, '2026-10-23', at('2026-10-24T05:00:00Z')).intraday).toBe(false); // Saturday
+    expect(refreshPlan({ ...idx, intradayInterval: null }, '2026-10-20', at('2026-10-21T05:00:00Z')).intraday).toBe(false); // daily-only fund
+  });
+
+  it('runs the end-of-day refresh once per trading date, an hour after the close', () => {
+    expect(refreshPlan(idx, '2026-10-20', at('2026-10-21T09:45:00Z')).eodFor).toBeNull(); // 16:45: too early
+    expect(refreshPlan(idx, '2026-10-20', at('2026-10-21T10:15:00Z')).eodFor).toBe('2026-10-21'); // 17:15
+    expect(refreshPlan(idx, '2026-10-21', at('2026-10-21T10:30:00Z')).eodFor).toBeNull(); // done
+    // Monday morning, before the session: Friday's pass if it was missed.
+    expect(refreshPlan(idx, '2026-10-22', at('2026-10-26T01:00:00Z')).eodFor).toBe('2026-10-23');
+    expect(refreshPlan(idx, '2026-10-23', at('2026-10-26T01:00:00Z')).eodFor).toBeNull();
+  });
+
+  it('treats crypto as a 24/7 session whose day closes at midnight', () => {
+    const btc = { timeZone: 'UTC', session: { start: '00:00', end: '23:59', days: 'daily' as const }, intradayInterval: '15m' };
+    const sunday = at('2026-10-25T12:00:00Z');
+    expect(refreshPlan(btc, '2026-10-24', sunday)).toEqual({ intraday: true, eodFor: null });
+    expect(refreshPlan(btc, '2026-10-23', sunday).eodFor).toBe('2026-10-24');
   });
 });
 
@@ -202,9 +270,21 @@ describe('settings and schedule', () => {
     expect(next.schedule.dailyTime).toBe('06:00');
   });
 
-  it('builds EventBridge Scheduler cron expressions', () => {
-    expect(dailyCron('06:00')).toBe('cron(0 6 * * ? *)');
-    expect(dailyCron('17:45')).toBe('cron(45 17 * * ? *)');
+  it('moves an older run time to its quarter hour (the dispatcher checks every 15 minutes)', () => {
+    expect(mergeSettings(DEFAULT_SETTINGS, { schedule: { dailyTime: '07:40' } } as never).schedule.dailyTime).toBe('07:30');
+  });
+
+  it("starts an account's daily run in its quarter hour, when it has something to search for", () => {
+    // 22:59:30 UTC = 06:59 in Singapore, in the 06:45 slot.
+    const slot = quarterSlot(new Date('2026-10-20T22:59:30Z'), 'Asia/Singapore');
+    expect(slot).toEqual({ ymd: '2026-10-21', hhmm: '06:45' });
+    const searching = [{ active: true, search: { enabled: true, queries: [{ q: 'Prodia', lang: 'id' as const }], exclude: [], sources: { googleNews: true, gdelt: true } } }];
+    const schedule = (dailyTime: string, enabled = true) => ({ schedule: { enabled, dailyTime } });
+    expect(isDue(schedule('06:45'), searching, slot)).toBe(true);
+    expect(isDue(schedule('06:00'), searching, slot)).toBe(false);
+    expect(isDue(schedule('06:45', false), searching, slot)).toBe(false);
+    expect(isDue(schedule('06:45'), [], slot)).toBe(false); // a new account without categories
+    expect(isDue(schedule('06:45'), [{ ...searching[0]!, active: false }], slot)).toBe(false); // backfill still running
   });
 });
 

@@ -1,8 +1,9 @@
 import type { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
-import { errorResponse, noContent, notFound, requireAccess, setRequestOrigin } from './http';
+import { errorResponse, getUser, noContent, notFound, requireAccess, setRequestOrigin, type AuthUser } from './http';
 import { logger } from './logger';
 
-export type RouteHandler = (event: APIGatewayProxyEvent) => Promise<APIGatewayProxyResult>;
+/** `user` is the signed-in account: handlers scope every read and write to `user.sub`. */
+export type RouteHandler = (event: APIGatewayProxyEvent, user: AuthUser) => Promise<APIGatewayProxyResult>;
 
 /**
  * Minimal router for API Gateway REST proxy events. Routes are keyed by
@@ -17,7 +18,7 @@ export function createRouter(routes: Record<string, RouteHandler>) {
     try {
       requireAccess(event);
       if (!handler) throw notFound(`No route for ${key}`);
-      return await handler(event);
+      return await handler(event, getUser(event));
     } catch (err) {
       logger.warn('Request failed', { route: key });
       return errorResponse(err);

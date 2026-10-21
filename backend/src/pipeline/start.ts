@@ -74,12 +74,13 @@ export function buildBackfillTasks(category: Category, settings: Settings, month
   return tasks;
 }
 
-export async function startDaily(trigger: 'schedule' | 'manual'): Promise<PipelineState> {
-  const [categories, settings, last] = await Promise.all([listCategories(), getSettings(), lastSuccessfulDailyRun()]);
+/** Start one account's daily run: its categories, sources and window since its last successful run. */
+export async function startDaily(sub: string, trigger: 'schedule' | 'manual'): Promise<PipelineState> {
+  const [categories, settings, last] = await Promise.all([listCategories(sub), getSettings(sub), lastSuccessfulDailyRun(sub)]);
   const window = dailyWindow(last ? new Date(last.window.to) : null);
   const runId = timeId();
   const tasks = buildDailyTasks(categories, settings, window.from, window.to);
-  await createRun({
+  await createRun(sub, {
     id: runId,
     type: 'daily',
     categoryId: null,
@@ -87,16 +88,16 @@ export async function startDaily(trigger: 'schedule' | 'manual'): Promise<Pipeli
     startedAt: new Date().toISOString(),
     trigger,
   });
-  return { runId, runType: 'daily', categoryId: null, tasks };
+  return { sub, runId, runType: 'daily', categoryId: null, tasks };
 }
 
-export async function startBackfill(categoryId: string, months: number): Promise<PipelineState> {
-  const [category, settings] = await Promise.all([getCategory(categoryId), getSettings()]);
+export async function startBackfill(sub: string, categoryId: string, months: number): Promise<PipelineState> {
+  const [category, settings] = await Promise.all([getCategory(sub, categoryId), getSettings(sub)]);
   if (!category) throw new Error(`Category ${categoryId} not found`);
   const runId = timeId();
   const now = new Date();
   const tasks = buildBackfillTasks(category, settings, months, now);
-  await createRun({
+  await createRun(sub, {
     id: runId,
     type: 'backfill',
     categoryId,
@@ -104,9 +105,9 @@ export async function startBackfill(categoryId: string, months: number): Promise
     startedAt: now.toISOString(),
     trigger: 'category',
   });
-  await updateCategory(categoryId, (c) => ({
+  await updateCategory(sub, categoryId, (c) => ({
     ...c,
     backfill: { ...c.backfill, months, status: 'running', runId, startedAt: now.toISOString(), completedAt: null, error: null },
   }));
-  return { runId, runType: 'backfill', categoryId, tasks };
+  return { sub, runId, runType: 'backfill', categoryId, tasks };
 }

@@ -1,6 +1,6 @@
 import { prefilterHeadlines } from '../ai/tasks/prefilter';
 import { UsageCollector } from '../ai/usage';
-import { createArticle, putAliases } from '../repo/articles';
+import { createArticle } from '../repo/articles';
 import { listCategories } from '../repo/categories';
 import { addRunStats, recordRunUsage } from '../repo/runs';
 import { getSettings } from '../repo/settings';
@@ -12,7 +12,7 @@ import type { PipelineState } from './state';
 
 /**
  * Screen headlines with the LLM. Irrelevant ones are stored as FILTERED (so
- * they never resurface, and can be restored for 30 days); relevant ones are
+ * later runs drop them, and they can be restored for 30 days); relevant ones are
  * written as individual S3 items for the enrich Distributed Map.
  */
 export async function prefilterRun(state: PipelineState): Promise<PipelineState> {
@@ -23,7 +23,7 @@ export async function prefilterRun(state: PipelineState): Promise<PipelineState>
     return { ...state, relevantCount: 0, relevantKey };
   }
 
-  const [categories, settings] = await Promise.all([listCategories(), getSettings()]);
+  const [categories, settings] = await Promise.all([listCategories(state.sub), getSettings(state.sub)]);
   const exclude = [...new Set(categories.flatMap((c) => c.search.exclude))];
   const usage = new UsageCollector();
   const decisions = await prefilterHeadlines(
@@ -31,6 +31,7 @@ export async function prefilterRun(state: PipelineState): Promise<PipelineState>
     categories,
     exclude,
     settings.models.prefilter,
+    settings.profile,
     usage,
   );
 
@@ -51,15 +52,12 @@ export async function prefilterRun(state: PipelineState): Promise<PipelineState>
         categoryId: state.categoryId,
         filterReason: d.reason || 'not relevant',
       });
-      if (await createArticle(article)) {
-        await putAliases(article.id, candidateAliases(c));
-        filtered++;
-      }
+      if (await createArticle(state.sub, article, candidateAliases(c))) filtered++;
     }
   }
 
   await putJson(relevantKey, relevant);
-  await addRunStats(state.runId, { filtered });
+  await addRunStats(state.sub, state.runId, { filtered });
   await recordRunUsage(state.runId, usage.toEntries());
   return { ...state, relevantCount: relevant.length, relevantKey };
 }

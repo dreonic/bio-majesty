@@ -5,6 +5,7 @@
  *   ANTHROPIC_API_KEY=... npm run try:classify -w backend -- https://example.com/article [provider:model]
  */
 import { DEFAULT_SETTINGS } from '@bio-majesty/shared';
+import { DEFAULT_PROFILE_CONTEXT } from '../src/ai/profile';
 import { classifyArticle } from '../src/ai/tasks/classify';
 import { fetchArticle } from '../src/extract/fetch-article';
 
@@ -28,5 +29,6 @@ const result = await classifyArticle(
   },
   [],
   { ...DEFAULT_SETTINGS.models.tagging, model },
+  DEFAULT_PROFILE_CONTEXT,
 );
 console.log(JSON.stringify(result, null, 2));

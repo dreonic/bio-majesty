@@ -28,28 +28,33 @@ export function decideAction(oldImage: Article | null, newImage: Article | null)
   return 'none';
 }
 
-function image(raw: Record<string, unknown> | undefined): Article | null {
+/** An account's article item (PK USER#<sub>, SK ART#<id>), with the account it belongs to. */
+export function image(raw: Record<string, unknown> | undefined): { sub: string; article: Article } | null {
   if (!raw) return null;
   const item = unmarshall(raw as Record<string, AttributeValue>);
-  return String(item.PK ?? '').startsWith('ART#') ? (item as unknown as Article) : null;
+  const pk = String(item.PK ?? '');
+  if (!pk.startsWith('USER#') || !String(item.SK ?? '').startsWith('ART#')) return null;
+  // A soft-deleted (filtered) article is never saved, so it is never in the index.
+  return { sub: pk.slice('USER#'.length), article: item as unknown as Article };
 }
 
 export async function handler(event: DynamoDBStreamEvent): Promise<DynamoDBBatchResponse> {
   const failures: { itemIdentifier: string }[] = [];
   for (const record of event.Records) {
-    const oldImage = image(record.dynamodb?.OldImage);
-    const newImage = image(record.dynamodb?.NewImage);
-    const action = decideAction(oldImage, newImage);
+    const before = image(record.dynamodb?.OldImage);
+    const after = image(record.dynamodb?.NewImage);
+    const action = decideAction(before?.article ?? null, after?.article ?? null);
     if (action === 'none') continue;
+    const sub = (after ?? before)!.sub;
     try {
-      if (action === 'index' && newImage) {
-        const chunks = await indexArticle(newImage);
-        await markIndexed(newImage.id, new Date().toISOString());
-        logger.info('Indexed article', { id: newImage.id, chunks });
+      if (action === 'index' && after) {
+        const chunks = await indexArticle(sub, after.article);
+        await markIndexed(sub, after.article.id, new Date().toISOString());
+        logger.info('Indexed article', { id: after.article.id, chunks });
       } else if (action === 'delete') {
-        const id = (newImage ?? oldImage)!.id;
-        await deleteArticleVectors(id);
-        if (newImage) await markIndexed(id, null);
+        const id = (after ?? before)!.article.id;
+        await deleteArticleVectors(sub, id);
+        if (after) await markIndexed(sub, id, null);
         logger.info('Removed article from index', { id });
       }
     } catch (err) {

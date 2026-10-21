@@ -6,27 +6,63 @@ import {
   CategoryInputSchema,
   DEFAULT_SETTINGS,
   SettingsSchema,
+  SettingsUpdateSchema,
+  SymbolSchema,
   categoryColorFor,
   detectVolumeAnomalies,
+  displaySymbol,
   effectiveRationale,
   effectiveSummary,
   effectiveTags,
+  intervalLabel,
   parseModelRef,
+  quarterHour,
   type Article,
   type Candle,
 } from '../src';
 
 describe('settings', () => {
-  it('ships valid defaults (opus 5.5, context off, volume alerts on)', () => {
+  it('ships valid defaults (opus 5.5, context off, volume alerts on, the Prodia profile)', () => {
     expect(SettingsSchema.parse(DEFAULT_SETTINGS)).toEqual(DEFAULT_SETTINGS);
     expect(DEFAULT_SETTINGS.models.tagging.model).toBe('anthropic:claude-opus-5-5');
     expect(DEFAULT_SETTINGS.learning.useFeedbackContext).toBe(false);
-    expect(DEFAULT_SETTINGS.stock).toMatchObject({ symbol: 'PRDA.JK', volumeAlerts: true, volumeRatio: 2.5 });
+    expect(DEFAULT_SETTINGS.stock).toEqual({ symbols: ['PRDA.JK'], volumeAlerts: true, volumeRatio: 2.5 });
+    expect(DEFAULT_SETTINGS.profile).toMatchObject({ subject: 'the Prodia group', sentimentSymbol: 'PRDA.JK' });
+  });
+
+  it('keeps daily runs on quarter hours', () => {
+    expect(quarterHour('06:10')).toBe('06:00');
+    expect(quarterHour('23:59')).toBe('23:45');
+    expect(quarterHour('nonsense')).toBe('nonsense');
+    expect(SettingsUpdateSchema.safeParse({ schedule: { dailyTime: '06:10' } }).success).toBe(false);
+    expect(SettingsUpdateSchema.safeParse({ schedule: { dailyTime: '06:15' } }).success).toBe(true);
+  });
+
+  it('lets a profile update leave the symbol list alone (assets are added via /stock/assets)', () => {
+    expect(SettingsUpdateSchema.parse({ profile: { sentimentSymbol: null } })).toEqual({ profile: { sentimentSymbol: null } });
+    expect(SettingsUpdateSchema.parse({ stock: { symbols: ['AAPL'] } })).toEqual({ stock: {} });
   });
 
   it('parses model references', () => {
     expect(parseModelRef('openrouter:deepseek/deepseek-chat')).toEqual({ provider: 'openrouter', modelId: 'deepseek/deepseek-chat' });
     expect(parseModelRef('no-provider')).toBeNull();
+  });
+});
+
+describe('asset symbols', () => {
+  it('accepts Yahoo symbols of every kind, upper-cased', () => {
+    for (const s of ['PRDA.JK', 'aapl', '^JKSE', 'USDIDR=X', 'BTC-USD', 'GC=F', 'D05.SI']) expect(SymbolSchema.safeParse(s).success, s).toBe(true);
+    expect(SymbolSchema.parse(' btc-usd ')).toBe('BTC-USD');
+    for (const s of ['', 'not a symbol', 'A'.repeat(21), '#X']) expect(SymbolSchema.safeParse(s).success, s).toBe(false);
+  });
+
+  it('shows tickers without the exchange suffix and names intervals', () => {
+    expect(displaySymbol('PRDA.JK')).toBe('PRDA');
+    expect(displaySymbol('BTC-USD')).toBe('BTC-USD');
+    expect(displaySymbol('^JKSE')).toBe('^JKSE');
+    expect(intervalLabel('15m')).toBe('15-min');
+    expect(intervalLabel('1h')).toBe('1-hour');
+    expect(intervalLabel('1d')).toBe('Daily');
   });
 });
 

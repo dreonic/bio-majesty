@@ -8,12 +8,12 @@ import { cn } from '../../lib/cn';
 import { formatDate, formatDateTime, relativeTime } from '../../lib/format';
 import { useBulkReview, useCategories, useCounts, useDeleteNews, useNews, useReview } from '../../lib/queries';
 import { ArticleCard, type ArticleCardHandle } from '../news/ArticleCard';
-import { useChartFocus } from '../stock/chart-focus';
 
 /**
  * Review queue: every AI-suggested article waits here until the exec saves
- * (with optional edits) or skips it. Skipped articles go to the recycle bin,
- * where they can be restored or deleted for good. Keyboard: J/K move, S save, X skip, E details.
+ * (with optional edits) or skips it. Skipped articles go to the recycle bin (later runs
+ * leave them out while they are there), where they can be restored or deleted for good
+ * (then a later run may find them again). Keyboard: J/K move, S save, X skip, E details.
  */
 export function ReviewTab() {
   const pending = useNews({ status: 'PENDING', limit: 100 });
@@ -29,15 +29,6 @@ export function ReviewTab() {
   const cardRefs = useRef(new Map<string, ArticleCardHandle>());
   const skipped = counts.data?.skipped ?? 0;
 
-  // Once the exec clicks a card or moves with J/K, the chart highlights the focused card
-  // (and keeps following it when Save/Skip moves the focus to the next one).
-  const { focus: focusChart } = useChartFocus();
-  const [followChart, setFollowChart] = useState(false);
-  const current = items[focus];
-  useEffect(() => {
-    if (followChart) focusChart(current ?? null);
-  }, [followChart, current, focusChart]);
-
   useEffect(() => {
     if (focus >= items.length) setFocus(Math.max(0, items.length - 1));
   }, [items.length, focus]);
@@ -47,10 +38,8 @@ export function ReviewTab() {
       const target = e.target as HTMLElement;
       if (target.closest('input, textarea, select, [role="dialog"], [role="menu"]') || e.metaKey || e.ctrlKey || e.altKey) return;
       const current = items[focus];
-      if (e.key === 'j' || e.key === 'k') {
-        setFocus((f) => (e.key === 'j' ? Math.min(items.length - 1, f + 1) : Math.max(0, f - 1)));
-        setFollowChart(true);
-      } else if (current && e.key === 's') cardRefs.current.get(current.id)?.save();
+      if (e.key === 'j' || e.key === 'k') setFocus((f) => (e.key === 'j' ? Math.min(items.length - 1, f + 1) : Math.max(0, f - 1)));
+      else if (current && e.key === 's') cardRefs.current.get(current.id)?.save();
       else if (current && e.key === 'x') cardRefs.current.get(current.id)?.skip();
       else if (current && e.key === 'e') cardRefs.current.get(current.id)?.details();
       else return;
@@ -73,7 +62,7 @@ export function ReviewTab() {
   };
 
   const emptyBin = () => {
-    if (!window.confirm(`Delete all ${articleCount(skipped)} in the recycle bin for good? This can't be undone.`)) return;
+    if (!window.confirm(`Delete all ${articleCount(skipped)} in the recycle bin for good? They may show up again in later runs or backfills.`)) return;
     purge.mutate(
       { status: 'REJECTED' },
       { onSuccess: (res) => toast.success(`Deleted ${articleCount(res.deleted)}`), onError: toast.error },
@@ -136,10 +125,7 @@ export function ReviewTab() {
                       article={a}
                       categories={categories}
                       focused={index === focus}
-                      onFocus={() => {
-                        setFocus(index);
-                        setFollowChart(true);
-                      }}
+                      onFocus={() => setFocus(index)}
                       handleRef={(h) => {
                         if (h) cardRefs.current.set(a.id, h);
                         else cardRefs.current.delete(a.id);
@@ -213,10 +199,16 @@ function FilteredSection({ count }: { count: number }) {
 
 const articleCount = (n: number) => `${n} article${n === 1 ? '' : 's'}`;
 
+/** What deleting does to later runs: skipped news is forgotten, filtered news stays filtered out. */
+const AFTER_DELETE: Record<DeletableStatus, string> = {
+  REJECTED: 'They may show up again in later runs or backfills.',
+  FILTERED: "They'll stay filtered out in later runs.",
+};
+
 /**
  * Filtered (by the AI) or skipped (by the exec) articles, each restorable to the review
- * queue. With `selectable`, articles can also be deleted for good (not to the recycle bin),
- * one at a time or picked with checkboxes and restored or deleted together.
+ * queue. With `selectable`, articles can also be deleted (not to the recycle bin), one at a
+ * time or picked with checkboxes and restored or deleted together.
  */
 function RestorableList({ status, selectable = false, className }: { status: DeletableStatus; selectable?: boolean; className?: string }) {
   const list = useNews({ status, limit: 50 });
@@ -258,7 +250,7 @@ function RestorableList({ status, selectable = false, className }: { status: Del
       },
     );
   const deleteChosen = () => {
-    if (!window.confirm(`Delete ${articleCount(chosen.length)} for good? They won't go to the recycle bin.`)) return;
+    if (!window.confirm(`Delete ${articleCount(chosen.length)}? ${AFTER_DELETE[status]}`)) return;
     removeChosen.mutate(
       { ids: chosen },
       {
@@ -322,7 +314,7 @@ function RestorableList({ status, selectable = false, className }: { status: Del
                   variant="ghost"
                   className="hover:text-critical"
                   icon={<Trash2 className="size-4" />}
-                  title="Delete for good (it doesn't go to the recycle bin)"
+                  title={`Delete (not to the recycle bin). ${AFTER_DELETE[status]}`}
                   onClick={() => removeOne.mutate({ ids: [a.id] }, { onSuccess: () => toast.success('Deleted'), onError: toast.error })}
                 >
                   Delete

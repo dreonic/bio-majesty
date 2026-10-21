@@ -19,15 +19,15 @@ function canBackfill(c: Category): boolean {
   return c.search.enabled && c.search.queries.length > 0;
 }
 
-async function launchBackfill(category: Category, months: number): Promise<Category> {
-  const pending = await updateCategory(category.id, (c) => ({
+async function launchBackfill(sub: string, category: Category, months: number): Promise<Category> {
+  const pending = await updateCategory(sub, category.id, (c) => ({
     ...c,
     backfill: { ...c.backfill, months, status: 'pending', error: null },
   }));
   try {
-    await startBackfillRun(category.id, months);
+    await startBackfillRun(sub, category.id, months);
   } catch (err) {
-    await updateCategory(category.id, (c) => ({
+    await updateCategory(sub, category.id, (c) => ({
       ...c,
       active: true,
       backfill: { ...c.backfill, status: 'failed', error: errorMessage(err) },
@@ -38,11 +38,11 @@ async function launchBackfill(category: Category, months: number): Promise<Categ
 }
 
 export const handler = createRouter({
-  'GET /categories': async () => json(200, { items: await listCategories() }),
+  'GET /categories': async (_event, user) => json(200, { items: await listCategories(user.sub) }),
 
-  'POST /categories': async (event) => {
+  'POST /categories': async (event, user) => {
     const input = parseBody(event, CategoryInputSchema);
-    const existing = await listCategories();
+    const existing = await listCategories(user.sub);
     if (existing.some((c) => c.name.toLowerCase() === input.name.toLowerCase())) {
       throw conflict(`A category named "${input.name}" already exists`);
     }
@@ -59,14 +59,14 @@ export const handler = createRouter({
       createdAt: now,
       updatedAt: now,
     };
-    await putCategory(category);
-    const saved = !category.active && canBackfill(category) ? await launchBackfill(category, input.backfillMonths) : category;
+    await putCategory(user.sub, category);
+    const saved = !category.active && canBackfill(category) ? await launchBackfill(user.sub, category, input.backfillMonths) : category;
     return json(201, saved);
   },
 
-  'PATCH /categories/{id}': async (event) => {
+  'PATCH /categories/{id}': async (event, user) => {
     const patch = parseBody(event, CategoryUpdateSchema);
-    const updated = await updateCategory(pathParam(event, 'id'), (c) => ({
+    const updated = await updateCategory(user.sub, pathParam(event, 'id'), (c) => ({
       ...c,
       ...(patch.name !== undefined ? { name: patch.name } : {}),
       ...(patch.description !== undefined ? { description: patch.description } : {}),
@@ -78,27 +78,27 @@ export const handler = createRouter({
     return json(200, updated);
   },
 
-  'DELETE /categories/{id}': async (event) => {
+  'DELETE /categories/{id}': async (event, user) => {
     const id = pathParam(event, 'id');
-    if (!(await getCategory(id))) throw notFound('Category not found');
-    await deleteCategory(id);
+    if (!(await getCategory(user.sub, id))) throw notFound('Category not found');
+    await deleteCategory(user.sub, id);
     return noContent();
   },
 
-  'POST /categories/{id}/backfill': async (event) => {
+  'POST /categories/{id}/backfill': async (event, user) => {
     const { months } = parseBody(event, BackfillRequestSchema);
-    const category = await getCategory(pathParam(event, 'id'));
+    const category = await getCategory(user.sub, pathParam(event, 'id'));
     if (!category) throw notFound('Category not found');
     if (!canBackfill(category)) throw badRequest('Add at least one search query before running a backfill');
     if (category.backfill.status === 'running' || category.backfill.status === 'pending') {
       throw conflict('A backfill is already in progress for this category');
     }
-    return json(202, await launchBackfill(category, months));
+    return json(202, await launchBackfill(user.sub, category, months));
   },
 
-  'POST /categories/suggest-queries': async (event) => {
+  'POST /categories/suggest-queries': async (event, user) => {
     const input = parseBody(event, SuggestQueriesRequestSchema);
-    const settings = await getSettings();
-    return json(200, await suggestQueries(input, settings.models.querySuggest));
+    const settings = await getSettings(user.sub);
+    return json(200, await suggestQueries(input, settings.models.querySuggest, settings.profile));
   },
 });

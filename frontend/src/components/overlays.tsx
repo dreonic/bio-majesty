@@ -1,7 +1,7 @@
 import * as Dialog from '@radix-ui/react-dialog';
 import * as Popover from '@radix-ui/react-popover';
 import { Check, ChevronDown, X } from 'lucide-react';
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { cn } from '../lib/cn';
 
 /** Right-hand side sheet (article details, editors). */
@@ -163,6 +163,70 @@ export function MultiSelect({
               Clear selection
             </button>
           )}
+        </Popover.Content>
+      </Popover.Portal>
+    </Popover.Root>
+  );
+}
+
+export interface MenuOption extends Option {
+  /** Second line under the label (e.g. an asset's name and exchange). */
+  detail?: string;
+}
+
+/** Pick one option from a popover list; the trigger shows `children` with a chevron (e.g. the stock panel's ticker). */
+export function MenuSelect({
+  options,
+  value,
+  onChange,
+  children,
+  label,
+  footer,
+  className,
+}: {
+  options: MenuOption[];
+  value: string;
+  onChange: (v: string) => void;
+  children: ReactNode;
+  /** Accessible name of the trigger. */
+  label: string;
+  footer?: ReactNode;
+  className?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <Popover.Root open={open} onOpenChange={setOpen}>
+      <Popover.Trigger aria-label={label} className={cn('inline-flex min-w-0 items-center gap-1 rounded-md text-left hover:bg-wash', className)}>
+        {children}
+        <ChevronDown className="size-4 shrink-0 text-muted" aria-hidden />
+      </Popover.Trigger>
+      <Popover.Portal>
+        <Popover.Content align="start" sideOffset={4} className="z-50 max-h-80 w-72 overflow-y-auto rounded-md border border-hairline bg-raised p-1 shadow-lg">
+          <div role="menu" aria-label={label}>
+            {options.map((o) => {
+              const selected = o.value === value;
+              return (
+                <button
+                  key={o.value}
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked={selected}
+                  onClick={() => {
+                    onChange(o.value);
+                    setOpen(false);
+                  }}
+                  className={cn('flex w-full items-start gap-2 rounded px-2 py-1.5 text-left hover:bg-wash', selected && 'bg-accent-wash')}
+                >
+                  <Check className={cn('mt-0.5 size-4 shrink-0', selected ? 'text-accent-strong' : 'invisible')} aria-hidden />
+                  <span className="min-w-0">
+                    <span className="block truncate text-sm font-medium text-ink">{o.label}</span>
+                    {o.detail && <span className="block truncate text-xs text-ink-2">{o.detail}</span>}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+          {footer && <div className="mt-1 border-t border-hairline pt-1">{footer}</div>}
         </Popover.Content>
       </Popover.Portal>
     </Popover.Root>

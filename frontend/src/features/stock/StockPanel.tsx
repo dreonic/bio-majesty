@@ -1,16 +1,26 @@
-import { candleDate, STOCK_RANGES, type Candle, type StockExportInterval, type StockRange, type VolumeAnomaly } from '@bio-majesty/shared';
-import { AlertTriangle, ArrowDownRight, ArrowUpRight, BarChart3, BellRing, ChevronDown, ChevronRight, Clock, Download, PanelRightClose, Table2 } from 'lucide-react';
+import {
+  candleDate,
+  displaySymbol,
+  INTRADAY_RANGES,
+  intervalLabel,
+  STOCK_RANGES,
+  type Candle,
+  type StockAsset,
+  type StockExportInterval,
+  type StockRange,
+  type VolumeAnomaly,
+} from '@bio-majesty/shared';
+import { AlertTriangle, ArrowDownRight, ArrowUpRight, BarChart3, BellRing, ChevronDown, ChevronRight, Clock, Download, PanelRightClose, Settings, Table2 } from 'lucide-react';
 import { useMemo, useState } from 'react';
-import { SENTIMENT_META, SentimentBadge } from '../../components/tags';
+import { Link } from 'react-router';
+import { MenuSelect } from '../../components/overlays';
 import { useToast } from '../../components/toast';
 import { Button, EmptyState, Spinner } from '../../components/ui';
 import { cn } from '../../lib/cn';
 import { downloadFile } from '../../lib/download';
 import { formatClock, formatCompact, formatDate, formatPercent, formatPrice, formatSigned, formatTime, timeZoneLabel } from '../../lib/format';
 import { useStoredState } from '../../lib/hooks';
-import { useAnomalies, useStock, useStockExport, useStockMarkers } from '../../lib/queries';
-import { useOpenArticle } from '../news/ArticleSheet';
-import { useChartFocus } from './chart-focus';
+import { useAnomalies, useStock, useStockAssets, useStockExport } from '../../lib/queries';
 import { StockChart } from './StockChart';
 
 /** How the unusual-volume list names the span of each range. */
@@ -25,36 +35,101 @@ const RANGE_SPAN: Record<StockRange, string> = {
   MAX: 'since listing',
 };
 
-/** PRDA quote, chart (or table), unusual-volume days and the saved news plotted on the chart. */
+/** The account's assets: pick one with the ticker dropdown. */
 export function StockPanel({ onCollapse }: { onCollapse?: () => void }) {
-  const [range, setRange] = useStoredState<StockRange>('bm:stock-range', '3M');
+  const assets = useStockAssets();
+  const [stored, setStored] = useStoredState<string>('bm:stock-symbol', '');
+  const items = assets.data ?? [];
+  const asset = items.find((a) => a.symbol === stored) ?? items[0];
+
+  if (assets.isLoading) {
+    return (
+      <div className="flex h-full items-center justify-center bg-surface">
+        <Spinner />
+      </div>
+    );
+  }
+  if (!asset) {
+    return (
+      <div className="flex h-full flex-col bg-surface">
+        {onCollapse && (
+          <div className="flex justify-end px-3 pt-3">
+            <CollapseButton onCollapse={onCollapse} />
+          </div>
+        )}
+        <EmptyState icon={<BarChart3 className="size-8" />} title="No assets yet">
+          Add a stock, index, currency or other asset in <Link to="/settings" className="text-accent-strong hover:underline">Settings</Link> to follow its price here.
+        </EmptyState>
+      </div>
+    );
+  }
+  return <AssetView key={asset.symbol} asset={asset} assets={items} onSelect={setStored} onCollapse={onCollapse} />;
+}
+
+function CollapseButton({ onCollapse }: { onCollapse: () => void }) {
+  return (
+    <button onClick={onCollapse} className="rounded-md p-1 text-muted hover:bg-wash hover:text-ink" aria-label="Collapse the stock panel" title="Collapse panel">
+      <PanelRightClose className="size-4" />
+    </button>
+  );
+}
+
+/** Quote, chart (or table), unusual-volume days and downloads of one asset. */
+function AssetView({
+  asset,
+  assets,
+  onSelect,
+  onCollapse,
+}: {
+  asset: StockAsset;
+  assets: StockAsset[];
+  onSelect: (symbol: string) => void;
+  onCollapse?: () => void;
+}) {
+  const [storedRange, setRange] = useStoredState<StockRange>('bm:stock-range', '3M');
+  const ranges = asset.intradayInterval ? STOCK_RANGES : STOCK_RANGES.filter((r) => !INTRADAY_RANGES.includes(r));
+  // Daily-only assets (e.g. mutual funds) have no 1D/5D view.
+  const range = ranges.includes(storedRange) ? storedRange : '3M';
   const [view, setView] = useState<'chart' | 'table'>('chart');
-  const [selectedDay, setSelectedDay] = useState<number | null>(null);
-  const stock = useStock(range);
+  const stock = useStock(asset.symbol, range);
   const data = stock.data;
   const intraday = data?.interval === '15m';
-  // Trading date of the first candle (the API reads it as a Jakarta day): markers and the
-  // unusual-volume list cover the same span as the chart.
+  // Trading date of the first candle (the API reads it on the asset's calendar): the
+  // unusual-volume list covers the same span as the chart.
   const firstDay = data?.candles.length ? candleDate(data.candles[0]!.time) : null;
-  const anomalies = useAnomalies(firstDay);
-  const markers = useStockMarkers(intraday ? null : firstDay).data ?? [];
-  const { focused } = useChartFocus();
-  const focusBeforeRange = Boolean(focused && data?.candles.length && focused.time < data.candles[0]!.time);
-  const dayNews = useMemo(() => (selectedDay ? markers.filter((m) => m.time === selectedDay) : []), [markers, selectedDay]);
+  const anomalies = useAnomalies(asset.hasVolume ? asset.symbol : null, firstDay);
   const highlightTimes = useMemo(() => new Set((anomalies.data?.items ?? []).map((a) => a.time)), [anomalies.data]);
-  const openArticle = useOpenArticle();
   const q = data?.quote;
   const up = (q?.change ?? 0) >= 0;
+  const price = (n: number) => formatPrice(n, asset.decimals);
 
   return (
     <div className="flex h-full flex-col bg-surface">
       <header className="shrink-0 border-b border-hairline px-4 pt-3 pb-3">
         <div className="flex items-start justify-between gap-2">
-          <div>
-            <p className="text-sm font-semibold text-ink">
-              {data?.symbol.replace('.JK', '') ?? 'PRDA'} <span className="font-normal text-ink-2">· IDX</span>
-            </p>
-            <p className="text-xs text-ink-2">PT Prodia Widyahusada Tbk</p>
+          <div className="min-w-0">
+            <MenuSelect
+              label="Choose an asset"
+              value={asset.symbol}
+              onChange={onSelect}
+              options={assets.map((a) => ({
+                value: a.symbol,
+                label: displaySymbol(a.symbol),
+                detail: [a.name, a.exchange].filter(Boolean).join(' · ') || a.symbol,
+              }))}
+              footer={
+                <Link to="/settings" className="flex items-center gap-2 rounded px-2 py-1.5 text-xs text-ink-2 hover:bg-wash hover:text-ink">
+                  <Settings className="size-3.5" aria-hidden /> Add or remove assets in Settings
+                </Link>
+              }
+              className="-ml-1 px-1 py-0.5"
+            >
+              <span className="truncate text-sm font-semibold text-ink">
+                {displaySymbol(asset.symbol)}
+                {asset.exchange && <span className="font-normal text-ink-2"> · {asset.exchange}</span>}
+              </span>
+            </MenuSelect>
+            {asset.name && <p className="truncate text-xs text-ink-2">{asset.name}</p>}
           </div>
           <div className="flex items-start gap-1">
             <div className="flex flex-col items-end gap-1">
@@ -67,48 +142,42 @@ export function StockPanel({ onCollapse }: { onCollapse?: () => void }) {
                 </span>
               )}
             </div>
-            {onCollapse && (
-              <button onClick={onCollapse} className="rounded-md p-1 text-muted hover:bg-wash hover:text-ink" aria-label="Collapse the stock panel" title="Collapse panel">
-                <PanelRightClose className="size-4" />
-              </button>
-            )}
+            {onCollapse && <CollapseButton onCollapse={onCollapse} />}
           </div>
         </div>
         {q ? (
           <div className="mt-2">
             <div className="flex flex-wrap items-baseline gap-x-3">
-              <span className="text-[44px] leading-none font-semibold text-ink">{formatPrice(q.price)}</span>
+              <span className="text-[44px] leading-none font-semibold text-ink">{price(q.price)}</span>
               {q.change !== null && (
                 <span className={cn('inline-flex items-center gap-0.5 text-base font-semibold', up ? 'text-good-text' : 'text-critical')}>
                   {up ? <ArrowUpRight className="size-4" aria-hidden /> : <ArrowDownRight className="size-4" aria-hidden />}
-                  {formatSigned(q.change)} ({formatPercent(q.changePercent ?? 0)})
+                  {formatSigned(q.change, asset.decimals)} ({formatPercent(q.changePercent ?? 0)})
                   <span className="sr-only">{up ? 'up' : 'down'} today</span>
                 </span>
               )}
             </div>
             <p className="tabular mt-1.5 text-xs text-ink-2">
-              {q.currency ?? 'IDR'} · Vol {q.volume !== null ? formatCompact(q.volume) : '—'}
-              {q.dayLow !== null && q.dayHigh !== null ? ` · Day ${formatPrice(q.dayLow)}–${formatPrice(q.dayHigh)}` : ''}
-              {q.previousClose !== null ? ` · Prev ${formatPrice(q.previousClose)}` : ''}
+              {q.currency ?? asset.currency ?? ''}
+              {asset.hasVolume ? ` · Vol ${q.volume !== null ? formatCompact(q.volume) : '—'}` : ''}
+              {q.dayLow !== null && q.dayHigh !== null ? ` · Day ${price(q.dayLow)}–${price(q.dayHigh)}` : ''}
+              {q.previousClose !== null ? ` · Prev ${price(q.previousClose)}` : ''}
             </p>
             <p className="mt-0.5 text-[11px] text-muted">
               {q.marketTime ? `Market time ${formatDate(q.marketTime)} ${formatTime(q.marketTime)}` : ''} · via {q.provider}
             </p>
           </div>
         ) : (
-          !stock.isLoading && <p className="mt-2 text-sm text-ink-2">No quote yet — data loads after the first scheduled refresh.</p>
+          !stock.isLoading && <p className="mt-2 text-sm text-ink-2">No quote yet — data loads after the first refresh (within 15 minutes).</p>
         )}
       </header>
 
       <div className="flex shrink-0 items-center justify-between gap-2 px-3 py-2">
         <div className="flex flex-wrap gap-0.5" role="group" aria-label="Range">
-          {STOCK_RANGES.map((r) => (
+          {ranges.map((r) => (
             <button
               key={r}
-              onClick={() => {
-                setRange(r);
-                setSelectedDay(null);
-              }}
+              onClick={() => setRange(r)}
               aria-pressed={range === r}
               className={cn('h-7 rounded px-2 text-xs font-medium', range === r ? 'bg-ink text-white' : 'text-ink-2 hover:bg-wash')}
             >
@@ -133,61 +202,22 @@ export function StockPanel({ onCollapse }: { onCollapse?: () => void }) {
           </div>
         ) : !data?.candles.length ? (
           <EmptyState title="No price data for this range yet">
-            {data?.lastError ? `Last refresh error: ${data.lastError}` : 'Intraday data appears during IDX trading hours.'}
+            {data?.lastError ? `Last refresh error: ${data.lastError}` : `Intraday data appears during ${asset.exchange ?? 'the market'}'s trading hours.`}
           </EmptyState>
         ) : view === 'chart' ? (
-          <StockChart
-            candles={data.candles}
-            intraday={intraday}
-            markers={markers}
-            focus={focused}
-            highlightTimes={highlightTimes}
-            onDaySelected={setSelectedDay}
-          />
+          <StockChart candles={data.candles} intraday={intraday} decimals={asset.decimals} highlightTimes={highlightTimes} />
         ) : (
-          <CandleTable candles={data.candles} intraday={intraday} />
+          <CandleTable candles={data.candles} intraday={intraday} decimals={asset.decimals} />
         )}
       </div>
 
-      {view === 'chart' && !intraday && (
-        <div className="shrink-0 border-t border-hairline px-4 py-2.5 text-xs">
-          {selectedDay && dayNews.length ? (
-            <div className="space-y-1.5">
-              <p className="font-medium text-ink">Saved news on {formatDate(selectedDay * 1000)}</p>
-              {dayNews.map((m) => (
-                <button key={m.articleId} onClick={() => openArticle(m.articleId)} className="flex w-full items-start gap-2 text-left hover:underline">
-                  <SentimentBadge sentiment={m.sentiment} className="shrink-0" />
-                  <span className="line-clamp-2 text-ink">{m.title}</span>
-                </button>
-              ))}
-            </div>
-          ) : (
-            <p className="text-ink-2">
-              Saved news: <MarkerKey symbol="▲" sentiment="positive" /> · <MarkerKey symbol="▼" sentiment="negative" /> · <MarkerKey symbol="●" sentiment="neutral" /> ·{' '}
-              <MarkerKey symbol="■" sentiment="undecided" />. Bold volume bars = unusual volume. Click a day to see its articles; click an article in
-              News or Review to highlight it.
-              {focused && focusBeforeRange && (
-                <span className="text-ink"> The selected article ({formatDate(focused.time * 1000)}) is before this range; pick a longer one.</span>
-              )}
-            </p>
-          )}
-        </div>
+      {view === 'chart' && !intraday && asset.hasVolume && (
+        <p className="shrink-0 border-t border-hairline px-4 py-2.5 text-xs text-ink-2">Bold volume bars = unusual volume.</p>
       )}
 
-      <AnomalyList items={anomalies.data?.items ?? []} minRatio={anomalies.data?.minRatio} span={RANGE_SPAN[range]} />
-      <Downloads />
+      {asset.hasVolume && <AnomalyList items={anomalies.data?.items ?? []} minRatio={anomalies.data?.minRatio} span={RANGE_SPAN[range]} />}
+      <Downloads asset={asset} />
     </div>
-  );
-}
-
-function MarkerKey({ symbol, sentiment }: { symbol: string; sentiment: keyof typeof SENTIMENT_META }) {
-  return (
-    <span className="whitespace-nowrap">
-      <span style={{ color: SENTIMENT_META[sentiment].color }} aria-hidden>
-        {symbol}
-      </span>{' '}
-      {SENTIMENT_META[sentiment].label.toLowerCase()}
-    </span>
   );
 }
 
@@ -247,27 +277,31 @@ function AnomalyList({ items, minRatio, span }: { items: VolumeAnomaly[]; minRat
   );
 }
 
-const DOWNLOADS: { interval: StockExportInterval; label: string; title: string }[] = [
-  { interval: '1d', label: 'Daily', title: 'Every daily bar since listing' },
-  { interval: '15m', label: '15-min', title: 'Every stored 15-minute bar' },
-];
-
-/** CSV downloads of every stored bar, whatever range the chart shows. */
-function Downloads() {
+/**
+ * CSV downloads, whatever range the chart shows: every daily bar, and the intraday bars the
+ * market-data source still has (the last 60 days, fetched when asked).
+ */
+function Downloads({ asset }: { asset: StockAsset }) {
   const exportCsv = useStockExport();
   const toast = useToast();
+  const downloads: { interval: StockExportInterval; label: string; title: string }[] = [
+    { interval: '1d', label: 'Daily', title: 'Every daily bar since listing' },
+    ...(asset.intradayInterval
+      ? [{ interval: 'intraday' as const, label: intervalLabel(asset.intradayInterval), title: 'The last 60 days, downloaded from the market-data source' }]
+      : []),
+  ];
   const download = (interval: StockExportInterval) =>
-    exportCsv.mutateAsync(interval).then(({ filename, csv }) => downloadFile(filename, csv), toast.error);
+    exportCsv.mutateAsync({ symbol: asset.symbol, interval }).then(({ filename, csv }) => downloadFile(filename, csv), toast.error);
 
   return (
     <footer className="flex shrink-0 flex-wrap items-center gap-2 border-t border-hairline px-4 py-2 text-xs text-ink-2">
-      <span>Download all data (CSV)</span>
-      {DOWNLOADS.map((d) => (
+      <span>Download (CSV)</span>
+      {downloads.map((d) => (
         <Button
           key={d.interval}
           size="sm"
           icon={<Download className="size-4" />}
-          loading={exportCsv.isPending && exportCsv.variables === d.interval}
+          loading={exportCsv.isPending && exportCsv.variables?.interval === d.interval}
           disabled={exportCsv.isPending}
           onClick={() => void download(d.interval)}
           title={d.title}
@@ -279,9 +313,10 @@ function Downloads() {
   );
 }
 
-function CandleTable({ candles, intraday }: { candles: Candle[]; intraday: boolean }) {
+function CandleTable({ candles, intraday, decimals }: { candles: Candle[]; intraday: boolean; decimals: number }) {
   // Every bar in the selected range, newest first.
   const rows = [...candles].reverse();
+  const price = (n: number) => formatPrice(n, decimals);
   return (
     <div className="h-full overflow-auto px-3 pb-3">
       <table className="tabular w-full text-xs">
@@ -299,10 +334,10 @@ function CandleTable({ candles, intraday }: { candles: Candle[]; intraday: boole
           {rows.map((c) => (
             <tr key={c.time} className="border-b border-grid/60">
               <td className="py-1 pr-2">{intraday ? `${formatDate(c.time * 1000)} ${formatClock(c.time * 1000)}` : formatDate(c.time * 1000)}</td>
-              <td className="py-1 pr-2 text-right">{formatPrice(c.open)}</td>
-              <td className="py-1 pr-2 text-right">{formatPrice(c.high)}</td>
-              <td className="py-1 pr-2 text-right">{formatPrice(c.low)}</td>
-              <td className={cn('py-1 pr-2 text-right', c.close >= c.open ? 'text-good-text' : 'text-critical')}>{formatPrice(c.close)}</td>
+              <td className="py-1 pr-2 text-right">{price(c.open)}</td>
+              <td className="py-1 pr-2 text-right">{price(c.high)}</td>
+              <td className="py-1 pr-2 text-right">{price(c.low)}</td>
+              <td className={cn('py-1 pr-2 text-right', c.close >= c.open ? 'text-good-text' : 'text-critical')}>{price(c.close)}</td>
               <td className="py-1 text-right">{formatCompact(c.volume)}</td>
             </tr>
           ))}

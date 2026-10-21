@@ -85,29 +85,19 @@ export class ApiConstruct extends Construct {
 
     const news = make('News', 'api/news.ts');
     data.dataBucket.grantRead(news);
-    // Deleting skipped/filtered articles also removes their extracted text.
-    data.dataBucket.grantDelete(news, 'articles/*');
+    // Deleting skipped/filtered articles also removes their extracted text (users/<sub>/articles/*).
+    data.dataBucket.grantDelete(news, 'users/*');
 
     const categories = make('Categories', 'api/categories.ts', {
       environment: { BACKFILL_STATE_MACHINE_ARN: pipeline.backfillMachine.stateMachineArn },
     });
     pipeline.backfillMachine.grantStartExecution(categories);
 
+    // Run times live in each account's settings (read by the dispatcher): no schedule to update here.
     const settings = make('Settings', 'api/settings.ts', {
-      environment: {
-        DAILY_STATE_MACHINE_ARN: pipeline.dailyMachine.stateMachineArn,
-        DAILY_SCHEDULE_NAME: pipeline.dailySchedule.scheduleName,
-        DAILY_SCHEDULE_GROUP: 'default',
-      },
+      environment: { DAILY_STATE_MACHINE_ARN: pipeline.dailyMachine.stateMachineArn },
     });
     pipeline.dailyMachine.grantStartExecution(settings);
-    settings.addToRolePolicy(
-      new iam.PolicyStatement({
-        actions: ['scheduler:GetSchedule', 'scheduler:UpdateSchedule'],
-        resources: [pipeline.dailySchedule.scheduleArn],
-      }),
-    );
-    pipeline.schedulerRole.grantPassRole(settings.grantPrincipal);
 
     const stock = make('Stock', 'api/stock.ts', {
       environment: { STOCK_INGEST_FUNCTION: pipeline.stockIngestFn.functionName },
@@ -153,8 +143,9 @@ export class ApiConstruct extends Construct {
     route('/runs', { GET: settings });
     route('/runs/daily', { POST: settings });
 
+    route('/stock/assets', { GET: stock, POST: stock });
+    route('/stock/assets/{symbol}', { DELETE: stock });
     route('/stock/history', { GET: stock });
-    route('/stock/markers', { GET: stock });
     route('/stock/anomalies', { GET: stock });
     route('/stock/export', { GET: stock });
     route('/stock/resync', { POST: stock });

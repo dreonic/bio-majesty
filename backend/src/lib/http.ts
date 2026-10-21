@@ -95,16 +95,18 @@ export function pathParam(event: APIGatewayProxyEvent, name: string): string {
   return decodeURIComponent(value);
 }
 
+/** The signed-in account: every item it owns is keyed by `sub`. */
 export interface AuthUser {
   sub: string;
   email: string | null;
+  name: string | null;
 }
 
 /** Claims injected by the Cognito user-pool authorizer. */
-export function getUser(event: APIGatewayProxyEvent): AuthUser {
-  const claims = (event.requestContext.authorizer?.claims ?? {}) as Record<string, string>;
+export function getUser(event: Pick<APIGatewayProxyEvent, 'requestContext'>): AuthUser {
+  const claims = (event.requestContext?.authorizer?.claims ?? {}) as Record<string, string>;
   if (!claims.sub) throw new HttpError(401, 'unauthorized', 'Missing identity');
-  return { sub: claims.sub, email: claims.email ?? null };
+  return { sub: claims.sub, email: claims.email ?? null, name: claims.name ?? null };
 }
 
 /** Every route needs the dashboard group: signing in alone is not enough (any Google account can). */

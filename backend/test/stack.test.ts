@@ -90,9 +90,11 @@ describe('DashboardStack', () => {
     });
   });
 
-  it('feeds only article items to the indexer', () => {
+  it("feeds only the accounts' article items to the indexer", () => {
     template.hasResourceProperties('AWS::Lambda::EventSourceMapping', {
-      FilterCriteria: { Filters: [{ Pattern: JSON.stringify({ dynamodb: { Keys: { PK: { S: [{ prefix: 'ART#' }] } } } }) }] },
+      FilterCriteria: {
+        Filters: [{ Pattern: JSON.stringify({ dynamodb: { Keys: { PK: { S: [{ prefix: 'USER#' }] }, SK: { S: [{ prefix: 'ART#' }] } } } }) }],
+      },
       FunctionResponseTypes: ['ReportBatchItemFailures'],
     });
   });
@@ -106,20 +108,22 @@ describe('DashboardStack', () => {
     });
   });
 
-  it("runs the daily news run on the exec's clock and stock refreshes on IDX (Jakarta) hours", () => {
-    expect(scheduleZones(template)).toEqual({
-      'cron(0 6 * * ? *)': 'Asia/Singapore',
-      'cron(0/15 9-16 ? * MON-FRI *)': 'Asia/Jakarta',
-      'cron(30 17 ? * MON-FRI *)': 'Asia/Jakarta',
+  it("checks every 15 minutes on the exec's clock for due daily runs and market data", () => {
+    expect(schedules(template)).toEqual({
+      'bio-majesty-test-news-dispatch': { expression: 'cron(0/15 * * * ? *)', timeZone: 'Asia/Singapore' },
+      'bio-majesty-test-stock-refresh': { expression: 'cron(0/15 * * * ? *)', timeZone: 'Asia/Singapore' },
     });
-  });
+    expect(schedules(synth({ timeZone: 'Asia/Tokyo' }))['bio-majesty-test-news-dispatch']?.timeZone).toBe('Asia/Tokyo');
+  }, 60_000);
 
-  it('moves only the daily run when the time zone changes', () => {
-    expect(scheduleZones(synth({ timeZone: 'Asia/Tokyo' }))).toEqual({
-      'cron(0 6 * * ? *)': 'Asia/Tokyo',
-      'cron(0/15 9-16 ? * MON-FRI *)': 'Asia/Jakarta',
-      'cron(30 17 ? * MON-FRI *)': 'Asia/Jakarta',
-    });
+  it('lets only the background jobs list the accounts (the dashboard-users group)', () => {
+    const policies = Object.values(template.findResources('AWS::IAM::Policy')).filter((p) =>
+      JSON.stringify(p.Properties.PolicyDocument).includes('cognito-idp:ListUsersInGroup'),
+    );
+    expect(policies.map((p) => (p.Properties.PolicyName as string).replace(/[A-F0-9]{8}$/, '')).sort()).toEqual([
+      'NewsDispatchServiceRoleDefaultPolicy',
+      'StockIngestServiceRoleDefaultPolicy',
+    ]);
   });
 
   it('passes the time zone to the functions', () => {
@@ -142,9 +146,12 @@ describe('DashboardStack', () => {
   });
 });
 
-/** Schedule expression -> time zone, for all EventBridge schedules in the template. */
-function scheduleZones(t: Template): Record<string, string> {
-  const schedules = Object.values(t.findResources('AWS::Scheduler::Schedule'));
-  expect(schedules).toHaveLength(3);
-  return Object.fromEntries(schedules.map((s) => [s.Properties.ScheduleExpression, s.Properties.ScheduleExpressionTimezone]));
+/** Schedule name -> expression and time zone, for all EventBridge schedules in the template. */
+function schedules(t: Template): Record<string, { expression: string; timeZone: string }> {
+  return Object.fromEntries(
+    Object.values(t.findResources('AWS::Scheduler::Schedule')).map((s) => [
+      s.Properties.Name,
+      { expression: s.Properties.ScheduleExpression, timeZone: s.Properties.ScheduleExpressionTimezone },
+    ]),
+  );
 }
