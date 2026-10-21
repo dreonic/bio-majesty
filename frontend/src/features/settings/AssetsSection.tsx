@@ -2,7 +2,7 @@ import { displaySymbol, intervalLabel, MAX_ASSETS, type StockAsset } from '@bio-
 import { Plus, RefreshCw, Trash2 } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
 import { useToast } from '../../components/toast';
-import { Badge, Button, Card, Field, Input, SectionTitle, Select, Spinner, Switch } from '../../components/ui';
+import { Badge, Button, Card, Input, SectionTitle, Select, Spinner, Switch } from '../../components/ui';
 import { useAddAsset, useRemoveAsset, useResyncStock, useSettings, useStockAssets, useUpdateSettings } from '../../lib/queries';
 
 /** Yahoo's instrument types in plain words. */
@@ -103,14 +103,19 @@ export function AssetsSection() {
         })}
         {!items.length && <li className="px-5 py-4 text-sm text-ink-2">No assets yet.</li>}
       </ul>
-      <form onSubmit={submit} className="flex flex-wrap items-end gap-3 border-t border-hairline px-5 py-4">
-        <Field label="Add an asset" hint="Yahoo Finance symbol, e.g. PRDA.JK, AAPL, ^JKSE (index), USDIDR=X (currency), BTC-USD, GC=F (gold)">
-          <Input value={symbol} onChange={(e) => setSymbol(e.target.value.toUpperCase())} className="w-48" disabled={full} aria-label="Yahoo Finance symbol" />
-        </Field>
-        <Button type="submit" icon={<Plus className="size-4" />} disabled={!symbol.trim() || full} loading={add.isPending}>
-          Add
-        </Button>
-        {full && <span className="pb-2 text-xs text-ink-2">Remove one to add another.</span>}
+      {/* Laid out like Field, with the button on the input's row (the hint goes below both). */}
+      <form onSubmit={submit} className="space-y-1.5 border-t border-hairline px-5 py-4">
+        <label htmlFor="add-asset-symbol" className="block text-sm font-medium text-ink">
+          Add an asset
+        </label>
+        <div className="flex flex-wrap items-center gap-3">
+          <Input id="add-asset-symbol" value={symbol} onChange={(e) => setSymbol(e.target.value.toUpperCase())} className="w-48" disabled={full} />
+          <Button type="submit" icon={<Plus className="size-4" />} disabled={!symbol.trim() || full} loading={add.isPending}>
+            Add
+          </Button>
+          {full && <span className="text-xs text-ink-2">Remove one to add another.</span>}
+        </div>
+        <p className="text-xs text-ink-2">Yahoo Finance symbol, e.g. PRDA.JK, AAPL, ^JKSE (index), USDIDR=X (currency), BTC-USD, GC=F (gold)</p>
       </form>
       <div className="flex flex-wrap items-center gap-3 border-t border-hairline px-5 py-4">
         <Switch
