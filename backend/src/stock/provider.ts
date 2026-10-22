@@ -1,22 +1,29 @@
-import { dateInZone, type Candle, type Quote, type StockAsset } from '@bio-majesty/shared';
+import { dateInZone, type Candle, type Quote, type StockAsset, type StockSource, type SymbolMatch } from '@bio-majesty/shared';
 
 export interface StockSnapshot {
   candles: Candle[];
   quote: Quote | null;
 }
 
+/** What a source needs to fetch an asset's prices: its ID (quotes carry it) and its symbol in the source's format. */
+export type AssetRef = Pick<StockAsset, 'id' | 'symbol'>;
+
 /**
- * Market-data source. Yahoo (free, unofficial) is the default; EODHD is the
- * documented paid alternative. Select with the `stockProvider` CDK context.
+ * A market-data source. Every asset names its own (StockAsset.source); stockProvider(source)
+ * returns the implementation. Symbols are in the source's own format (STOCK_SOURCE_INFO).
  */
 export interface StockProvider {
-  readonly name: string;
+  readonly source: StockSource;
   /** What the source knows about a symbol (throws when it has no data for it). */
   lookup(symbol: string): Promise<StockAsset>;
+  /** Symbols matching a name or ticker, best first: the Add form's search. */
+  search(query: string): Promise<SymbolMatch[]>;
   /** Daily candles; `time` is normalized to 00:00 UTC of the trading date in the asset's time zone. */
-  daily(asset: Pick<StockAsset, 'symbol' | 'timeZone'>, from: Date, to?: Date): Promise<StockSnapshot>;
+  daily(asset: AssetRef & Pick<StockAsset, 'timeZone'>, from: Date, to?: Date): Promise<StockSnapshot>;
   /** Intraday candles (delayed, regular session only); `time` is the bar's real UNIX timestamp. */
-  intraday(symbol: string, from: Date): Promise<StockSnapshot>;
+  intraday(asset: AssetRef, from: Date): Promise<StockSnapshot>;
+  /** The latest (delayed) quote. Assets whose source has no live intraday bars are followed through it during the session. */
+  quote(asset: AssetRef): Promise<Quote | null>;
 }
 
 /** Normalize a bar timestamp to 00:00 UTC of its trading date in `timeZone` (stable daily x-axis). */

@@ -1,19 +1,49 @@
-import { dateInZone, MARKET_TIME_ZONE, type Candle, type StockAsset, type StockRange } from '@bio-majesty/shared';
-import { env } from '../lib/env';
+import {
+  dateInZone,
+  MARKET_TIME_ZONE,
+  parseAssetId,
+  STOCK_SOURCE_INFO,
+  STOCK_SOURCES,
+  type Candle,
+  type StockAsset,
+  type StockRange,
+  type StockSource,
+} from '@bio-majesty/shared';
+import { getSecrets } from '../lib/secrets';
 import { addDays, addMonths } from '../lib/time';
 import { EodhdStockProvider } from './eodhd';
 import type { StockProvider } from './provider';
 import { YahooStockProvider } from './yahoo';
 
-let provider: StockProvider | undefined;
+const PROVIDERS: Record<StockSource, () => StockProvider> = {
+  yahoo: () => new YahooStockProvider(),
+  eodhd: () => new EodhdStockProvider(),
+};
+const providers = new Map<StockSource, StockProvider>();
 
-export function stockProvider(): StockProvider {
-  provider ??= env.stockProvider === 'eodhd' ? new EodhdStockProvider() : new YahooStockProvider();
+/** The provider of a market-data source (one instance per source). */
+export function stockProvider(source: StockSource): StockProvider {
+  let provider = providers.get(source);
+  if (!provider) providers.set(source, (provider = PROVIDERS[source]()));
   return provider;
 }
 
-/** Yahoo serves intraday bars for the last 60 days: what the intraday CSV download asks for. */
-export const INTRADAY_DOWNLOAD_DAYS = 59;
+/** The API key each source needs in the secret (Yahoo needs none). */
+export const SOURCE_SECRET_KEYS: Record<StockSource, string | null> = { yahoo: null, eodhd: 'EODHD_API_KEY' };
+
+/** Sources new assets can come from: Yahoo always, the others once their API key is in the secret. */
+export async function configuredSources(): Promise<StockSource[]> {
+  const secrets = await getSecrets();
+  return STOCK_SOURCES.filter((source) => {
+    const key = SOURCE_SECRET_KEYS[source];
+    return !key || Boolean(secrets[key]);
+  });
+}
+
+/** Where the intraday CSV download starts: a day inside what the asset's source serves. */
+export function intradayDownloadFrom(asset: Pick<StockAsset, 'source'>, now: Date): Date {
+  return addDays(now, -(STOCK_SOURCE_INFO[asset.source].intradayDays - 1));
+}
 
 /** Where an asset's daily history starts (the source's first trade date when known). */
 export function historyStart(asset: Pick<StockAsset, 'firstTradeDate'>): Date {
@@ -21,12 +51,17 @@ export function historyStart(asset: Pick<StockAsset, 'firstTradeDate'>): Date {
 }
 
 /**
- * Metadata to work with before the source has been asked (e.g. an asset kept from before
- * metadata existed); the next refresh replaces it.
+ * Metadata to work with before the source has been asked (an asset whose metadata is missing);
+ * the next refresh replaces it.
  */
-export function fallbackAsset(symbol: string): StockAsset {
+export function fallbackAsset(id: string): StockAsset {
+  const parsed = parseAssetId(id);
+  if (!parsed) throw new Error(`Invalid asset ID "${id}"`);
+  const { source, symbol } = parsed;
   const idx = symbol.endsWith('.JK');
   return {
+    id,
+    source,
     symbol,
     name: null,
     exchange: idx ? 'Jakarta' : null,

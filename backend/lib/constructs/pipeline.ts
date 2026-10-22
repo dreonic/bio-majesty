@@ -98,7 +98,7 @@ export class PipelineConstruct extends Construct {
       target: new schedulerTargets.LambdaInvoke(this.dispatchFn, { role: this.schedulerRole, retryAttempts: 0 }),
     });
 
-    // Market data for every symbol any account tracks (Yahoo by default). Each tick only asks
+    // Market data for every asset any account tracks, each from its own source. Each tick only asks
     // for assets whose market is open, or whose end-of-day refresh is due, to keep requests low.
     this.stockIngestFn = functions.create('StockIngest', {
       entry: 'stock-ingest.ts',

@@ -7,7 +7,9 @@ import {
   DEFAULT_SETTINGS,
   SettingsSchema,
   SettingsUpdateSchema,
-  SymbolSchema,
+  AddAssetRequestSchema,
+  AssetIdSchema,
+  assetId,
   categoryColorFor,
   detectVolumeAnomalies,
   displaySymbol,
@@ -15,8 +17,10 @@ import {
   effectiveSummary,
   effectiveTags,
   intervalLabel,
+  parseAssetId,
   parseModelRef,
   quarterHour,
+  symbolProblem,
   type Article,
   type Candle,
 } from '../src';
@@ -26,8 +30,8 @@ describe('settings', () => {
     expect(SettingsSchema.parse(DEFAULT_SETTINGS)).toEqual(DEFAULT_SETTINGS);
     expect(DEFAULT_SETTINGS.models.tagging.model).toBe('anthropic:claude-opus-5-5');
     expect(DEFAULT_SETTINGS.learning.useFeedbackContext).toBe(false);
-    expect(DEFAULT_SETTINGS.stock).toEqual({ symbols: ['PRDA.JK'], volumeAlerts: true, volumeRatio: 2.5 });
-    expect(DEFAULT_SETTINGS.profile).toMatchObject({ subject: 'the Prodia group', sentimentSymbol: 'PRDA.JK' });
+    expect(DEFAULT_SETTINGS.stock).toEqual({ assets: ['yahoo:PRDA.JK'], volumeAlerts: true, volumeRatio: 2.5 });
+    expect(DEFAULT_SETTINGS.profile).toMatchObject({ subject: 'the Prodia group', sentimentAsset: 'yahoo:PRDA.JK' });
   });
 
   it('keeps daily runs on quarter hours', () => {
@@ -38,9 +42,10 @@ describe('settings', () => {
     expect(SettingsUpdateSchema.safeParse({ schedule: { dailyTime: '06:15' } }).success).toBe(true);
   });
 
-  it('lets a profile update leave the symbol list alone (assets are added via /stock/assets)', () => {
-    expect(SettingsUpdateSchema.parse({ profile: { sentimentSymbol: null } })).toEqual({ profile: { sentimentSymbol: null } });
-    expect(SettingsUpdateSchema.parse({ stock: { symbols: ['AAPL'] } })).toEqual({ stock: {} });
+  it('lets a profile update leave the asset list alone (assets are added via /stock/assets)', () => {
+    expect(SettingsUpdateSchema.parse({ profile: { sentimentAsset: null } })).toEqual({ profile: { sentimentAsset: null } });
+    expect(SettingsUpdateSchema.parse({ profile: { sentimentAsset: 'Yahoo:prda.jk' } })).toEqual({ profile: { sentimentAsset: 'yahoo:PRDA.JK' } });
+    expect(SettingsUpdateSchema.parse({ stock: { assets: ['yahoo:AAPL'] } })).toEqual({ stock: {} });
   });
 
   it('parses model references', () => {
@@ -49,17 +54,37 @@ describe('settings', () => {
   });
 });
 
-describe('asset symbols', () => {
-  it('accepts Yahoo symbols of every kind, upper-cased', () => {
-    for (const s of ['PRDA.JK', 'aapl', '^JKSE', 'USDIDR=X', 'BTC-USD', 'GC=F', 'D05.SI']) expect(SymbolSchema.safeParse(s).success, s).toBe(true);
-    expect(SymbolSchema.parse(' btc-usd ')).toBe('BTC-USD');
-    for (const s of ['', 'not a symbol', 'A'.repeat(21), '#X']) expect(SymbolSchema.safeParse(s).success, s).toBe(false);
+describe('asset symbols and IDs', () => {
+  it("checks symbols against each source's format", () => {
+    for (const s of ['PRDA.JK', 'aapl', '^JKSE', 'USDIDR=X', 'BTC-USD', 'GC=F', 'D05.SI']) expect(symbolProblem('yahoo', s), s).toBeNull();
+    for (const s of ['', 'not a symbol', 'A'.repeat(21), '#X']) expect(symbolProblem('yahoo', s), s).toMatch(/^Not in Yahoo Finance's symbol format/);
+    for (const s of ['PRDA.JK', 'aapl.us', 'BRK-B.US', 'GSPC.INDX', 'EURUSD.FOREX', 'BTC-USD.CC']) expect(symbolProblem('eodhd', s), s).toBeNull();
+    // EODHD symbols need their exchange code.
+    for (const s of ['PRDA', 'AAPL', '^JKSE', 'PRDA.JK.']) expect(symbolProblem('eodhd', s), s).toMatch(/^Not in EODHD's symbol format/);
+  });
+
+  it('names assets by source and symbol, normalized', () => {
+    expect(assetId('yahoo', ' prda.jk ')).toBe('yahoo:PRDA.JK');
+    expect(parseAssetId('eodhd:aapl.us')).toEqual({ source: 'eodhd', symbol: 'AAPL.US' });
+    expect(AssetIdSchema.parse(' Yahoo:btc-usd ')).toBe('yahoo:BTC-USD');
+    for (const s of ['PRDA.JK', 'eodhd:PRDA', 'google:PRDA.JK', 'yahoo:', ':PRDA.JK']) expect(AssetIdSchema.safeParse(s).success, s).toBe(false);
+  });
+
+  it('validates new assets against their source', () => {
+    expect(AddAssetRequestSchema.parse({ source: 'eodhd', symbol: ' prda.jk' })).toEqual({ source: 'eodhd', symbol: 'PRDA.JK' });
+    const bad = AddAssetRequestSchema.safeParse({ source: 'eodhd', symbol: 'PRDA' });
+    expect(bad.success).toBe(false);
+    expect(bad.error?.issues[0]).toMatchObject({ path: ['symbol'] });
+    expect(AddAssetRequestSchema.safeParse({ source: 'google', symbol: 'PRDA.JK' }).success).toBe(false);
   });
 
   it('shows tickers without the exchange suffix and names intervals', () => {
-    expect(displaySymbol('PRDA.JK')).toBe('PRDA');
-    expect(displaySymbol('BTC-USD')).toBe('BTC-USD');
-    expect(displaySymbol('^JKSE')).toBe('^JKSE');
+    expect(displaySymbol('yahoo:PRDA.JK')).toBe('PRDA');
+    expect(displaySymbol('yahoo:BTC-USD')).toBe('BTC-USD');
+    expect(displaySymbol('yahoo:^JKSE')).toBe('^JKSE');
+    expect(displaySymbol('eodhd:PRDA.JK')).toBe('PRDA');
+    expect(displaySymbol('eodhd:EURUSD.FOREX')).toBe('EURUSD');
+    expect(displaySymbol('PRDA.JK')).toBe('PRDA.JK');
     expect(intervalLabel('15m')).toBe('15-min');
     expect(intervalLabel('1h')).toBe('1-hour');
     expect(intervalLabel('1d')).toBe('Daily');

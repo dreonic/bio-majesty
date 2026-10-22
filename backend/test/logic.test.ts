@@ -197,7 +197,7 @@ describe('trading sessions', () => {
     expect(deriveSession(period('2026-10-20T23:00:00Z', '2026-10-21T22:59:00Z'), 'Europe/London', 'CURRENCY')).toEqual({ start: '00:00', end: '23:59', days: 'weekdays' });
   });
 
-  const idx = { timeZone: 'Asia/Jakarta', session: { start: '09:00', end: '16:15', days: 'weekdays' as const }, intradayInterval: '15m' };
+  const idx = { source: 'yahoo' as const, timeZone: 'Asia/Jakarta', session: { start: '09:00', end: '16:15', days: 'weekdays' as const }, intradayInterval: '15m' };
   const at = (iso: string) => new Date(iso);
 
   it('refreshes intraday bars during the session and just after the close', () => {
@@ -218,8 +218,16 @@ describe('trading sessions', () => {
     expect(refreshPlan(idx, '2026-10-23', at('2026-10-26T01:00:00Z')).eodFor).toBeNull();
   });
 
+  it("waits for the source to settle the day: EODHD's bars are final 2-3 hours after the close", () => {
+    const eodhd = { ...idx, source: 'eodhd' as const };
+    expect(refreshPlan(eodhd, '2026-10-20', at('2026-10-21T10:15:00Z')).eodFor).toBeNull(); // 17:15 WIB: Yahoo would be due
+    expect(refreshPlan(eodhd, '2026-10-20', at('2026-10-21T12:15:00Z')).eodFor).toBe('2026-10-21'); // 19:15 WIB
+    // Still followed during the session (through its quote).
+    expect(refreshPlan(eodhd, '2026-10-20', at('2026-10-21T05:00:00Z')).intraday).toBe(true);
+  });
+
   it('treats crypto as a 24/7 session whose day closes at midnight', () => {
-    const btc = { timeZone: 'UTC', session: { start: '00:00', end: '23:59', days: 'daily' as const }, intradayInterval: '15m' };
+    const btc = { source: 'yahoo' as const, timeZone: 'UTC', session: { start: '00:00', end: '23:59', days: 'daily' as const }, intradayInterval: '15m' };
     const sunday = at('2026-10-25T12:00:00Z');
     expect(refreshPlan(btc, '2026-10-24', sunday)).toEqual({ intraday: true, eodFor: null });
     expect(refreshPlan(btc, '2026-10-23', sunday).eodFor).toBe('2026-10-24');

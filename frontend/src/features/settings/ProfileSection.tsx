@@ -1,4 +1,4 @@
-import { displaySymbol } from '@bio-majesty/shared';
+import { displaySymbol, STOCK_SOURCE_INFO } from '@bio-majesty/shared';
 import { useEffect, useState } from 'react';
 import { useToast } from '../../components/toast';
 import { Button, Card, Field, Input, SectionTitle, Select, Spinner, Textarea } from '../../components/ui';
@@ -12,7 +12,7 @@ export function ProfileSection() {
   const toast = useToast();
   const [subject, setSubject] = useState('');
   const [context, setContext] = useState('');
-  /** A symbol, or '' for the subject's business outlook. */
+  /** An asset ID, or '' for the subject's business outlook. */
   const [basis, setBasis] = useState('');
 
   useEffect(() => {
@@ -20,7 +20,7 @@ export function ProfileSection() {
     const p = settings.data.profile;
     setSubject(p.subject);
     setContext(p.context);
-    setBasis(p.sentimentSymbol ?? '');
+    setBasis(p.sentimentAsset ?? '');
   }, [settings.data]);
 
   if (!settings.data) {
@@ -31,10 +31,12 @@ export function ProfileSection() {
     );
   }
   const p = settings.data.profile;
-  const dirty = subject !== p.subject || context !== p.context || (basis || null) !== p.sentimentSymbol;
+  const dirty = subject !== p.subject || context !== p.context || (basis || null) !== p.sentimentAsset;
+  // The same ticker from two sources needs its source named.
+  const ambiguous = (ticker: string) => assets.filter((a) => displaySymbol(a.id) === ticker).length > 1;
   const save = () =>
     update.mutate(
-      { profile: { subject: subject.trim(), context: context.trim(), sentimentSymbol: basis || null } },
+      { profile: { subject: subject.trim(), context: context.trim(), sentimentAsset: basis || null } },
       { onSuccess: () => toast.success('Profile saved — it applies from the next run'), onError: toast.error },
     );
 
@@ -59,8 +61,9 @@ export function ProfileSection() {
         <Field label="Judge news sentiment against" hint="Positive and negative mean likely to help or hurt this. Add assets under Assets.">
           <Select value={basis} onChange={(e) => setBasis(e.target.value)}>
             {assets.map((a) => (
-              <option key={a.symbol} value={a.symbol}>
-                The {displaySymbol(a.symbol)} price{a.name ? ` (${a.name})` : ''}
+              <option key={a.id} value={a.id}>
+                The {displaySymbol(a.id)} price{a.name ? ` (${a.name})` : ''}
+                {ambiguous(displaySymbol(a.id)) ? ` from ${STOCK_SOURCE_INFO[a.source].label}` : ''}
               </option>
             ))}
             <option value="">The subject&apos;s business outlook (no asset)</option>

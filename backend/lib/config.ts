@@ -18,7 +18,6 @@ export interface AppConfig {
   /** IANA time zone of the exec (daily-run times, displayed times). Market data follows each asset's exchange clock. */
   timeZone: string;
   account: string | undefined;
-  stockProvider: 'yahoo' | 'eodhd';
   embeddingModel: string;
   embeddingDimensions: number;
   alarmEmail: string | null;
@@ -50,9 +49,6 @@ export function loadConfig(app: App): AppConfig {
   const timeZone = ctx(app, 'timeZone') || DEFAULT_TIME_ZONE;
   if (!isValidTimeZone(timeZone)) throw new Error(`Invalid timeZone "${timeZone}" (expected an IANA name such as Asia/Singapore)`);
 
-  const stockProvider = (ctx(app, 'stockProvider') || 'yahoo') as AppConfig['stockProvider'];
-  if (stockProvider !== 'yahoo' && stockProvider !== 'eodhd') throw new Error('stockProvider must be "yahoo" or "eodhd"');
-
   const embeddingModel = ctx(app, 'embeddingModel') || 'google:gemini-embedding-2';
   const model = EMBEDDING_MODELS.find((m) => m.id === embeddingModel);
   if (!model) throw new Error(`Unknown embeddingModel "${embeddingModel}". Options: ${EMBEDDING_MODELS.map((m) => m.id).join(', ')}`);
@@ -71,7 +67,6 @@ export function loadConfig(app: App): AppConfig {
     region,
     timeZone,
     account,
-    stockProvider,
     embeddingModel,
     embeddingDimensions,
     alarmEmail: ctx(app, 'alarmEmail') || null,

@@ -25,6 +25,8 @@ import type {
   StockExportResponse,
   StockHistoryResponse,
   StockRange,
+  StockSearchResponse,
+  StockSource,
   SuggestQueriesResponse,
   TelegramLinkStartResponse,
   TelegramLinkVerifyResponse,
@@ -53,8 +55,9 @@ export const qk = {
   models: ['models'] as const,
   runs: ['runs'] as const,
   assets: ['assets'] as const,
-  stock: (symbol: string, range: StockRange) => ['stock', symbol, range] as const,
-  anomalies: (symbol: string, from: string) => ['anomalies', symbol, from] as const,
+  stock: (asset: string, range: StockRange) => ['stock', asset, range] as const,
+  anomalies: (asset: string, from: string) => ['anomalies', asset, from] as const,
+  symbolSearch: (source: StockSource, q: string) => ['symbol-search', source, q] as const,
   feedbackStats: ['feedback-stats'] as const,
   conversations: ['conversations'] as const,
   conversation: (id: string) => ['conversation', id] as const,
@@ -304,15 +307,22 @@ export function useRunDaily() {
  */
 const STOCK_CACHE = { staleTime: 5 * 60_000, gcTime: 30 * 60_000 };
 
-/** The account's assets (symbol list order) with what the market-data source says about them. */
+const fetchAssets = () => api<StockAssetsResponse>('stock/assets');
+
+/** The account's assets (list order) with what their market-data sources say about them. */
 export function useStockAssets() {
-  return useQuery({ queryKey: qk.assets, queryFn: () => api<StockAssetsResponse>('stock/assets'), select: (d) => d.items });
+  return useQuery({ queryKey: qk.assets, queryFn: fetchAssets, select: (d) => d.items });
+}
+
+/** Sources new assets can come from (Yahoo, plus those whose API key is set up). */
+export function useStockSources() {
+  return useQuery({ queryKey: qk.assets, queryFn: fetchAssets, select: (d) => d.sources });
 }
 
 export function useAddAsset() {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: (symbol: string) => api<StockAssetsResponse>('stock/assets', { method: 'POST', body: { symbol } }),
+    mutationFn: (body: { source: StockSource; symbol: string }) => api<StockAssetsResponse>('stock/assets', { method: 'POST', body }),
     onSuccess: (data) => client.setQueryData(qk.assets, data),
     onSettled: () => client.invalidateQueries({ queryKey: qk.settings }),
   });
@@ -321,17 +331,30 @@ export function useAddAsset() {
 export function useRemoveAsset() {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: (symbol: string) => api<StockAssetsResponse>(`stock/assets/${encodeURIComponent(symbol)}`, { method: 'DELETE' }),
+    mutationFn: (asset: string) => api<StockAssetsResponse>('stock/assets', { method: 'DELETE', query: { asset } }),
     onSuccess: (data) => client.setQueryData(qk.assets, data),
     onSettled: () => client.invalidateQueries({ queryKey: qk.settings }),
   });
 }
 
-export function useStock(symbol: string | null, range: StockRange) {
+/** Symbols a source suggests for a name or ticker (two characters or more). */
+export function useSymbolSearch(source: StockSource, q: string) {
+  const query = q.trim();
   return useQuery({
-    queryKey: qk.stock(symbol ?? '', range),
-    queryFn: () => api<StockHistoryResponse>('stock/history', { query: { symbol: symbol!, range } }),
-    enabled: Boolean(symbol),
+    queryKey: qk.symbolSearch(source, query),
+    queryFn: () => api<StockSearchResponse>('stock/search', { query: { source, q: query } }),
+    enabled: query.length >= 2,
+    staleTime: 10 * 60_000,
+    placeholderData: keepPreviousData,
+    retry: false,
+  });
+}
+
+export function useStock(asset: string | null, range: StockRange) {
+  return useQuery({
+    queryKey: qk.stock(asset ?? '', range),
+    queryFn: () => api<StockHistoryResponse>('stock/history', { query: { asset: asset!, range } }),
+    enabled: Boolean(asset),
     ...STOCK_CACHE,
     placeholderData: keepPreviousData,
     refetchInterval: 5 * 60_000,
@@ -340,21 +363,21 @@ export function useStock(symbol: string | null, range: StockRange) {
 
 /**
  * CSV downloads, independent of the chart's range: every stored daily bar, or the intraday bars
- * the market-data source still has (the API fetches those when asked).
+ * the asset's source still has (the API fetches those when asked).
  */
 export function useStockExport() {
   return useMutation({
-    mutationFn: ({ symbol, interval }: { symbol: string; interval: StockExportInterval }) =>
-      api<StockExportResponse>('stock/export', { query: { symbol, interval } }),
+    mutationFn: ({ asset, interval }: { asset: string; interval: StockExportInterval }) =>
+      api<StockExportResponse>('stock/export', { query: { asset, interval } }),
   });
 }
 
 /** Unusual-volume days of an asset from `from` (a trading date: the chart's first day) to today. */
-export function useAnomalies(symbol: string | null, from: string | null) {
+export function useAnomalies(asset: string | null, from: string | null) {
   return useQuery({
-    queryKey: qk.anomalies(symbol ?? '', from ?? ''),
-    queryFn: () => api<{ items: VolumeAnomaly[]; minRatio: number; window: number }>('stock/anomalies', { query: { symbol: symbol!, from: from! } }),
-    enabled: Boolean(symbol && from),
+    queryKey: qk.anomalies(asset ?? '', from ?? ''),
+    queryFn: () => api<{ items: VolumeAnomaly[]; minRatio: number; window: number }>('stock/anomalies', { query: { asset: asset!, from: from! } }),
+    enabled: Boolean(asset && from),
     ...STOCK_CACHE,
     placeholderData: keepPreviousData,
     refetchInterval: 10 * 60_000,
@@ -366,7 +389,7 @@ export function useFeedbackStats() {
 }
 
 export function useResyncStock() {
-  return useMutation({ mutationFn: (symbol: string) => api<{ started: boolean }>('stock/resync', { method: 'POST', body: { symbol } }) });
+  return useMutation({ mutationFn: (asset: string) => api<{ started: boolean }>('stock/resync', { method: 'POST', body: { asset } }) });
 }
 
 export function useTelegramLink() {

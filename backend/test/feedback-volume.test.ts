@@ -145,7 +145,7 @@ describe('volume anomalies', () => {
   });
 
   it('writes a readable Telegram alert', () => {
-    const text = formatVolumeAlert({ symbol: 'PRDA.JK', type: 'EQUITY', decimals: 0 }, {
+    const text = formatVolumeAlert({ id: 'yahoo:PRDA.JK', type: 'EQUITY', decimals: 0 }, {
       date: '2026-10-14',
       time: 0,
       volume: 3_200_000,
@@ -161,7 +161,7 @@ describe('volume anomalies', () => {
   });
 
   it('words alerts for assets that are not shares, with their decimals', () => {
-    const text = formatVolumeAlert({ symbol: 'BTC-USD', type: 'CRYPTOCURRENCY', decimals: 2 }, {
+    const text = formatVolumeAlert({ id: 'yahoo:BTC-USD', type: 'CRYPTOCURRENCY', decimals: 2 }, {
       date: '2026-10-14',
       time: 0,
       volume: 52_000_000_000,

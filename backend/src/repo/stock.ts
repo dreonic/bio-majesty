@@ -9,7 +9,7 @@ import { accountPk, keys } from './keys';
  */
 export const INTRADAY_RETENTION_DAYS = 10;
 
-/** Refresh state of one symbol's market data (shared by every account tracking it). */
+/** Refresh state of one asset's market data (shared by every account tracking it). */
 export interface StockStatus {
   lastSuccessAt: string | null;
   lastError: string | null;
@@ -20,17 +20,17 @@ export interface StockStatus {
   eodDoneFor: string | null;
 }
 
-/** Daily bars are keyed by trading date: `time` is 00:00 UTC of that date. */
-export async function putDailyCandles(symbol: string, candles: Candle[]): Promise<void> {
+/** Daily bars are keyed by trading date: `time` is 00:00 UTC of that date. `asset` is the asset's ID. */
+export async function putDailyCandles(asset: string, candles: Candle[]): Promise<void> {
   const items = candles.map((c) => ({
-    PutRequest: { Item: { ...keys.stockDaily(symbol, candleDate(c.time)), ...c } },
+    PutRequest: { Item: { ...keys.stockDaily(asset, candleDate(c.time)), ...c } },
   }));
   await batchWrite(items);
 }
 
-export async function putIntradayCandles(symbol: string, candles: Candle[]): Promise<void> {
+export async function putIntradayCandles(asset: string, candles: Candle[]): Promise<void> {
   const items = candles.map((c) => ({
-    PutRequest: { Item: { ...keys.stockIntraday(symbol, c.time), ...c, expiresAt: c.time + INTRADAY_RETENTION_DAYS * 86_400 } },
+    PutRequest: { Item: { ...keys.stockIntraday(asset, c.time), ...c, expiresAt: c.time + INTRADAY_RETENTION_DAYS * 86_400 } },
   }));
   await batchWrite(items);
 }
@@ -45,7 +45,7 @@ async function batchWrite(items: { PutRequest: { Item: Record<string, unknown> }
   }
 }
 
-async function queryRange(symbol: string, fromSk: string, toSk: string): Promise<Candle[]> {
+async function queryRange(asset: string, fromSk: string, toSk: string): Promise<Candle[]> {
   const out: Candle[] = [];
   let startKey: Record<string, unknown> | undefined;
   do {
@@ -53,7 +53,7 @@ async function queryRange(symbol: string, fromSk: string, toSk: string): Promise
       new QueryCommand({
         TableName: table(),
         KeyConditionExpression: 'PK = :pk AND SK BETWEEN :a AND :b',
-        ExpressionAttributeValues: { ':pk': `STOCK#${symbol}`, ':a': fromSk, ':b': toSk },
+        ExpressionAttributeValues: { ':pk': `STOCK#${asset}`, ':a': fromSk, ':b': toSk },
         ExclusiveStartKey: startKey,
       }),
     );
@@ -67,27 +67,27 @@ async function queryRange(symbol: string, fromSk: string, toSk: string): Promise
 }
 
 /** Daily bars whose trading dates (in the asset's `timeZone`) fall between `from` and `to`. */
-export function queryDaily(symbol: string, from: Date, to: Date, timeZone: string): Promise<Candle[]> {
-  return queryRange(symbol, `D#${dateInZone(timeZone, from)}`, `D#${dateInZone(timeZone, to)}`);
+export function queryDaily(asset: string, from: Date, to: Date, timeZone: string): Promise<Candle[]> {
+  return queryRange(asset, `D#${dateInZone(timeZone, from)}`, `D#${dateInZone(timeZone, to)}`);
 }
 
-export function queryIntraday(symbol: string, from: Date, to: Date): Promise<Candle[]> {
+export function queryIntraday(asset: string, from: Date, to: Date): Promise<Candle[]> {
   const a = Math.floor(from.getTime() / 1000);
   const b = Math.floor(to.getTime() / 1000);
-  return queryRange(symbol, keys.stockIntraday(symbol, a).SK, keys.stockIntraday(symbol, b).SK);
+  return queryRange(asset, keys.stockIntraday(asset, a).SK, keys.stockIntraday(asset, b).SK);
 }
 
 export async function putQuote(quote: Quote): Promise<void> {
-  await ddb().send(new PutCommand({ TableName: table(), Item: { ...keys.stockQuote(quote.symbol), ...quote } }));
+  await ddb().send(new PutCommand({ TableName: table(), Item: { ...keys.stockQuote(quote.asset), ...quote } }));
 }
 
-export async function getQuote(symbol: string): Promise<Quote | null> {
-  const res = await ddb().send(new GetCommand({ TableName: table(), Key: keys.stockQuote(symbol) }));
+export async function getQuote(asset: string): Promise<Quote | null> {
+  const res = await ddb().send(new GetCommand({ TableName: table(), Key: keys.stockQuote(asset) }));
   return res.Item ? (stripKeys(res.Item) as unknown as Quote) : null;
 }
 
-export async function getStockStatus(symbol: string): Promise<StockStatus> {
-  const res = await ddb().send(new GetCommand({ TableName: table(), Key: keys.stockStatus(symbol) }));
+export async function getStockStatus(asset: string): Promise<StockStatus> {
+  const res = await ddb().send(new GetCommand({ TableName: table(), Key: keys.stockStatus(asset) }));
   return {
     lastSuccessAt: (res.Item?.lastSuccessAt as string | undefined) ?? null,
     lastError: (res.Item?.lastError as string | undefined) ?? null,
@@ -97,50 +97,50 @@ export async function getStockStatus(symbol: string): Promise<StockStatus> {
   };
 }
 
-export async function putStockStatus(symbol: string, status: StockStatus): Promise<void> {
-  await ddb().send(new PutCommand({ TableName: table(), Item: { ...keys.stockStatus(symbol), ...status } }));
+export async function putStockStatus(asset: string, status: StockStatus): Promise<void> {
+  await ddb().send(new PutCommand({ TableName: table(), Item: { ...keys.stockStatus(asset), ...status } }));
 }
 
-export async function getAsset(symbol: string): Promise<StockAsset | null> {
-  const res = await ddb().send(new GetCommand({ TableName: table(), Key: keys.stockMeta(symbol) }));
+export async function getAsset(id: string): Promise<StockAsset | null> {
+  const res = await ddb().send(new GetCommand({ TableName: table(), Key: keys.stockMeta(id) }));
   return res.Item ? (stripKeys(res.Item) as unknown as StockAsset) : null;
 }
 
-/** Metadata of several symbols, in the order asked (symbols without metadata are left out). */
-export async function getAssets(symbols: string[]): Promise<StockAsset[]> {
+/** Metadata of several assets, in the order asked (assets without metadata are left out). */
+export async function getAssets(ids: string[]): Promise<StockAsset[]> {
   const found = new Map<string, StockAsset>();
-  for (const batch of chunk([...new Set(symbols)], 100)) {
+  for (const batch of chunk([...new Set(ids)], 100)) {
     let request: Record<string, { Keys: Record<string, unknown>[] }> | undefined = {
-      [table()]: { Keys: batch.map((s) => keys.stockMeta(s)) },
+      [table()]: { Keys: batch.map((id) => keys.stockMeta(id)) },
     };
     while (request && Object.keys(request).length) {
       const res = await ddb().send(new BatchGetCommand({ RequestItems: request }));
       for (const item of res.Responses?.[table()] ?? []) {
         const asset = stripKeys(item) as unknown as StockAsset;
-        found.set(asset.symbol, asset);
+        found.set(asset.id, asset);
       }
       request = res.UnprocessedKeys as typeof request;
     }
   }
-  return symbols.map((s) => found.get(s)).filter((a): a is StockAsset => Boolean(a));
+  return ids.map((id) => found.get(id)).filter((a): a is StockAsset => Boolean(a));
 }
 
 export async function putAsset(asset: StockAsset): Promise<void> {
-  await ddb().send(new PutCommand({ TableName: table(), Item: { ...keys.stockMeta(asset.symbol), ...asset } }));
+  await ddb().send(new PutCommand({ TableName: table(), Item: { ...keys.stockMeta(asset.id), ...asset } }));
 }
 
-/** An account's volume alert for one symbol and day (each account has its own ratio and alerts). */
-export async function putAnomaly(sub: string, symbol: string, anomaly: VolumeAnomaly): Promise<void> {
-  await ddb().send(new PutCommand({ TableName: table(), Item: { ...keys.anomaly(sub, symbol, anomaly.date), ...anomaly } }));
+/** An account's volume alert for one asset and day (each account has its own ratio and alerts). */
+export async function putAnomaly(sub: string, asset: string, anomaly: VolumeAnomaly): Promise<void> {
+  await ddb().send(new PutCommand({ TableName: table(), Item: { ...keys.anomaly(sub, asset, anomaly.date), ...anomaly } }));
 }
 
-export async function getAnomaly(sub: string, symbol: string, ymd: string): Promise<VolumeAnomaly | null> {
-  const res = await ddb().send(new GetCommand({ TableName: table(), Key: keys.anomaly(sub, symbol, ymd) }));
+export async function getAnomaly(sub: string, asset: string, ymd: string): Promise<VolumeAnomaly | null> {
+  const res = await ddb().send(new GetCommand({ TableName: table(), Key: keys.anomaly(sub, asset, ymd) }));
   return res.Item ? (stripKeys(res.Item) as unknown as VolumeAnomaly) : null;
 }
 
-/** The account's stored (notified) anomalies of a symbol since `fromYmd`, oldest first. */
-export async function listAnomalyRecords(sub: string, symbol: string, fromYmd: string): Promise<VolumeAnomaly[]> {
+/** The account's stored (notified) anomalies of an asset since `fromYmd`, oldest first. */
+export async function listAnomalyRecords(sub: string, asset: string, fromYmd: string): Promise<VolumeAnomaly[]> {
   const out: VolumeAnomaly[] = [];
   let startKey: Record<string, unknown> | undefined;
   do {
@@ -148,7 +148,7 @@ export async function listAnomalyRecords(sub: string, symbol: string, fromYmd: s
       new QueryCommand({
         TableName: table(),
         KeyConditionExpression: 'PK = :pk AND SK BETWEEN :a AND :b',
-        ExpressionAttributeValues: { ':pk': accountPk(sub), ':a': `ANOMALY#${symbol}#${fromYmd}`, ':b': `ANOMALY#${symbol}#~` },
+        ExpressionAttributeValues: { ':pk': accountPk(sub), ':a': `ANOMALY#${asset}#${fromYmd}`, ':b': `ANOMALY#${asset}#~` },
         ExclusiveStartKey: startKey,
       }),
     );

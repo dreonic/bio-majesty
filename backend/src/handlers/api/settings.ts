@@ -62,9 +62,9 @@ export const handler = createRouter({
     }
     const current = await getSettings(user.sub);
     const next = mergeSettings(current, update);
-    const sentiment = next.profile.sentimentSymbol;
-    if (sentiment && !next.stock.symbols.includes(sentiment)) {
-      throw badRequest(`Sentiment can only be judged against one of your assets; add ${sentiment} in Settings → Stock first`);
+    const sentiment = next.profile.sentimentAsset;
+    if (sentiment && !next.stock.assets.includes(sentiment)) {
+      throw badRequest(`Sentiment can only be judged against one of your assets; add ${sentiment} in Settings → Assets first`);
     }
     // The dispatcher reads the schedule from here every 15 minutes: nothing else to update.
     await saveSettings(user.sub, next);

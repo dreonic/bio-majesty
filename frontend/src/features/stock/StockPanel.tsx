@@ -4,6 +4,7 @@ import {
   INTRADAY_RANGES,
   intervalLabel,
   STOCK_RANGES,
+  STOCK_SOURCE_INFO,
   type Candle,
   type StockAsset,
   type StockExportInterval,
@@ -38,9 +39,9 @@ const RANGE_SPAN: Record<StockRange, string> = {
 /** The account's assets: pick one with the ticker dropdown. */
 export function StockPanel({ onCollapse }: { onCollapse?: () => void }) {
   const assets = useStockAssets();
-  const [stored, setStored] = useStoredState<string>('bm:stock-symbol', '');
+  const [stored, setStored] = useStoredState<string>('bm:stock-asset', '');
   const items = assets.data ?? [];
-  const asset = items.find((a) => a.symbol === stored) ?? items[0];
+  const asset = items.find((a) => a.id === stored) ?? items[0];
 
   if (assets.isLoading) {
     return (
@@ -63,7 +64,7 @@ export function StockPanel({ onCollapse }: { onCollapse?: () => void }) {
       </div>
     );
   }
-  return <AssetView key={asset.symbol} asset={asset} assets={items} onSelect={setStored} onCollapse={onCollapse} />;
+  return <AssetView key={asset.id} asset={asset} assets={items} onSelect={setStored} onCollapse={onCollapse} />;
 }
 
 function CollapseButton({ onCollapse }: { onCollapse: () => void }) {
@@ -83,7 +84,7 @@ function AssetView({
 }: {
   asset: StockAsset;
   assets: StockAsset[];
-  onSelect: (symbol: string) => void;
+  onSelect: (id: string) => void;
   onCollapse?: () => void;
 }) {
   const [storedRange, setRange] = useStoredState<StockRange>('bm:stock-range', '3M');
@@ -91,17 +92,20 @@ function AssetView({
   // Daily-only assets (e.g. mutual funds) have no 1D/5D view.
   const range = ranges.includes(storedRange) ? storedRange : '3M';
   const [view, setView] = useState<'chart' | 'table'>('chart');
-  const stock = useStock(asset.symbol, range);
+  const stock = useStock(asset.id, range);
   const data = stock.data;
   const intraday = data?.interval === '15m';
   // Trading date of the first candle (the API reads it on the asset's calendar): the
   // unusual-volume list covers the same span as the chart.
   const firstDay = data?.candles.length ? candleDate(data.candles[0]!.time) : null;
-  const anomalies = useAnomalies(asset.hasVolume ? asset.symbol : null, firstDay);
+  const anomalies = useAnomalies(asset.hasVolume ? asset.id : null, firstDay);
   const highlightTimes = useMemo(() => new Set((anomalies.data?.items ?? []).map((a) => a.time)), [anomalies.data]);
   const q = data?.quote;
   const up = (q?.change ?? 0) >= 0;
   const price = (n: number) => formatPrice(n, asset.decimals);
+  const source = STOCK_SOURCE_INFO[asset.source];
+  // Name sources in the asset menu only when the list mixes them (e.g. PRDA from Yahoo and from EODHD).
+  const manySources = new Set(assets.map((a) => a.source)).size > 1;
 
   return (
     <div className="flex h-full flex-col bg-surface">
@@ -110,12 +114,13 @@ function AssetView({
           <div className="min-w-0">
             <MenuSelect
               label="Choose an asset"
-              value={asset.symbol}
+              value={asset.id}
               onChange={onSelect}
               options={assets.map((a) => ({
-                value: a.symbol,
-                label: displaySymbol(a.symbol),
-                detail: [a.name, a.exchange].filter(Boolean).join(' · ') || a.symbol,
+                value: a.id,
+                label: displaySymbol(a.id),
+                // The source first: long names are cut off at the menu's width.
+                detail: [manySources ? STOCK_SOURCE_INFO[a.source].label : null, a.name, a.exchange].filter(Boolean).join(' · ') || a.symbol,
               }))}
               footer={
                 <Link to="/settings" className="flex items-center gap-2 rounded px-2 py-1.5 text-xs text-ink-2 hover:bg-wash hover:text-ink">
@@ -125,7 +130,7 @@ function AssetView({
               className="-ml-1 px-1 py-0.5"
             >
               <span className="truncate text-sm font-semibold text-ink">
-                {displaySymbol(asset.symbol)}
+                {displaySymbol(asset.id)}
                 {asset.exchange && <span className="font-normal text-ink-2"> · {asset.exchange}</span>}
               </span>
             </MenuSelect>
@@ -133,7 +138,7 @@ function AssetView({
           </div>
           <div className="flex items-start gap-1">
             <div className="flex flex-col items-end gap-1">
-              <span className="inline-flex items-center gap-1 rounded-full bg-wash px-2 py-0.5 text-[11px] text-ink-2" title="Prices are delayed (free data source)">
+              <span className="inline-flex items-center gap-1 rounded-full bg-wash px-2 py-0.5 text-[11px] text-ink-2" title={`Prices are delayed (${source.label})`}>
                 <Clock className="size-3" aria-hidden /> Delayed
               </span>
               {data?.stale && (
@@ -164,7 +169,7 @@ function AssetView({
               {q.previousClose !== null ? ` · Prev ${price(q.previousClose)}` : ''}
             </p>
             <p className="mt-0.5 text-[11px] text-muted">
-              {q.marketTime ? `Market time ${formatDate(q.marketTime)} ${formatTime(q.marketTime)}` : ''} · via {q.provider}
+              {q.marketTime ? `Market time ${formatDate(q.marketTime)} ${formatTime(q.marketTime)}` : ''} · via {source.label}
             </p>
           </div>
         ) : (
@@ -202,7 +207,11 @@ function AssetView({
           </div>
         ) : !data?.candles.length ? (
           <EmptyState title="No price data for this range yet">
-            {data?.lastError ? `Last refresh error: ${data.lastError}` : `Intraday data appears during ${asset.exchange ?? 'the market'}'s trading hours.`}
+            {data?.lastError
+              ? `Last refresh error: ${data.lastError}`
+              : source.intraday === 'after-close'
+                ? `${source.label} publishes intraday bars a few hours after each session closes.`
+                : `Intraday data appears during ${asset.exchange ?? 'the market'}'s trading hours.`}
           </EmptyState>
         ) : view === 'chart' ? (
           <StockChart candles={data.candles} intraday={intraday} decimals={asset.decimals} highlightTimes={highlightTimes} />
@@ -279,19 +288,20 @@ function AnomalyList({ items, minRatio, span }: { items: VolumeAnomaly[]; minRat
 
 /**
  * CSV downloads, whatever range the chart shows: every daily bar, and the intraday bars the
- * market-data source still has (the last 60 days, fetched when asked).
+ * asset's source still has (e.g. Yahoo's last 60 days, fetched when asked).
  */
 function Downloads({ asset }: { asset: StockAsset }) {
   const exportCsv = useStockExport();
   const toast = useToast();
+  const source = STOCK_SOURCE_INFO[asset.source];
   const downloads: { interval: StockExportInterval; label: string; title: string }[] = [
     { interval: '1d', label: 'Daily', title: 'Every daily bar since listing' },
     ...(asset.intradayInterval
-      ? [{ interval: 'intraday' as const, label: intervalLabel(asset.intradayInterval), title: 'The last 60 days, downloaded from the market-data source' }]
+      ? [{ interval: 'intraday' as const, label: intervalLabel(asset.intradayInterval), title: `The last ${source.intradayDays} days, downloaded from ${source.label}` }]
       : []),
   ];
   const download = (interval: StockExportInterval) =>
-    exportCsv.mutateAsync({ symbol: asset.symbol, interval }).then(({ filename, csv }) => downloadFile(filename, csv), toast.error);
+    exportCsv.mutateAsync({ asset: asset.id, interval }).then(({ filename, csv }) => downloadFile(filename, csv), toast.error);
 
   return (
     <footer className="flex shrink-0 flex-wrap items-center gap-2 border-t border-hairline px-4 py-2 text-xs text-ink-2">

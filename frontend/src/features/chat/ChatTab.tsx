@@ -1,7 +1,7 @@
 import { useChat } from '@ai-sdk/react';
 import { displaySymbol, type Sentiment } from '@bio-majesty/shared';
 import { useQueryClient } from '@tanstack/react-query';
-import { DefaultChatTransport, isToolUIPart, type UIMessage } from 'ai';
+import { DefaultChatTransport, getToolName, isToolUIPart, type UIMessage } from 'ai';
 import { Loader2, MessageSquarePlus, Search, SendHorizontal, Square, Trash2 } from 'lucide-react';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import type { RuntimeConfig } from '../../app/config';
@@ -201,6 +201,8 @@ const TOOL_LABELS: Record<string, string> = {
   searchNews: 'Searched saved news',
   listNews: 'Listed saved news',
   getArticle: 'Read an article',
+  getAssetPrices: 'Checked prices',
+  // The price tool's name in chats saved before assets had IDs.
   getStockPrices: 'Checked prices',
 };
 
@@ -219,10 +221,13 @@ function Message({ message }: { message: UIMessage }) {
       {message.parts.map((part, i) => {
         if (part.type === 'text') return <Markdown key={i} text={part.text} />;
         if (!isToolUIPart(part)) return null;
-        const name = part.type.replace(/^tool-/, '');
-        const input = part.input as { query?: string; keyword?: string; symbol?: string; from?: string; to?: string } | undefined;
+        // Saved calls of tools that no longer exist come back as dynamic tool parts.
+        const name = getToolName(part);
+        const input = part.input as { query?: string; keyword?: string; asset?: string; symbol?: string; from?: string; to?: string } | undefined;
         const range = input?.from ? `${input.from} → ${input.to ?? 'today'}` : '';
-        const detail = input?.query ?? input?.keyword ?? (input?.symbol ? `${displaySymbol(input.symbol)} ${range}`.trim() : range);
+        // `symbol`: price calls saved before assets had IDs.
+        const ticker = input?.asset ? displaySymbol(input.asset) : input?.symbol;
+        const detail = input?.query ?? input?.keyword ?? (ticker ? `${ticker} ${range}`.trim() : range);
         const running = part.state === 'input-streaming' || part.state === 'input-available';
         const articles = extractArticles(part.state === 'output-available' ? part.output : undefined);
         return (

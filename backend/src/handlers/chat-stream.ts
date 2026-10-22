@@ -53,8 +53,8 @@ export const handler = awslambda.streamifyResponse(async (event: APIGatewayProxy
       getConversation(user.sub, body.id),
     ]);
     // The chat sees only this account's saved news and assets.
-    const known = new Map((await getAssets(settings.stock.symbols)).map((a) => [a.symbol, a]));
-    const assets = settings.stock.symbols.map((s) => known.get(s) ?? fallbackAsset(s));
+    const known = new Map((await getAssets(settings.stock.assets)).map((a) => [a.id, a]));
+    const assets = settings.stock.assets.map((id) => known.get(id) ?? fallbackAsset(id));
     const tools = buildChatTools({ sub: user.sub, assets });
 
     let messages: UIMessage[];

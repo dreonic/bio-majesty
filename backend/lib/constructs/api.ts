@@ -143,8 +143,8 @@ export class ApiConstruct extends Construct {
     route('/runs', { GET: settings });
     route('/runs/daily', { POST: settings });
 
-    route('/stock/assets', { GET: stock, POST: stock });
-    route('/stock/assets/{symbol}', { DELETE: stock });
+    route('/stock/assets', { GET: stock, POST: stock, DELETE: stock });
+    route('/stock/search', { GET: stock });
     route('/stock/history', { GET: stock });
     route('/stock/anomalies', { GET: stock });
     route('/stock/export', { GET: stock });

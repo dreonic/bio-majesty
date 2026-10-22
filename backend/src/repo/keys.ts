@@ -5,7 +5,7 @@ export const accountPk = (sub: string) => `USER#${sub}`;
 
 /**
  * Single-table key layout (see docs/architecture.md). Everything an account owns lives in its
- * partition `USER#<sub>`; market data is shared per symbol (`STOCK#<symbol>`).
+ * partition `USER#<sub>`; market data is shared per asset (`STOCK#<asset ID>`, e.g. `STOCK#yahoo:PRDA.JK`).
  */
 export const keys = {
   article: (sub: string, id: string) => ({ PK: accountPk(sub), SK: `ART#${id}` }),
@@ -26,12 +26,12 @@ export const keys = {
   telegramBot: () => ({ PK: 'TELEGRAM', SK: 'BOT' }),
   telegramLink: (code: string) => ({ PK: `TGLINK#${code}`, SK: 'TGLINK' }),
   conversation: (sub: string, id: string) => ({ PK: accountPk(sub), SK: `CHAT#${id}` }),
-  /** An account's volume alert for one symbol and trading date. */
-  anomaly: (sub: string, symbol: string, ymd: string) => ({ PK: accountPk(sub), SK: `ANOMALY#${symbol}#${ymd}` }),
-  stockDaily: (symbol: string, ymd: string) => ({ PK: `STOCK#${symbol}`, SK: `D#${ymd}` }),
-  stockIntraday: (symbol: string, epoch: number) => ({ PK: `STOCK#${symbol}`, SK: `I#${String(epoch).padStart(10, '0')}` }),
-  stockQuote: (symbol: string) => ({ PK: `STOCK#${symbol}`, SK: 'QUOTE' }),
-  stockStatus: (symbol: string) => ({ PK: `STOCK#${symbol}`, SK: 'STATUS' }),
-  stockMeta: (symbol: string) => ({ PK: `STOCK#${symbol}`, SK: 'META' }),
+  /** An account's volume alert for one asset and trading date. */
+  anomaly: (sub: string, asset: string, ymd: string) => ({ PK: accountPk(sub), SK: `ANOMALY#${asset}#${ymd}` }),
+  stockDaily: (asset: string, ymd: string) => ({ PK: `STOCK#${asset}`, SK: `D#${ymd}` }),
+  stockIntraday: (asset: string, epoch: number) => ({ PK: `STOCK#${asset}`, SK: `I#${String(epoch).padStart(10, '0')}` }),
+  stockQuote: (asset: string) => ({ PK: `STOCK#${asset}`, SK: 'QUOTE' }),
+  stockStatus: (asset: string) => ({ PK: `STOCK#${asset}`, SK: 'STATUS' }),
+  stockMeta: (asset: string) => ({ PK: `STOCK#${asset}`, SK: 'META' }),
 };
 

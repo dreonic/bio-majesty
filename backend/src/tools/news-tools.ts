@@ -39,15 +39,16 @@ export const listNewsInput = z.object({
 
 export const getArticleInput = z.object({ id: z.string().describe('Article id from a previous tool result') });
 
-/** Price-tool input for an account's assets (at least one). */
-export function stockPricesInput(symbols: [string, ...string[]]) {
-  return z.object({
-    symbol: z.enum(symbols).describe('Which tracked asset'),
-    from: TradingDateInput,
-    to: TradingDateInput.optional(),
-  });
-}
-export type StockPricesInput = z.infer<ReturnType<typeof stockPricesInput>>;
+/**
+ * Price-tool input. `asset` is any string, checked against the account's assets when the tool
+ * runs: saved chats replay earlier calls, and those must stay valid after an asset is removed.
+ */
+export const assetPricesInput = z.object({
+  asset: z.string().describe('ID of a tracked asset, e.g. yahoo:PRDA.JK'),
+  from: TradingDateInput,
+  to: TradingDateInput.optional(),
+});
+export type AssetPricesInput = z.infer<typeof assetPricesInput>;
 
 export interface ToolArticle {
   id: string;
@@ -137,19 +138,19 @@ export async function getArticleTool(sub: string, input: z.infer<typeof getArtic
   };
 }
 
-export async function getStockPrices(input: Pick<StockPricesInput, 'from' | 'to'>, asset: Pick<StockAsset, 'symbol' | 'timeZone'>) {
-  const { symbol } = asset;
+export async function getAssetPrices(input: Pick<AssetPricesInput, 'from' | 'to'>, asset: Pick<StockAsset, 'id' | 'timeZone'>) {
+  const { id } = asset;
   // Trading dates are days on the asset's exchange clock (e.g. a Singapore midnight is the previous Jakarta date).
   const from = parseDateInput(input.from, false, asset.timeZone);
   const to = input.to ? parseDateInput(input.to, true, asset.timeZone) : new Date();
-  const candles = await queryDaily(symbol, from, to, asset.timeZone);
-  const quote = await getQuote(symbol);
-  if (!candles.length) return { symbol, candles: [], summary: null, latestQuote: quote };
+  const candles = await queryDaily(id, from, to, asset.timeZone);
+  const quote = await getQuote(id);
+  if (!candles.length) return { asset: id, candles: [], summary: null, latestQuote: quote };
   const first = candles[0]!;
   const last = candles[candles.length - 1]!;
   const step = Math.max(1, Math.ceil(candles.length / 120));
   return {
-    symbol,
+    asset: id,
     summary: {
       from: new Date(first.time * 1000).toISOString().slice(0, 10),
       to: new Date(last.time * 1000).toISOString().slice(0, 10),

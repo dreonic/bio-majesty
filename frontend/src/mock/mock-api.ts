@@ -1,4 +1,5 @@
 import {
+  assetId,
   CATEGORY_COLORS,
   dateInZone,
   DEFAULT_TIME_ZONE,
@@ -7,13 +8,17 @@ import {
   effectiveTags,
   midnightInZone,
   SENTIMENTS,
+  STOCK_SOURCE_INFO,
   stockCsv,
+  symbolProblem,
   type Article,
   type BulkReviewRequest,
   type Category,
   type DeleteNewsRequest,
   type Sentiment,
   type StockRange,
+  type StockSource,
+  type SymbolMatch,
 } from '@bio-majesty/shared';
 import type { RuntimeConfig } from '../app/config';
 import { formatDate, formatPercent, formatPrice } from '../lib/format';
@@ -64,11 +69,12 @@ function list(url: URL) {
 }
 
 /** The demo account's assets, in its list order. */
-const ownAssets = () => state.settings.stock.symbols.flatMap((s) => fx.sampleAssets.find((a) => a.symbol === s) ?? []);
+const ownAssets = () => state.settings.stock.assets.flatMap((id) => fx.sampleAssets.find((a) => a.id === id) ?? []);
+const assetList = () => ({ items: ownAssets(), sources: fx.stockSources });
 
-function stock(symbol: string, range: StockRange) {
-  const asset = fx.sampleAssets.find((a) => a.symbol === symbol) ?? fx.sampleAssets[0]!;
-  const series = fx.sampleCandles[asset.symbol]!;
+function stock(id: string, range: StockRange) {
+  const asset = fx.sampleAssets.find((a) => a.id === id) ?? fx.sampleAssets[0]!;
+  const series = fx.sampleCandles[asset.id]!;
   const intraday = range === '1D' || range === '5D';
   const days: Record<StockRange, number> = { '1D': 4, '5D': 8, '1M': 31, '3M': 92, '6M': 183, '1Y': 366, '5Y': 1830, MAX: 4000 };
   const cutoff = Date.now() / 1000 - days[range] * 86400;
@@ -82,12 +88,12 @@ function stock(symbol: string, range: StockRange) {
   // Like a real quote: the time of the last trade (the latest 15-minute bar), not the time of the request.
   const lastBar = series.intraday[series.intraday.length - 1];
   return {
-    symbol: asset.symbol,
+    asset: asset.id,
     range,
     interval: intraday ? '15m' : range === '5Y' || range === 'MAX' ? '1wk' : '1d',
     candles,
     quote: {
-      symbol: asset.symbol,
+      asset: asset.id,
       price: last.close,
       previousClose: prev.close,
       change: last.close - prev.close,
@@ -98,7 +104,6 @@ function stock(symbol: string, range: StockRange) {
       currency: asset.currency,
       marketTime: lastBar ? new Date(lastBar.time * 1000).toISOString() : new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-      provider: 'demo',
     },
     stale: false,
     lastSuccessAt: new Date().toISOString(),
@@ -322,37 +327,53 @@ async function route(method: string, url: URL, body: unknown): Promise<Response>
   if (path === 'runs') return json({ items: fx.runs });
   if (path === 'runs/daily') return json({ executionArn: 'demo' }, 202);
 
-  const symbol = (url.searchParams.get('symbol') ?? '').toUpperCase();
-  if (path === 'stock/assets' && method === 'GET') return json({ items: ownAssets() });
+  const assetParam = url.searchParams.get('asset') ?? '';
+  if (path === 'stock/assets' && method === 'GET') return json(assetList());
   if (path === 'stock/assets' && method === 'POST') {
-    const wanted = String((body as { symbol: string }).symbol).toUpperCase();
-    if (state.settings.stock.symbols.includes(wanted)) return json({ error: 'conflict', message: `${wanted} is already in your list` }, 409);
-    if (!fx.sampleAssets.some((a) => a.symbol === wanted)) {
-      return json({ error: 'bad_request', message: `The demo only has sample prices for ${fx.sampleAssets.map((a) => a.symbol).join(', ')}` }, 400);
+    const req = body as { source: StockSource; symbol: string };
+    const problem = symbolProblem(req.source, req.symbol);
+    if (problem) return json({ error: 'bad_request', message: problem }, 400);
+    const wanted = assetId(req.source, req.symbol);
+    const label = STOCK_SOURCE_INFO[req.source].label;
+    if (state.settings.stock.assets.includes(wanted)) return json({ error: 'conflict', message: `${req.symbol} from ${label} is already in your list` }, 409);
+    if (!fx.sampleAssets.some((a) => a.id === wanted)) {
+      const samples = fx.sampleAssets.filter((a) => a.source === req.source).map((a) => a.symbol);
+      return json({ error: 'bad_request', message: `The demo only has sample prices for ${samples.join(', ')} from ${label}` }, 400);
     }
-    state.settings.stock.symbols = [...state.settings.stock.symbols, wanted];
-    return json({ items: ownAssets() }, 201);
+    state.settings.stock.assets = [...state.settings.stock.assets, wanted];
+    return json(assetList(), 201);
   }
-  if (seg[0] === 'stock' && seg[1] === 'assets' && seg[2] && method === 'DELETE') {
-    const gone = decodeURIComponent(seg[2]);
-    if (state.settings.profile.sentimentSymbol === gone) {
+  if (path === 'stock/assets' && method === 'DELETE') {
+    const gone = assetParam;
+    if (state.settings.profile.sentimentAsset === gone) {
       return json({ error: 'bad_request', message: `Sentiment is judged against ${gone}. Pick another asset (or the business outlook) in Settings → Profile first.` }, 400);
     }
-    state.settings.stock.symbols = state.settings.stock.symbols.filter((s) => s !== gone);
-    return json({ items: ownAssets() });
+    state.settings.stock.assets = state.settings.stock.assets.filter((a) => a !== gone);
+    return json(assetList());
   }
-  if (path === 'stock/history') return json(stock(symbol, (url.searchParams.get('range') as StockRange) ?? '3M'));
+  if (path === 'stock/search') {
+    // The sample assets stand in for the source's catalog.
+    const source = url.searchParams.get('source') as StockSource;
+    const q = (url.searchParams.get('q') ?? '').trim().toLowerCase();
+    await delay(250);
+    const items: SymbolMatch[] = fx.sampleAssets
+      .filter((a) => a.source === source && (a.symbol.toLowerCase().includes(q) || (a.name ?? '').toLowerCase().includes(q)))
+      .map(({ id, symbol, name, exchange, type, currency }) => ({ id, source, symbol, name, exchange, type, currency }));
+    return json({ items });
+  }
+  if (path === 'stock/history') return json(stock(assetParam, (url.searchParams.get('range') as StockRange) ?? '3M'));
   if (path === 'stock/export') {
     // Like the API: the intraday CSV is what the source still has; daily is every stored bar.
-    const series = fx.sampleCandles[symbol] ?? fx.sampleCandles['PRDA.JK']!;
+    const asset = fx.sampleAssets.find((a) => a.id === assetParam) ?? fx.sampleAssets[0]!;
+    const series = fx.sampleCandles[asset.id]!;
     const intraday = url.searchParams.get('interval') === 'intraday';
-    return json(stockCsv(symbol, intraday ? '15m' : '1d', intraday ? series.intraday : series.daily, DEFAULT_TIME_ZONE));
+    return json(stockCsv(asset.symbol, intraday ? '15m' : '1d', intraday ? series.intraday : series.daily, DEFAULT_TIME_ZONE));
   }
   if (path === 'stock/resync') return json({ started: true }, 202);
   if (path === 'stock/anomalies') {
     const from = url.searchParams.get('from') ?? new Date(Date.now() - 366 * 86400_000).toISOString().slice(0, 10);
-    const asset = fx.sampleAssets.find((a) => a.symbol === symbol);
-    const daily = asset?.hasVolume ? fx.sampleCandles[symbol]!.daily : [];
+    const asset = fx.sampleAssets.find((a) => a.id === assetParam);
+    const daily = asset?.hasVolume ? fx.sampleCandles[asset.id]!.daily : [];
     const items = detectVolumeAnomalies(daily, { minRatio: state.settings.stock.volumeRatio })
       .map((a, i) => ({ ...a, notifiedAt: i % 2 ? new Date(a.time * 1000 + 10 * 3600_000).toISOString() : null }))
       .filter((a) => a.date >= from)

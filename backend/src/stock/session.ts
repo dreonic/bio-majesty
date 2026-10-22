@@ -1,9 +1,7 @@
-import { dateTimeInZone, type StockAsset, type TradingSession } from '@bio-majesty/shared';
+import { dateTimeInZone, STOCK_SOURCE_INFO, type StockAsset, type TradingSession } from '@bio-majesty/shared';
 
 /** Intraday refreshes continue this long after the session ends, to pick up the closing bar. */
 const CLOSE_GRACE_MIN = 15;
-/** The end-of-day refresh waits this long after the close (the source settles the daily bar). */
-const EOD_DELAY_MIN = 60;
 
 const toMinutes = (hhmm: string) => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5));
 
@@ -35,7 +33,7 @@ function previousTradingDay(session: TradingSession, ymd: string): string | null
 }
 
 export interface RefreshPlan {
-  /** Fetch the latest intraday bars and quote (the session is open or just ended). */
+  /** Fetch the latest intraday bars and quote, or only the quote when the source's bars arrive after the close (the session is open or just ended). */
   intraday: boolean;
   /** Trading date whose end-of-day refresh is due, or null. */
   eodFor: string | null;
@@ -44,14 +42,16 @@ export interface RefreshPlan {
 /**
  * What a 15-minute tick should refresh for one asset. Uses the stored session pattern rather than
  * the source's live period, because a closed market reports its previous session. Holidays are
- * not known: they only cost a few empty requests.
+ * not known: they only cost a few empty requests. The end-of-day refresh waits until the asset's
+ * source has settled the day's bars (its `settleMinutes`).
  */
 export function refreshPlan(
-  asset: Pick<StockAsset, 'timeZone' | 'session' | 'intradayInterval'>,
+  asset: Pick<StockAsset, 'source' | 'timeZone' | 'session' | 'intradayInterval'>,
   eodDoneFor: string | null,
   now: Date,
 ): RefreshPlan {
   const { session } = asset;
+  const settle = STOCK_SOURCE_INFO[asset.source].settleMinutes;
   const local = dateTimeInZone(asset.timeZone, now);
   const today = local.slice(0, 10);
   const minute = toMinutes(local.slice(11));
@@ -59,8 +59,8 @@ export function refreshPlan(
   const end = toMinutes(session.end);
   const trading = isTradingDay(session, today);
   const open = start <= end ? minute >= start && minute <= end + CLOSE_GRACE_MIN : minute >= start || minute <= end + CLOSE_GRACE_MIN;
-  // The latest trading date whose session ended at least EOD_DELAY_MIN ago (24-hour sessions: yesterday's).
-  const closedToday = trading && start <= end && minute >= end + EOD_DELAY_MIN;
+  // The latest trading date whose session ended at least `settle` minutes ago (24-hour sessions: yesterday's).
+  const closedToday = trading && start <= end && minute >= end + settle;
   const eodDate = closedToday ? today : previousTradingDay(session, today);
   return {
     intraday: asset.intradayInterval !== null && trading && open,

@@ -68,9 +68,6 @@ export const env = {
   get embeddingDimensions() {
     return Number(optional('EMBEDDING_DIMENSIONS', '768'));
   },
-  get stockProvider() {
-    return optional('STOCK_PROVIDER', 'yahoo');
-  },
   get stockIngestFunction() {
     return required('STOCK_INGEST_FUNCTION');
   },

@@ -49,7 +49,7 @@ export function intradayVolumeAnomaly(
 
 /** Record (and alert the account once per day for) unusual volume. */
 async function recordAnomaly(sub: string, asset: StockAsset, found: Omit<VolumeAnomaly, 'notifiedAt'>, settings: Settings): Promise<VolumeAnomaly> {
-  const existing = await getAnomaly(sub, asset.symbol, found.date);
+  const existing = await getAnomaly(sub, asset.id, found.date);
   let notifiedAt = existing?.notifiedAt ?? null;
   if (!notifiedAt && settings.stock.volumeAlerts) {
     const sent = await notifyAccount(sub, formatVolumeAlert(asset, found), { buttonText: 'Open dashboard', path: '/' });
@@ -57,7 +57,7 @@ async function recordAnomaly(sub: string, asset: StockAsset, found: Omit<VolumeA
   }
   // End-of-day numbers replace the intraday estimate; the alert timestamp is kept.
   const record: VolumeAnomaly = { ...found, notifiedAt };
-  await putAnomaly(sub, asset.symbol, record);
+  await putAnomaly(sub, asset.id, record);
   return record;
 }
 
@@ -65,7 +65,7 @@ async function recordAnomaly(sub: string, asset: StockAsset, found: Omit<VolumeA
 export async function checkEodVolume(sub: string, asset: StockAsset, settings: Settings, now = new Date()): Promise<VolumeAnomaly | null> {
   if (!asset.hasVolume) return null;
   try {
-    const daily = await queryDaily(asset.symbol, addDays(now, -LOOKBACK_DAYS), now, asset.timeZone);
+    const daily = await queryDaily(asset.id, addDays(now, -LOOKBACK_DAYS), now, asset.timeZone);
     const latest = daily[daily.length - 1];
     if (!latest || now.getTime() / 1000 - latest.time > 4 * 86_400) return null; // no recent session
     const found = detectVolumeAnomalies(daily, { window: ANOMALY_WINDOW, minRatio: settings.stock.volumeRatio }).find(
@@ -73,7 +73,7 @@ export async function checkEodVolume(sub: string, asset: StockAsset, settings: S
     );
     return found ? await recordAnomaly(sub, asset, found, settings) : null;
   } catch (err) {
-    logger.error('End-of-day volume check failed', { error: errorMessage(err), symbol: asset.symbol });
+    logger.error('End-of-day volume check failed', { error: errorMessage(err), asset: asset.id });
     return null;
   }
 }
@@ -88,14 +88,14 @@ export async function checkIntradayVolume(
 ): Promise<VolumeAnomaly | null> {
   if (!quote || !asset.hasVolume) return null;
   try {
-    const daily = await queryDaily(asset.symbol, addDays(now, -LOOKBACK_DAYS), now, asset.timeZone);
+    const daily = await queryDaily(asset.id, addDays(now, -LOOKBACK_DAYS), now, asset.timeZone);
     const found = intradayVolumeAnomaly(quote, daily, settings.stock.volumeRatio, asset.timeZone, now);
     if (!found) return null;
-    const existing = await getAnomaly(sub, asset.symbol, found.date);
+    const existing = await getAnomaly(sub, asset.id, found.date);
     if (existing?.notifiedAt) return existing; // already flagged today
     return await recordAnomaly(sub, asset, found, settings);
   } catch (err) {
-    logger.error('Intraday volume check failed', { error: errorMessage(err), symbol: asset.symbol });
+    logger.error('Intraday volume check failed', { error: errorMessage(err), asset: asset.id });
     return null;
   }
 }

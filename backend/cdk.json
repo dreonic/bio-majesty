@@ -19,7 +19,6 @@
     "region": "ap-southeast-1",
     "account": "297580066575",
     "timeZone": "Asia/Singapore",
-    "stockProvider": "yahoo",
     "embeddingModel": "google:gemini-embedding-2",
     "embeddingDimensions": 768,
     "alarmEmail": "",

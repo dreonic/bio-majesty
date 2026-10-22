@@ -58,7 +58,7 @@ export class MonitoringConstruct extends Construct {
         threshold: 3,
         evaluationPeriods: 1,
         treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
-        alarmDescription: 'Stock data refresh is failing (Yahoo rate limits or outage?)',
+        alarmDescription: 'Stock data refresh is failing (market-data source rate limits, outage or API key?)',
       })
       .addAlarmAction(action);
 

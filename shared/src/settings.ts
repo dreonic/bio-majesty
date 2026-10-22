@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { IsoDateTime } from './common';
 import { DEFAULT_EMBEDDING_DIMENSIONS, DEFAULT_EMBEDDING_MODEL, parseModelRef } from './models';
-import { SymbolSchema } from './stock';
+import { AssetIdSchema } from './stock';
 
 /** LLM tasks whose model can be chosen in Settings. */
 export const AI_TASKS = ['querySuggest', 'prefilter', 'tagging', 'digest', 'chat'] as const;
@@ -70,7 +70,7 @@ export function quarterHour(hhmm: string): string {
   return `${m[1]}:${String(Math.floor(Number(m[2]) / 15) * 15).padStart(2, '0')}`;
 }
 
-/** Most assets one account can track (each adds requests to the free market-data source). */
+/** Most assets one account can track (each adds requests to its market-data source). */
 export const MAX_ASSETS = 10;
 
 /**
@@ -83,8 +83,8 @@ export const ProfileSchema = z.object({
   subject: z.string().trim().min(2).max(120),
   /** Entities and their aliases, unrelated look-alikes, typical sources, what moves the price. */
   context: z.string().trim().max(6000),
-  /** Sentiment is judged against this asset's price; null = the subject's business outlook. */
-  sentimentSymbol: SymbolSchema.nullable(),
+  /** Sentiment is judged against this asset's price (its ID); null = the subject's business outlook. */
+  sentimentAsset: AssetIdSchema.nullable(),
 });
 export type Profile = z.infer<typeof ProfileSchema>;
 
@@ -103,7 +103,7 @@ Not related, despite the name: "Prodia", the AI image-generation API company (pr
 News is mostly Indonesian-language (e.g. Kontan, Bisnis.com, CNBC Indonesia, Kompas, Detik, IDX Channel, Investor Daily, Emiten News) with some English coverage.
 
 Specific to Prodia: strong demand for testing services supports the share price; adverse policy such as tariff cuts for BPJS-covered tests pressures it.`,
-  sentimentSymbol: 'PRDA.JK',
+  sentimentAsset: 'yahoo:PRDA.JK',
 };
 
 export const SettingsSchema = z.object({
@@ -124,8 +124,8 @@ export const SettingsSchema = z.object({
     notifyWhenEmpty: z.boolean(),
   }),
   stock: z.object({
-    /** Yahoo Finance symbols, in the order the stock panel lists them (added and removed via /stock/assets). */
-    symbols: z.array(SymbolSchema).max(MAX_ASSETS),
+    /** Asset IDs ("yahoo:PRDA.JK"), in the order the stock panel lists them (added and removed via /stock/assets). */
+    assets: z.array(AssetIdSchema).max(MAX_ASSETS),
     /** Telegram alert when volume is far above its 20-day average. */
     volumeAlerts: z.boolean(),
     /** Volume / 20-day average ratio that counts as unusual. */
@@ -192,7 +192,7 @@ export const DEFAULT_SETTINGS: Settings = {
   schedule: { enabled: true, dailyTime: '06:00' },
   sources: { googleNews: true, gdelt: true },
   notifications: { notifyWhenEmpty: false },
-  stock: { symbols: ['PRDA.JK'], volumeAlerts: true, volumeRatio: 2.5 },
+  stock: { assets: ['yahoo:PRDA.JK'], volumeAlerts: true, volumeRatio: 2.5 },
   profile: DEFAULT_PROFILE,
   learning: { useFeedbackContext: false, maxExamples: 8 },
   updatedAt: null,

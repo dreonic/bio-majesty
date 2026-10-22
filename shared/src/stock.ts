@@ -8,16 +8,98 @@ export type StockRange = z.infer<typeof StockRangeSchema>;
 /** Ranges drawn from intraday bars (hidden for assets that only have daily bars). */
 export const INTRADAY_RANGES: readonly StockRange[] = ['1D', '5D'];
 
-/** A Yahoo Finance symbol: PRDA.JK, AAPL, ^JKSE, USDIDR=X, BTC-USD, GC=F … (stored upper-case). */
-export const SymbolSchema = z
-  .string()
-  .trim()
-  .toUpperCase()
-  .regex(/^[A-Z0-9^][A-Z0-9.\-=^&]{0,19}$/, 'expected a Yahoo Finance symbol, e.g. PRDA.JK');
+/** Market-data sources. Each asset has one, chosen when it is added. */
+export const STOCK_SOURCES = ['yahoo', 'eodhd'] as const;
+export const StockSourceSchema = z.enum(STOCK_SOURCES);
+export type StockSource = z.infer<typeof StockSourceSchema>;
 
-/** Ticker as people say it: the exchange suffix dropped ("PRDA.JK" -> "PRDA"); others unchanged ("BTC-USD", "^JKSE"). */
-export function displaySymbol(symbol: string): string {
-  return symbol.replace(/\.[A-Z]{1,3}$/, '');
+/** How a source writes its symbols and when its prices arrive. */
+export interface StockSourceInfo {
+  label: string;
+  /** Where people look a symbol up by hand. */
+  site: string;
+  /** Symbol syntax (trimmed, upper-cased). */
+  pattern: RegExp;
+  /** Example symbols in the source's own format, for the Add form. */
+  examples: string;
+  /** When intraday bars arrive: during the session ('live'), or only once the day is over ('after-close'). */
+  intraday: 'live' | 'after-close';
+  /** Days of intraday bars the source serves (what the intraday CSV download covers). */
+  intradayDays: number;
+  /** Minutes after the close before the day's bars are final: the end-of-day refresh waits this long. */
+  settleMinutes: number;
+}
+
+export const STOCK_SOURCE_INFO: Record<StockSource, StockSourceInfo> = {
+  yahoo: {
+    label: 'Yahoo Finance',
+    site: 'finance.yahoo.com',
+    pattern: /^[A-Z0-9^][A-Z0-9.\-=^&]{0,19}$/,
+    examples: 'PRDA.JK, AAPL, ^JKSE (index), USDIDR=X (currency), BTC-USD, GC=F (gold)',
+    intraday: 'live',
+    intradayDays: 60,
+    settleMinutes: 60,
+  },
+  eodhd: {
+    label: 'EODHD',
+    site: 'eodhd.com',
+    // TICKER.EXCHANGE: the exchange code is part of every symbol.
+    pattern: /^[A-Z0-9^][A-Z0-9.\-_]{0,30}\.[A-Z]{2,6}$/,
+    examples: 'PRDA.JK, AAPL.US, GSPC.INDX (index), EURUSD.FOREX (currency), BTC-USD.CC (crypto)',
+    // Its intraday bars are finalized about 2-3 hours after the close.
+    intraday: 'after-close',
+    intradayDays: 120,
+    settleMinutes: 180,
+  },
+};
+
+/** Symbols are compared trimmed and upper-cased, in every source. */
+export function normalizeSymbol(symbol: string): string {
+  return symbol.trim().toUpperCase();
+}
+
+/** Why `symbol` is not in the source's format, or null when it is. */
+export function symbolProblem(source: StockSource, symbol: string): string | null {
+  const info = STOCK_SOURCE_INFO[source];
+  return info.pattern.test(normalizeSymbol(symbol)) ? null : `Not in ${info.label}'s symbol format. Examples: ${info.examples}`;
+}
+
+/**
+ * An asset's ID: its source and its symbol in that source's own format, e.g. "yahoo:PRDA.JK" or
+ * "eodhd:AAPL.US". Settings, stored market data and the API name assets by it, so the same
+ * ticker from two sources is two assets with separate price histories.
+ */
+export function assetId(source: StockSource, symbol: string): string {
+  return `${source}:${normalizeSymbol(symbol)}`;
+}
+
+/** Split an asset ID into its source and symbol. Returns null when malformed. */
+export function parseAssetId(id: string): { source: StockSource; symbol: string } | null {
+  const at = id.indexOf(':');
+  if (at < 0) return null;
+  const source = StockSourceSchema.safeParse(id.slice(0, at).trim().toLowerCase());
+  if (!source.success) return null;
+  const symbol = normalizeSymbol(id.slice(at + 1));
+  return symbolProblem(source.data, symbol) ? null : { source: source.data, symbol };
+}
+
+/** An asset ID, normalized: " Yahoo:prda.jk" -> "yahoo:PRDA.JK". */
+export const AssetIdSchema = z.string().transform((value, ctx) => {
+  const parsed = parseAssetId(value);
+  if (parsed) return assetId(parsed.source, parsed.symbol);
+  ctx.addIssue({ code: 'custom', message: 'expected an asset ID such as yahoo:PRDA.JK' });
+  return z.NEVER;
+});
+
+/**
+ * Ticker as people say it: the exchange suffix dropped ("yahoo:PRDA.JK", "eodhd:PRDA.JK" -> "PRDA");
+ * others unchanged ("yahoo:BTC-USD", "yahoo:^JKSE"). Anything that is not an asset ID is returned as it is.
+ */
+export function displaySymbol(id: string): string {
+  const parsed = parseAssetId(id);
+  if (!parsed) return id;
+  // EODHD symbols always end in an exchange code; Yahoo's only for listings outside the US (PRDA.JK, D05.SI).
+  return parsed.symbol.replace(parsed.source === 'eodhd' ? /\.[A-Z]+$/ : /\.[A-Z]{1,3}$/, '');
 }
 
 /** An asset's regular trading session on its exchange's clock. */
@@ -30,12 +112,16 @@ export const TradingSessionSchema = z.object({
 });
 export type TradingSession = z.infer<typeof TradingSessionSchema>;
 
-/** What the market-data source says about a symbol (shared by every account that tracks it). */
+/** What the market-data source says about an asset (shared by every account that tracks it). */
 export const StockAssetSchema = z.object({
+  /** "yahoo:PRDA.JK": see assetId. */
+  id: z.string(),
+  source: StockSourceSchema,
+  /** The symbol in the source's own format ("PRDA.JK"). */
   symbol: z.string(),
   name: z.string().nullable(),
   exchange: z.string().nullable(),
-  /** Yahoo's instrument type: EQUITY, ETF, INDEX, CURRENCY, CRYPTOCURRENCY, FUTURE, MUTUALFUND … */
+  /** Instrument type, in Yahoo's words for every source: EQUITY, ETF, INDEX, CURRENCY, CRYPTOCURRENCY, FUTURE, MUTUALFUND … */
   type: z.string().nullable(),
   currency: z.string().nullable(),
   /** The exchange's IANA time zone: trading dates and the session are on this clock. */
@@ -53,11 +139,37 @@ export const StockAssetSchema = z.object({
 });
 export type StockAsset = z.infer<typeof StockAssetSchema>;
 
-export const StockAssetsResponseSchema = z.object({ items: z.array(StockAssetSchema) });
+export const StockAssetsResponseSchema = z.object({
+  items: z.array(StockAssetSchema),
+  /** Sources new assets can come from: Yahoo always, the others once their API key is in the secret. */
+  sources: z.array(StockSourceSchema),
+});
 export type StockAssetsResponse = z.infer<typeof StockAssetsResponseSchema>;
 
-export const AddAssetRequestSchema = z.object({ symbol: SymbolSchema });
-export const StockSymbolRequestSchema = z.object({ symbol: SymbolSchema });
+/** Track another asset: a source and a symbol in that source's format (normalized). */
+export const AddAssetRequestSchema = z.object({ source: StockSourceSchema, symbol: z.string() }).transform(({ source, symbol }, ctx) => {
+  const problem = symbolProblem(source, symbol);
+  if (!problem) return { source, symbol: normalizeSymbol(symbol) };
+  ctx.addIssue({ code: 'custom', path: ['symbol'], message: problem });
+  return z.NEVER;
+});
+export const StockAssetRequestSchema = z.object({ asset: AssetIdSchema });
+
+/** A symbol a source suggests for a name or ticker (the Add form's search). */
+export const SymbolMatchSchema = z.object({
+  id: z.string(),
+  source: StockSourceSchema,
+  symbol: z.string(),
+  name: z.string().nullable(),
+  exchange: z.string().nullable(),
+  type: z.string().nullable(),
+  currency: z.string().nullable(),
+});
+export type SymbolMatch = z.infer<typeof SymbolMatchSchema>;
+
+export const StockSearchQuerySchema = z.object({ source: StockSourceSchema, q: z.string().trim().min(2).max(60) });
+export const StockSearchResponseSchema = z.object({ items: z.array(SymbolMatchSchema) });
+export type StockSearchResponse = z.infer<typeof StockSearchResponseSchema>;
 
 /** OHLCV candle. `time` is UNIX seconds (UTC). Daily candles use 00:00 UTC of the trading date (the exchange's calendar). */
 export const CandleSchema = z.object({
@@ -71,7 +183,8 @@ export const CandleSchema = z.object({
 export type Candle = z.infer<typeof CandleSchema>;
 
 export const QuoteSchema = z.object({
-  symbol: z.string(),
+  /** The asset's ID. */
+  asset: z.string(),
   price: z.number(),
   previousClose: z.number().nullable(),
   change: z.number().nullable(),
@@ -82,12 +195,11 @@ export const QuoteSchema = z.object({
   currency: z.string().nullable(),
   marketTime: IsoDateTime.nullable(),
   updatedAt: IsoDateTime,
-  provider: z.string(),
 });
 export type Quote = z.infer<typeof QuoteSchema>;
 
 export const StockHistoryResponseSchema = z.object({
-  symbol: z.string(),
+  asset: z.string(),
   range: StockRangeSchema,
   interval: z.enum(['15m', '1d', '1wk']),
   candles: z.array(CandleSchema),
@@ -100,8 +212,8 @@ export const StockHistoryResponseSchema = z.object({
 export type StockHistoryResponse = z.infer<typeof StockHistoryResponseSchema>;
 
 /**
- * CSV downloads: every stored daily bar, or the intraday bars the market-data source still has
- * (the last 60 days, fetched live: intraday bars are kept only briefly).
+ * CSV downloads: every stored daily bar, or the intraday bars the asset's source still has
+ * (its `intradayDays`, fetched live: intraday bars are kept only briefly).
  */
 export const StockExportIntervalSchema = z.enum(['1d', 'intraday']);
 export type StockExportInterval = z.infer<typeof StockExportIntervalSchema>;

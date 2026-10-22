@@ -9,12 +9,12 @@ export function profileContext(profile: Profile): string {
 }
 
 /** The asset sentiment is judged against, as the prompts name it. */
-export type SentimentAsset = Pick<StockAsset, 'symbol' | 'name' | 'type'>;
+export type SentimentAsset = Pick<StockAsset, 'id' | 'name' | 'type'>;
 
 /** What "positive" and "negative" mean for the account: one of its assets' price, or the subject's business outlook. */
 export function sentimentBasis(profile: Profile, asset: SentimentAsset | null): string {
   if (!asset) return `${profile.subject}'s business outlook`;
-  const ticker = displaySymbol(asset.symbol);
+  const ticker = displaySymbol(asset.id);
   const label = asset.name ? `${ticker} (${asset.name})` : ticker;
   return `the ${label} ${asset.type === 'EQUITY' ? 'share price' : 'price'}`;
 }

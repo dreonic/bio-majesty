@@ -40,7 +40,6 @@ export class DashboardStack extends Stack {
       ALLOWED_ORIGINS: origins.join(','),
       EMBEDDING_MODEL: config.embeddingModel,
       EMBEDDING_DIMENSIONS: String(config.embeddingDimensions),
-      STOCK_PROVIDER: config.stockProvider,
       // Its dashboard-users group is the list of accounts (read by the background jobs).
       USER_POOL_ID: auth.userPool.userPoolId,
       LOG_LEVEL: 'INFO',

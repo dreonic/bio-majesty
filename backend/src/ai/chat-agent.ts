@@ -1,17 +1,17 @@
 import { getErrorMessage } from '@ai-sdk/provider';
-import { displaySymbol, type Category, type StockAsset, type TaskModelSettings } from '@bio-majesty/shared';
+import { AssetIdSchema, displaySymbol, type Category, type StockAsset, type TaskModelSettings } from '@bio-majesty/shared';
 import { tool } from 'ai';
 import { env } from '../lib/env';
 import { localDate } from '../lib/time';
 import {
+  assetPricesInput,
   getArticleInput,
   getArticleTool,
-  getStockPrices,
+  getAssetPrices,
   listNews,
   listNewsInput,
   searchNews,
   searchNewsInput,
-  stockPricesInput,
 } from '../tools/news-tools';
 import { categoriesBlock, profileContext, sentimentBasis, UNTRUSTED_NOTE, type ProfileContext } from './prompts';
 import { mergeProviderOptions } from './run-task';
@@ -49,8 +49,8 @@ export function chatProviderOptions(
 }
 
 /** How the chat names an asset: "PRDA (PT Prodia Widyahusada Tbk)". */
-function assetLabel(asset: Pick<StockAsset, 'symbol' | 'name'>): string {
-  return asset.name ? `${displaySymbol(asset.symbol)} (${asset.name})` : displaySymbol(asset.symbol);
+function assetLabel(asset: Pick<StockAsset, 'id' | 'name'>): string {
+  return asset.name ? `${displaySymbol(asset.id)} (${asset.name})` : displaySymbol(asset.id);
 }
 
 /**
@@ -59,8 +59,7 @@ function assetLabel(asset: Pick<StockAsset, 'symbol' | 'name'>): string {
  */
 export function buildChatTools(ctx: { sub: string; assets: StockAsset[] }) {
   const { sub, assets } = ctx;
-  const [first, ...rest] = assets;
-  const bySymbol = new Map(assets.map((a) => [a.symbol, a]));
+  const byId = new Map(assets.map((a) => [a.id, a]));
   return {
     searchNews: tool({
       description:
@@ -79,12 +78,18 @@ export function buildChatTools(ctx: { sub: string; assets: StockAsset[] }) {
       inputSchema: getArticleInput,
       execute: (input) => getArticleTool(sub, input),
     }),
-    // Only with at least one tracked asset.
-    ...(first && {
-      getStockPrices: tool({
-        description: `Daily prices and volume of a tracked asset (${assets.map((a) => `${a.symbol} = ${assetLabel(a)}`).join('; ')}) for a date range, with a summary of the change. Use to relate news to price moves.`,
-        inputSchema: stockPricesInput([first.symbol, ...rest.map((a) => a.symbol)]),
-        execute: (input) => getStockPrices(input, bySymbol.get(input.symbol) ?? first),
+    // Only with at least one tracked asset. (Chats saved before assets had IDs called `getStockPrices`:
+    // with no tool of that name, the AI SDK replays those calls as dynamic tool parts.)
+    ...(assets.length > 0 && {
+      getAssetPrices: tool({
+        description: `Daily prices and volume of a tracked asset (${assets.map((a) => `${a.id} = ${assetLabel(a)}`).join('; ')}) for a date range, with a summary of the change. Use to relate news to price moves.`,
+        inputSchema: assetPricesInput,
+        execute: (input) => {
+          const id = AssetIdSchema.safeParse(input.asset);
+          const asset = id.success ? byId.get(id.data) : undefined;
+          if (!asset) throw new Error(`"${input.asset}" is not a tracked asset. Use one of: ${assets.map((a) => a.id).join(', ')}`);
+          return getAssetPrices(input, asset);
+        },
       }),
     }),
   };

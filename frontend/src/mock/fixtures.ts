@@ -1,6 +1,7 @@
 import {
   DEFAULT_SETTINGS,
   LANGUAGE_MODELS,
+  parseAssetId,
   type Article,
   type Candle,
   type Category,
@@ -10,6 +11,7 @@ import {
   type Sentiment,
   type SettingsView,
   type StockAsset,
+  type StockSource,
 } from '@bio-majesty/shared';
 
 /**
@@ -228,31 +230,37 @@ function sampleSeries(o: { start: number; swing: number; decimals: number; volum
   return { daily, intraday };
 }
 
-const asset = (a: Pick<StockAsset, 'symbol' | 'name' | 'exchange' | 'type' | 'currency' | 'timeZone' | 'session' | 'decimals' | 'hasVolume'>): StockAsset => ({
-  ...a,
-  intradayInterval: '15m',
-  firstTradeDate: null,
-  updatedAt: iso(0),
-});
+const asset = (id: string, a: Pick<StockAsset, 'name' | 'exchange' | 'type' | 'currency' | 'timeZone' | 'session' | 'decimals' | 'hasVolume'>): StockAsset => {
+  const { source, symbol } = parseAssetId(id)!;
+  return { id, source, symbol, ...a, intradayInterval: '15m', firstTradeDate: null, updatedAt: iso(0) };
+};
 
-/** Sample assets: the first three are in the demo account's list, the currency can be added in Settings. */
+/** The demo offers both sources, so the Add form's source choice can be reviewed. */
+export const stockSources: StockSource[] = ['yahoo', 'eodhd'];
+
+/**
+ * Sample assets: the first three are in the demo account's list; the currency, and PRDA from
+ * EODHD (same sample prices), can be added in Settings.
+ */
 export const sampleAssets: StockAsset[] = [
-  asset({ symbol: 'PRDA.JK', name: 'PT Prodia Widyahusada Tbk', exchange: 'Jakarta', type: 'EQUITY', currency: 'IDR', timeZone: 'Asia/Jakarta', session: { start: '09:00', end: '16:15', days: 'weekdays' }, decimals: 0, hasVolume: true }),
-  asset({ symbol: '^JKSE', name: 'IDX Composite', exchange: 'Jakarta', type: 'INDEX', currency: 'IDR', timeZone: 'Asia/Jakarta', session: { start: '09:00', end: '16:15', days: 'weekdays' }, decimals: 2, hasVolume: false }),
-  asset({ symbol: 'BTC-USD', name: 'Bitcoin USD', exchange: 'CCC', type: 'CRYPTOCURRENCY', currency: 'USD', timeZone: 'UTC', session: { start: '00:00', end: '23:59', days: 'daily' }, decimals: 2, hasVolume: true }),
-  asset({ symbol: 'USDIDR=X', name: 'USD/IDR', exchange: 'CCY', type: 'CURRENCY', currency: 'IDR', timeZone: 'Europe/London', session: { start: '00:00', end: '23:59', days: 'weekdays' }, decimals: 4, hasVolume: false }),
+  asset('yahoo:PRDA.JK', { name: 'PT Prodia Widyahusada Tbk', exchange: 'Jakarta', type: 'EQUITY', currency: 'IDR', timeZone: 'Asia/Jakarta', session: { start: '09:00', end: '16:15', days: 'weekdays' }, decimals: 0, hasVolume: true }),
+  asset('yahoo:^JKSE', { name: 'IDX Composite', exchange: 'Jakarta', type: 'INDEX', currency: 'IDR', timeZone: 'Asia/Jakarta', session: { start: '09:00', end: '16:15', days: 'weekdays' }, decimals: 2, hasVolume: false }),
+  asset('yahoo:BTC-USD', { name: 'Bitcoin USD', exchange: 'CCC', type: 'CRYPTOCURRENCY', currency: 'USD', timeZone: 'UTC', session: { start: '00:00', end: '23:59', days: 'daily' }, decimals: 2, hasVolume: true }),
+  asset('yahoo:USDIDR=X', { name: 'USD/IDR', exchange: 'CCY', type: 'CURRENCY', currency: 'IDR', timeZone: 'Europe/London', session: { start: '00:00', end: '23:59', days: 'weekdays' }, decimals: 4, hasVolume: false }),
+  asset('eodhd:PRDA.JK', { name: 'Prodia Widyahusada Tbk PT', exchange: 'Jakarta Exchange', type: 'EQUITY', currency: 'IDR', timeZone: 'Asia/Jakarta', session: { start: '09:00', end: '16:00', days: 'weekdays' }, decimals: 0, hasVolume: true }),
 ];
 
 export const sampleCandles: Record<string, SampleSeries> = {
-  'PRDA.JK': { daily: dailyCandles, intraday: intradayCandles },
-  '^JKSE': sampleSeries({ start: 7100, swing: 0.012, decimals: 2, volume: 0, everyDay: false, offsetH: 7, open: 9 * 60, bars: 26 }),
-  'BTC-USD': sampleSeries({ start: 62_000, swing: 0.04, decimals: 2, volume: 30_000_000_000, everyDay: true, offsetH: 0, open: 0, bars: 96 }),
-  'USDIDR=X': sampleSeries({ start: 16_100, swing: 0.004, decimals: 4, volume: 0, everyDay: false, offsetH: 1, open: 0, bars: 96 }),
+  'yahoo:PRDA.JK': { daily: dailyCandles, intraday: intradayCandles },
+  'yahoo:^JKSE': sampleSeries({ start: 7100, swing: 0.012, decimals: 2, volume: 0, everyDay: false, offsetH: 7, open: 9 * 60, bars: 26 }),
+  'yahoo:BTC-USD': sampleSeries({ start: 62_000, swing: 0.04, decimals: 2, volume: 30_000_000_000, everyDay: true, offsetH: 0, open: 0, bars: 96 }),
+  'yahoo:USDIDR=X': sampleSeries({ start: 16_100, swing: 0.004, decimals: 4, volume: 0, everyDay: false, offsetH: 1, open: 0, bars: 96 }),
+  'eodhd:PRDA.JK': { daily: dailyCandles, intraday: intradayCandles },
 };
 
 export const settings: SettingsView = {
   ...DEFAULT_SETTINGS,
-  stock: { ...DEFAULT_SETTINGS.stock, symbols: ['PRDA.JK', '^JKSE', 'BTC-USD'] },
+  stock: { ...DEFAULT_SETTINGS.stock, assets: ['yahoo:PRDA.JK', 'yahoo:^JKSE', 'yahoo:BTC-USD'] },
   updatedAt: null,
   embedding: { model: 'google:gemini-embedding-2', dimensions: 768 },
   telegram: { configured: true, linked: false, chatTitle: null, linkedAt: null },

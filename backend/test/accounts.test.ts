@@ -104,6 +104,8 @@ describe('news is per account', () => {
 
 describe('chat over one account', () => {
   const prda: StockAsset = {
+    id: 'yahoo:PRDA.JK',
+    source: 'yahoo',
     symbol: 'PRDA.JK',
     name: 'PT Prodia Widyahusada Tbk',
     exchange: 'Jakarta',
@@ -121,8 +123,8 @@ describe('chat over one account', () => {
   it("offers prices only for the account's own assets", () => {
     expect(Object.keys(buildChatTools({ sub: 'u1', assets: [] }))).toEqual(['searchNews', 'listNews', 'getArticle']);
     const tools = buildChatTools({ sub: 'u1', assets: [prda] });
-    expect(tools).toHaveProperty('getStockPrices');
-    expect(tools.getStockPrices?.description).toContain('PRDA.JK = PRDA (PT Prodia Widyahusada Tbk)');
+    expect(tools).toHaveProperty('getAssetPrices');
+    expect(tools.getAssetPrices?.description).toContain('yahoo:PRDA.JK = PRDA (PT Prodia Widyahusada Tbk)');
   });
 
   it("frames answers with the account's profile and sentiment basis", () => {
@@ -135,7 +137,7 @@ describe('chat over one account', () => {
 describe('sentiment rubric', () => {
   it("judges against the profile's asset, or the subject's business outlook without one", () => {
     const profile = { ...DEFAULT_SETTINGS.profile, subject: 'Acme Labs' };
-    expect(sentimentRubric(profile, { symbol: 'BTC-USD', name: 'Bitcoin USD', type: 'CRYPTOCURRENCY' })).toContain(
+    expect(sentimentRubric(profile, { id: 'yahoo:BTC-USD', name: 'Bitcoin USD', type: 'CRYPTOCURRENCY' })).toContain(
       'relative to the BTC-USD (Bitcoin USD) price — how an investor',
     );
     const outlook = sentimentRubric(profile, null);

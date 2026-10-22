@@ -117,8 +117,8 @@ export function formatDigestMessage(digest: Digest): string {
 
 const compactFmt = new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 });
 
-export function formatVolumeAlert(asset: Pick<StockAsset, 'symbol' | 'type' | 'decimals'>, a: Omit<VolumeAnomaly, 'notifiedAt'>): string {
-  const ticker = escapeHtml(displaySymbol(asset.symbol));
+export function formatVolumeAlert(asset: Pick<StockAsset, 'id' | 'type' | 'decimals'>, a: Omit<VolumeAnomaly, 'notifiedAt'>): string {
+  const ticker = escapeHtml(displaySymbol(asset.id));
   const priceFmt = new Intl.NumberFormat('en-US', { minimumFractionDigits: asset.decimals, maximumFractionDigits: asset.decimals });
   const change = a.changePercent !== null ? ` (${a.changePercent > 0 ? '+' : ''}${a.changePercent.toFixed(2)}%)` : '';
   const price = a.close !== null ? ` Price ${priceFmt.format(a.close)}${change}.` : '';
