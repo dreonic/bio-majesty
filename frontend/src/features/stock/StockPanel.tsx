@@ -114,6 +114,7 @@ function AssetView({
           <div className="min-w-0">
             <MenuSelect
               label="Choose an asset"
+              searchPlaceholder="Search assets"
               value={asset.id}
               onChange={onSelect}
               options={assets.map((a) => ({

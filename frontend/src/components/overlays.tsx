@@ -1,8 +1,9 @@
 import * as Dialog from '@radix-ui/react-dialog';
 import * as Popover from '@radix-ui/react-popover';
-import { Check, ChevronDown, X } from 'lucide-react';
+import { Check, ChevronDown, Search, X } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
 import { cn } from '../lib/cn';
+import { Input } from './ui';
 
 /** Right-hand side sheet (article details, editors). */
 export function Sheet({
@@ -174,13 +175,23 @@ export interface MenuOption extends Option {
   detail?: string;
 }
 
-/** Pick one option from a popover list; the trigger shows `children` with a chevron (e.g. the stock panel's ticker). */
+/** Whether every word of the search appears in the option's value, label or detail (any case). */
+function matchesSearch(option: MenuOption, search: string): boolean {
+  const text = `${option.value} ${option.label} ${option.detail ?? ''}`.toLowerCase();
+  return search.trim().toLowerCase().split(/\s+/).every((word) => text.includes(word));
+}
+
+/**
+ * Pick one option from a popover list; the trigger shows `children` with a chevron (e.g. the stock panel's ticker).
+ * With `searchPlaceholder`, a search box above the list filters it, and Enter picks the first match.
+ */
 export function MenuSelect({
   options,
   value,
   onChange,
   children,
   label,
+  searchPlaceholder,
   footer,
   className,
 }: {
@@ -190,20 +201,51 @@ export function MenuSelect({
   children: ReactNode;
   /** Accessible name of the trigger. */
   label: string;
+  /** Show a search box with this placeholder above the options. */
+  searchPlaceholder?: string;
   footer?: ReactNode;
   className?: string;
 }) {
   const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const shown = options.filter((o) => matchesSearch(o, search));
+  const pick = (v: string) => {
+    onChange(v);
+    setOpen(false);
+  };
   return (
-    <Popover.Root open={open} onOpenChange={setOpen}>
+    <Popover.Root
+      open={open}
+      onOpenChange={(next) => {
+        // The menu opens with the full list again.
+        if (next) setSearch('');
+        setOpen(next);
+      }}
+    >
       <Popover.Trigger aria-label={label} className={cn('inline-flex min-w-0 items-center gap-1 rounded-md text-left hover:bg-wash', className)}>
         {children}
         <ChevronDown className="size-4 shrink-0 text-muted" aria-hidden />
       </Popover.Trigger>
       <Popover.Portal>
-        <Popover.Content align="start" sideOffset={4} className="z-50 max-h-80 w-72 overflow-y-auto rounded-md border border-hairline bg-raised p-1 shadow-lg">
-          <div role="menu" aria-label={label}>
-            {options.map((o) => {
+        <Popover.Content align="start" sideOffset={4} className="z-50 flex max-h-80 w-72 flex-col rounded-md border border-hairline bg-raised p-1 shadow-lg">
+          {searchPlaceholder && (
+            <div className="relative mb-1 shrink-0">
+              <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted" aria-hidden />
+              <Input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && shown[0]) pick(shown[0].value);
+                }}
+                placeholder={searchPlaceholder}
+                aria-label={searchPlaceholder}
+                className="h-8 pl-8"
+              />
+            </div>
+          )}
+          {/* Only the options scroll: the search box and the footer stay in view. */}
+          <div role="menu" aria-label={label} className="min-h-0 overflow-y-auto">
+            {shown.map((o) => {
               const selected = o.value === value;
               return (
                 <button
@@ -211,10 +253,7 @@ export function MenuSelect({
                   type="button"
                   role="menuitemradio"
                   aria-checked={selected}
-                  onClick={() => {
-                    onChange(o.value);
-                    setOpen(false);
-                  }}
+                  onClick={() => pick(o.value)}
                   className={cn('flex w-full items-start gap-2 rounded px-2 py-1.5 text-left hover:bg-wash', selected && 'bg-accent-wash')}
                 >
                   <Check className={cn('mt-0.5 size-4 shrink-0', selected ? 'text-accent-strong' : 'invisible')} aria-hidden />
@@ -226,7 +265,8 @@ export function MenuSelect({
               );
             })}
           </div>
-          {footer && <div className="mt-1 border-t border-hairline pt-1">{footer}</div>}
+          {shown.length === 0 && <p className="px-2 py-3 text-sm text-ink-2">No matches</p>}
+          {footer && <div className="mt-1 shrink-0 border-t border-hairline pt-1">{footer}</div>}
         </Popover.Content>
       </Popover.Portal>
     </Popover.Root>
