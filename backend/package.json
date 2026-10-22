@@ -15,8 +15,7 @@
     "smoke:models": "tsx scripts/smoke-models.ts",
     "eval:tagging": "tsx scripts/eval-tagging.ts",
     "try:classify": "tsx scripts/try-classify.ts",
-    "export:feedback": "tsx scripts/export-feedback.ts",
-    "migrate:accounts": "tsx scripts/migrate-to-accounts.ts"
+    "export:feedback": "tsx scripts/export-feedback.ts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^4.0.79",
