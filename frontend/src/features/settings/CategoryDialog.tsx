@@ -1,6 +1,6 @@
 import type { Category, Lang, SearchQuery } from '@bio-majesty/shared';
 import { Plus, Sparkles, Trash2 } from 'lucide-react';
-import { useState } from 'react';
+import { Fragment, useState, type ReactNode } from 'react';
 import { Modal } from '../../components/overlays';
 import { useToast } from '../../components/toast';
 import { Button, Field, Input, Select, Switch, Textarea } from '../../components/ui';
@@ -16,6 +16,18 @@ const SUGGESTED: { name: string; description: string }[] = [
   { name: 'Prodia Utama', description: 'PT Prodia Utama, the controlling shareholder of PRDA.' },
   { name: 'Healthcare regulation', description: 'Indonesian regulation and policy affecting clinical laboratories (Kemenkes, BPJS Kesehatan, BPOM, tariffs).' },
   { name: 'Competitors', description: 'News about competing clinical laboratory and diagnostics chains in Indonesia.' },
+];
+
+/** Query reference shown under "Search queries"; each operator was checked against Google News RSS search. */
+const QUERY_SYNTAX: { op: string; meaning: string }[] = [
+  { op: '"exact phrase"', meaning: 'exact wording' },
+  { op: 'A OR B', meaning: 'either term (OR in capitals)' },
+  { op: '-word', meaning: 'leave out results with this word' },
+  { op: '(A OR B) word', meaning: 'group alternatives' },
+  { op: 'intitle:word', meaning: 'word must be in the headline' },
+  { op: 'site:kontan.co.id', meaning: 'only that site' },
+  { op: 'site:linkedin.com/posts', meaning: 'only LinkedIn posts' },
+  { op: '-site:example.com', meaning: 'leave out that site; also adds social media and other non-news pages' },
 ];
 
 export function CategoryDialog({ category, existingCount, onClose }: { category: Category | null; existingCount: number; onClose: () => void }) {
@@ -116,7 +128,26 @@ export function CategoryDialog({ category, existingCount, onClose }: { category:
                   Suggest with AI
                 </Button>
               </div>
-              <p className="text-xs text-ink-2">Google News syntax: "exact phrase", OR between alternatives, -word to exclude.</p>
+              <div className="space-y-1 text-xs text-ink-2">
+                <p>Google News syntax:</p>
+                <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5">
+                  {QUERY_SYNTAX.map(({ op, meaning }) => (
+                    <Fragment key={op}>
+                      <dt>
+                        <Op>{op}</Op>
+                      </dt>
+                      <dd>{meaning}</dd>
+                    </Fragment>
+                  ))}
+                </dl>
+                <p>
+                  Leave out <Op>when:</Op>, <Op>after:</Op> and <Op>before:</Op>; the dashboard adds dates itself. <Op>allintitle:</Op>, <Op>inurl:</Op> and{' '}
+                  <Op>source:</Op> don't work properly here.
+                </p>
+                <p>
+                  GDELT can't handle <Op>site:</Op>, <Op>intitle:</Op> or <Op>( )</Op> groups; switch it off in categories that use them.
+                </p>
+              </div>
               {queries.map((q, i) => (
                 <div key={i} className="flex items-center gap-2">
                   <Input value={q.q} onChange={(e) => setQuery(i, { q: e.target.value })} placeholder='"Prodia Widyahusada" OR PRDA' />
@@ -158,4 +189,8 @@ export function CategoryDialog({ category, existingCount, onClose }: { category:
       </div>
     </Modal>
   );
+}
+
+function Op({ children }: { children: ReactNode }) {
+  return <code className="rounded bg-wash px-1">{children}</code>;
 }
