@@ -23,7 +23,3 @@ Thumbs.db
 # Playwright
 frontend/test-results/
 frontend/playwright-report/
-
-# Demo build (npm run build:demo -w frontend) and Vercel CLI state
-frontend/dist-demo/
-.vercel/

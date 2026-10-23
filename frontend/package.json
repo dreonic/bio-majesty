@@ -10,9 +10,7 @@
     "build": "tsc -p tsconfig.json && vite build",
     "preview": "vite preview",
     "typecheck": "tsc -p tsconfig.json",
-    "test": "vitest run",
-    "build:demo": "tsc -p tsconfig.json && vite build --mode mock --outDir dist-demo && node scripts/finish-demo-build.mjs",
-    "deploy:demo": "npm run build:demo && npx --yes vercel@64.0.2 deploy dist-demo --prod --yes --project news-desk-demo"
+    "test": "vitest run"
   },
   "dependencies": {
     "@ai-sdk/react": "^4.0.143",
