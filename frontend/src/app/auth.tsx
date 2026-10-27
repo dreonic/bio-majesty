@@ -133,6 +133,6 @@ function NoAccess({ email, checkAgain, signOut }: { email: string | null; checkA
 export function DemoAuth({ config, children }: { config: RuntimeConfig; children: ReactNode }) {
   configureApi({ baseUrl: config.apiUrl, getToken: () => 'demo-token', onUnauthorized: () => undefined });
   return (
-    <SessionContext.Provider value={{ email: 'exec@example.com', signOut: () => window.location.reload(), demo: true }}>{children}</SessionContext.Provider>
+    <SessionContext.Provider value={{ email: 'demo@example.com', signOut: () => window.location.reload(), demo: true }}>{children}</SessionContext.Provider>
   );
 }

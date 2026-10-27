@@ -29,12 +29,13 @@ const DAY = 86_400_000;
 const now = Date.now();
 const iso = (msAgo: number) => new Date(now - msAgo).toISOString();
 
+/** The demo account follows Acme Group, a fictional regional logistics and energy company, plus a topic of its own. */
 export const categories: Category[] = [
-  ['c-corp', 'Prodia Widyahusada', 'Corporate news about PT Prodia Widyahusada Tbk (PRDA).', '#2a78d6'],
-  ['c-digital', 'Prodia Digital Indonesia', 'The digital health subsidiary.', '#eb6834'],
-  ['c-proline', 'Proline', 'PT Prodia Diagnostic Line: reagents and diagnostic supplies.', '#1baf7a'],
-  ['c-reg', 'Healthcare regulation', 'Indonesian policy affecting clinical laboratories.', '#eda100'],
-  ['c-comp', 'Competitors', 'Competing laboratory chains.', '#e87ba4'],
+  ['c-corp', 'Acme Group', 'Corporate news about Acme Group (ACME): results, deals, leadership and plans.', '#2a78d6'],
+  ['c-digital', 'Acme Digital', 'Acme’s digital services subsidiary and its delivery app.', '#eb6834'],
+  ['c-ev', 'Electric vehicles', 'Electric-vehicle demand, charging networks and battery supply in Southeast Asia.', '#1baf7a'],
+  ['c-reg', 'Industry regulation', 'Rules and policy affecting logistics and energy companies.', '#eda100'],
+  ['c-comp', 'Competitors', 'News about Acme’s rivals in logistics and delivery.', '#e87ba4'],
 ].map(([id, name, description, color], i) => ({
   id: id!,
   name: name!,
@@ -42,8 +43,8 @@ export const categories: Category[] = [
   color: color!,
   search: {
     enabled: true,
-    queries: [{ q: `"${name}"`, edition: 'ID:id' as const }, { q: `"${name}" news`, edition: 'ID:en' as const }],
-    exclude: i === 0 ? ['prodia.com'] : [],
+    queries: [{ q: `"${name}"`, edition: 'SG:en' as const }, { q: `"${name}" news`, edition: 'US:en' as const }],
+    exclude: i === 0 ? ['acme.example', 'cartoon'] : [],
     sources: { googleNews: true, gdelt: true },
   },
   backfill: { months: 6, status: 'done' as const, runId: 'r-1', startedAt: iso(20 * DAY), completedAt: iso(20 * DAY - 3600_000), error: null },
@@ -52,23 +53,23 @@ export const categories: Category[] = [
   updatedAt: iso(21 * DAY),
 }));
 
-const OUTLETS = ['Kabar Bisnis (demo)', 'Pasar Hari Ini (demo)', 'Warta Emiten (demo)', 'Health Policy Daily (demo)', 'Jakarta Market Wire (demo)'];
+const OUTLETS = ['Business Daily (demo)', 'Market Wire (demo)', 'Regional Herald (demo)', 'Policy Watch (demo)', 'Energy Report (demo)'];
 
 const HEADLINES: [string, Sentiment, string[], string][] = [
-  ['Sample: lab chain reports higher quarterly revenue on health-check demand', 'positive', ['c-corp'], 'Revenue grew on strong corporate health-check volumes; margins held steady.'],
-  ['Sample: company announces new clinic openings in three provinces', 'positive', ['c-corp'], 'The expansion adds regional coverage and is expected to lift testing volumes next year.'],
-  ['Sample: digital health app passes one million users', 'positive', ['c-digital'], 'The app milestone supports the group’s push to grow online test bookings.'],
-  ['Sample: ministry reviews tariffs for insurance-covered lab tests', 'negative', ['c-reg'], 'Lower reimbursement tariffs could pressure margins for laboratory operators.'],
-  ['Sample: reagent supplier signs distribution deal with hospital group', 'positive', ['c-proline'], 'The deal widens the associate’s customer base for diagnostic supplies.'],
-  ['Sample: competitor cuts prices on routine blood panels', 'negative', ['c-comp'], 'Aggressive pricing by a rival chain may weigh on volumes in key cities.'],
-  ['Sample: company holds annual health awareness campaign', 'neutral', ['c-corp'], 'A community campaign with no clear effect on financial performance.'],
-  ['Sample: analysts keep neutral view on healthcare stocks this quarter', 'neutral', ['c-corp', 'c-comp'], 'Sector outlook unchanged; valuation seen as fair.'],
-  ['Sample: new genomic testing service launched for corporate clients', 'positive', ['c-corp'], 'Higher-margin specialty testing could improve the revenue mix.'],
-  ['Sample: draft regulation tightens lab accreditation requirements', 'negative', ['c-reg'], 'Compliance costs may rise, though larger operators are better placed.'],
+  ['Sample: Acme Group reports higher quarterly revenue on freight demand', 'positive', ['c-corp'], 'Revenue grew on strong freight volumes; margins held steady.'],
+  ['Sample: Acme opens three new distribution hubs in the region', 'positive', ['c-corp'], 'The expansion adds regional coverage and is expected to lift volumes next year.'],
+  ['Sample: Acme Digital’s delivery app passes one million users', 'positive', ['c-digital'], 'The milestone supports the group’s push to grow online bookings.'],
+  ['Sample: regulator reviews fuel surcharges for freight operators', 'negative', ['c-reg'], 'Lower allowed surcharges could pressure margins for logistics operators.'],
+  ['Sample: Acme’s charging network signs supply deal with a city fleet', 'positive', ['c-ev'], 'The deal widens the customer base for its fast-charging services.'],
+  ['Sample: competitor cuts prices on same-day delivery', 'negative', ['c-comp'], 'Aggressive pricing by a rival may weigh on volumes in key cities.'],
+  ['Sample: Acme holds annual community clean-up campaign', 'neutral', ['c-corp'], 'A community campaign with no clear effect on financial performance.'],
+  ['Sample: analysts keep neutral view on logistics stocks this quarter', 'neutral', ['c-corp', 'c-comp'], 'Sector outlook unchanged; valuation seen as fair.'],
+  ['Sample: electric-truck sales double from a year earlier', 'positive', ['c-ev'], 'Faster adoption supports demand for charging and fleet services.'],
+  ['Sample: draft rules tighten emissions reporting for fleets', 'negative', ['c-reg'], 'Compliance costs may rise, though larger operators are better placed.'],
   ['Sample: board approves cash dividend payout', 'positive', ['c-corp'], 'The payout signals confidence in cash generation.'],
-  ['Sample: rival chain raises funding to expand diagnostic network', 'negative', ['c-comp'], 'A better-funded competitor could intensify competition for corporate contracts.'],
-  ['Sample: digital subsidiary partners with insurer on home testing', 'positive', ['c-digital'], 'The partnership opens a new channel for home sample collection.'],
-  ['Sample: health ministry discusses lab data integration platform', 'undecided', ['c-reg', 'c-digital'], 'Integration requirements are still being drafted; impact unclear.'],
+  ['Sample: rival raises funding to expand its delivery network', 'negative', ['c-comp'], 'A better-funded competitor could intensify competition for contracts.'],
+  ['Sample: Acme Digital partners with a bank on in-app payments', 'positive', ['c-digital'], 'The partnership opens a new revenue channel for the app.'],
+  ['Sample: ministry discusses battery-recycling standards', 'undecided', ['c-reg', 'c-ev'], 'Standards are still being drafted; impact unclear.'],
 ];
 
 function makeArticle(i: number, status: Article['status'], daysAgo: number): Article {
@@ -82,7 +83,7 @@ function makeArticle(i: number, status: Article['status'], daysAgo: number): Art
     sourceName: OUTLETS[i % OUTLETS.length]!,
     sourceDomain: 'example.com',
     publishedAt: iso(daysAgo * DAY + Math.floor(rand() * 8) * 3600_000),
-    lang: i % 3 === 0 ? 'en' : 'id',
+    lang: 'en',
     snippet: null,
     textStatus: i % 5 === 4 ? 'paywalled' : 'ok',
     status,
@@ -110,7 +111,7 @@ export const articles: Article[] = [
   ...Array.from({ length: 6 }, (_, i) => makeArticle(i + 3, 'PENDING', i % 2)),
   ...Array.from({ length: 3 }, (_, i) => ({
     ...makeArticle(i, 'FILTERED', 1),
-    title: `Sample: unrelated "Prodia" result #${i + 1}`,
+    title: `Sample: unrelated "Acme" result #${i + 1}`,
   })),
   ...Array.from({ length: 2 }, (_, i) => makeArticle(i + 10, 'REJECTED', 3 + i * 2)),
 ];
@@ -122,9 +123,9 @@ export const digest: Digest = {
   id: new Date(now).toISOString().slice(0, 10),
   runId: 'r-2',
   runType: 'daily',
-  title: '6 new items: expansion news leads, one tariff risk',
+  title: '6 new items: expansion news leads, one surcharge risk',
   summary:
-    'Mostly positive coverage today: clinic expansion and a new digital partnership. One item flags a possible review of tariffs for insurance-covered tests, which could pressure margins. (Fictional demo digest.)',
+    'Mostly positive coverage today: new distribution hubs and a payments partnership. One item flags a possible review of fuel surcharges, which could pressure margins. (Fictional demo digest.)',
   highlights: articles
     .filter((a) => a.status === 'PENDING')
     .slice(0, 3)
@@ -133,68 +134,17 @@ export const digest: Digest = {
   createdAt: iso(2 * 3600_000),
 };
 
-function jakartaMidnightUtc(ms: number): number {
-  const d = new Date(ms + 7 * 3600_000);
-  return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()) / 1000;
-}
-
-/** Synthetic random-walk prices (weekdays only). */
-export const dailyCandles: Candle[] = (() => {
-  const out: Candle[] = [];
-  let price = 2600;
-  let session = 0;
-  for (let d = 1200; d >= 0; d--) {
-    const t = now - d * DAY;
-    const day = new Date(t + 7 * 3600_000).getUTCDay();
-    if (day === 0 || day === 6) continue;
-    const open = price;
-    const close = Math.max(1500, Math.round(open * (1 + (rand() - 0.485) * 0.035)));
-    const high = Math.round(Math.max(open, close) * (1 + rand() * 0.012));
-    const low = Math.round(Math.min(open, close) * (1 - rand() * 0.012));
-    session++;
-    // Occasional volume spikes so the unusual-volume list has something to show.
-    const spike = session % 37 === 0 ? 3.6 : 1;
-    out.push({ time: jakartaMidnightUtc(t), open, high, low, close, volume: Math.round((300_000 + rand() * 2_200_000) * spike) });
-    price = close;
-  }
-  return out;
-})();
-
-export const intradayCandles: Candle[] = (() => {
-  const out: Candle[] = [];
-  const last = dailyCandles[dailyCandles.length - 1]!;
-  let price = last.open;
-  for (const dayOffset of [1, 0]) {
-    const base = (jakartaMidnightUtc(now - dayOffset * DAY) - 7 * 3600) * 1000; // 00:00 WIB
-    for (let slot = 0; slot < 26; slot++) {
-      const t = base + (9 * 60 + slot * 15) * 60_000;
-      if (t > now) break;
-      const open = price;
-      const close = Math.round(open * (1 + (rand() - 0.49) * 0.006));
-      out.push({
-        time: Math.floor(t / 1000),
-        open,
-        high: Math.round(Math.max(open, close) * 1.002),
-        low: Math.round(Math.min(open, close) * 0.998),
-        close,
-        volume: Math.round(10_000 + rand() * 90_000),
-      });
-      price = close;
-    }
-  }
-  return out;
-})();
-
 interface SampleSeries {
   daily: Candle[];
   intraday: Candle[];
 }
 
 /**
- * A random walk for the other sample assets, generated after PRDA's so its numbers stay
- * the same. `offsetH` is the exchange's UTC offset, `open` its session start (minutes).
+ * A random walk of sample prices. `offsetH` is the exchange's UTC offset, `open` its session
+ * start (minutes); `spikes` adds an occasional volume spike so the unusual-volume list has
+ * something to show.
  */
-function sampleSeries(o: { start: number; swing: number; decimals: number; volume: number; everyDay: boolean; offsetH: number; open: number; bars: number }): SampleSeries {
+function sampleSeries(o: { start: number; swing: number; decimals: number; volume: number; everyDay: boolean; offsetH: number; open: number; bars: number; spikes?: boolean }): SampleSeries {
   const round = (n: number) => Number(n.toFixed(o.decimals));
   const midnight = (ms: number) => {
     const d = new Date(ms + o.offsetH * 3600_000);
@@ -211,7 +161,8 @@ function sampleSeries(o: { start: number; swing: number; decimals: number; volum
     const close = round(open * (1 + (rand() - 0.49) * o.swing));
     const high = round(Math.max(open, close) * (1 + (rand() * o.swing) / 3));
     const low = round(Math.min(open, close) * (1 - (rand() * o.swing) / 3));
-    daily.push({ time: midnight(t), open, high, low, close, volume: volume(1) });
+    const spike = o.spikes && daily.length % 37 === 36 ? 3.6 : 1;
+    daily.push({ time: midnight(t), open, high, low, close, volume: volume(spike) });
     price = close;
   }
   const intraday: Candle[] = [];
@@ -239,28 +190,37 @@ const asset = (id: string, a: Pick<StockAsset, 'name' | 'exchange' | 'type' | 'c
 export const stockSources: StockSource[] = ['yahoo', 'eodhd'];
 
 /**
- * Sample assets: the first three are in the demo account's list; the currency, and PRDA from
- * EODHD (same sample prices), can be added in Settings.
+ * Sample assets: the first three are in the demo account's list; the currency, and Acme from
+ * EODHD (same sample prices), can be added in Settings. ACME is a fictional listing.
  */
 export const sampleAssets: StockAsset[] = [
-  asset('yahoo:PRDA.JK', { name: 'PT Prodia Widyahusada Tbk', exchange: 'Jakarta', type: 'EQUITY', currency: 'IDR', timeZone: 'Asia/Jakarta', session: { start: '09:00', end: '16:15', days: 'weekdays' }, decimals: 0, hasVolume: true }),
-  asset('yahoo:^JKSE', { name: 'IDX Composite', exchange: 'Jakarta', type: 'INDEX', currency: 'IDR', timeZone: 'Asia/Jakarta', session: { start: '09:00', end: '16:15', days: 'weekdays' }, decimals: 2, hasVolume: false }),
+  asset('yahoo:ACME', { name: 'Acme Group (demo)', exchange: 'Singapore', type: 'EQUITY', currency: 'SGD', timeZone: 'Asia/Singapore', session: { start: '09:00', end: '17:00', days: 'weekdays' }, decimals: 2, hasVolume: true }),
+  asset('yahoo:^GSPC', { name: 'S&P 500', exchange: 'SNP', type: 'INDEX', currency: 'USD', timeZone: 'America/New_York', session: { start: '09:30', end: '16:00', days: 'weekdays' }, decimals: 2, hasVolume: false }),
   asset('yahoo:BTC-USD', { name: 'Bitcoin USD', exchange: 'CCC', type: 'CRYPTOCURRENCY', currency: 'USD', timeZone: 'UTC', session: { start: '00:00', end: '23:59', days: 'daily' }, decimals: 2, hasVolume: true }),
-  asset('yahoo:USDIDR=X', { name: 'USD/IDR', exchange: 'CCY', type: 'CURRENCY', currency: 'IDR', timeZone: 'Europe/London', session: { start: '00:00', end: '23:59', days: 'weekdays' }, decimals: 4, hasVolume: false }),
-  asset('eodhd:PRDA.JK', { name: 'Prodia Widyahusada Tbk PT', exchange: 'Jakarta Exchange', type: 'EQUITY', currency: 'IDR', timeZone: 'Asia/Jakarta', session: { start: '09:00', end: '16:00', days: 'weekdays' }, decimals: 0, hasVolume: true }),
+  asset('yahoo:EURUSD=X', { name: 'EUR/USD', exchange: 'CCY', type: 'CURRENCY', currency: 'USD', timeZone: 'Europe/London', session: { start: '00:00', end: '23:59', days: 'weekdays' }, decimals: 4, hasVolume: false }),
+  asset('eodhd:ACME.SG', { name: 'Acme Group Ltd (demo)', exchange: 'SG', type: 'EQUITY', currency: 'SGD', timeZone: 'Asia/Singapore', session: { start: '09:00', end: '17:00', days: 'weekdays' }, decimals: 2, hasVolume: true }),
 ];
 
+const acme = sampleSeries({ start: 4.2, swing: 0.035, decimals: 2, volume: 1_500_000, everyDay: false, offsetH: 8, open: 9 * 60, bars: 32, spikes: true });
+
 export const sampleCandles: Record<string, SampleSeries> = {
-  'yahoo:PRDA.JK': { daily: dailyCandles, intraday: intradayCandles },
-  'yahoo:^JKSE': sampleSeries({ start: 7100, swing: 0.012, decimals: 2, volume: 0, everyDay: false, offsetH: 7, open: 9 * 60, bars: 26 }),
+  'yahoo:ACME': acme,
+  'yahoo:^GSPC': sampleSeries({ start: 5800, swing: 0.012, decimals: 2, volume: 0, everyDay: false, offsetH: -5, open: 9 * 60 + 30, bars: 26 }),
   'yahoo:BTC-USD': sampleSeries({ start: 62_000, swing: 0.04, decimals: 2, volume: 30_000_000_000, everyDay: true, offsetH: 0, open: 0, bars: 96 }),
-  'yahoo:USDIDR=X': sampleSeries({ start: 16_100, swing: 0.004, decimals: 4, volume: 0, everyDay: false, offsetH: 1, open: 0, bars: 96 }),
-  'eodhd:PRDA.JK': { daily: dailyCandles, intraday: intradayCandles },
+  'yahoo:EURUSD=X': sampleSeries({ start: 1.08, swing: 0.004, decimals: 4, volume: 0, everyDay: false, offsetH: 1, open: 0, bars: 96 }),
+  'eodhd:ACME.SG': acme,
 };
 
 export const settings: SettingsView = {
   ...DEFAULT_SETTINGS,
-  stock: { ...DEFAULT_SETTINGS.stock, assets: ['yahoo:PRDA.JK', 'yahoo:^JKSE', 'yahoo:BTC-USD'] },
+  stock: { ...DEFAULT_SETTINGS.stock, assets: ['yahoo:ACME', 'yahoo:^GSPC', 'yahoo:BTC-USD'] },
+  profile: {
+    subject: 'Acme Group',
+    context: `A fictional regional logistics and energy group, used for this demo. Acme Digital is its digital services subsidiary; Acme also runs a fast-charging network for electric fleets.
+
+Not related, despite the name: other companies called Acme, and cartoon references.`,
+    sentimentAsset: 'yahoo:ACME',
+  },
   updatedAt: null,
   embedding: { model: 'google:gemini-embedding-2', dimensions: 768 },
   telegram: { configured: true, linked: false, chatTitle: null, linkedAt: null },
@@ -268,6 +228,9 @@ export const settings: SettingsView = {
   stage: 'demo',
   region: 'ap-southeast-1',
 };
+
+/** A brand-new account (mock mode with `?blank`): the defaults, nothing set up yet. */
+export const blankSettings: SettingsView = { ...settings, stock: DEFAULT_SETTINGS.stock, profile: DEFAULT_SETTINGS.profile };
 
 export const models = {
   configuredProviders: settings.configuredProviders,

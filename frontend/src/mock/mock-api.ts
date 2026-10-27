@@ -5,6 +5,7 @@ import {
   DEFAULT_TIME_ZONE,
   DELETABLE_STATUSES,
   detectVolumeAnomalies,
+  displaySymbol,
   effectiveTags,
   midnightInZone,
   SENTIMENTS,
@@ -37,10 +38,13 @@ export const MOCK_CONFIG: RuntimeConfig = {
   cognito: { authority: 'https://mock.invalid', clientId: 'mock', domain: 'https://mock.invalid' },
 };
 
+/** `?blank` in the URL starts the demo as a brand-new account: default settings, no categories or news. */
+const blank = new URLSearchParams(window.location.search).has('blank');
+
 const state = {
-  articles: [...fx.articles],
-  categories: [...fx.categories],
-  settings: structuredClone(fx.settings),
+  articles: blank ? [] : [...fx.articles],
+  categories: blank ? [] : [...fx.categories],
+  settings: structuredClone(blank ? fx.blankSettings : fx.settings),
   conversations: [...fx.conversations],
   chats: new Map<string, unknown[]>(),
   decisions: [] as { changed: boolean }[],
@@ -59,7 +63,7 @@ function list(url: URL) {
   const q = url.searchParams.get('q')?.toLowerCase();
   const items = state.articles
     .filter((a) => a.status === status)
-    // Like the API: news dates are days on the exec's calendar.
+    // Like the API: news dates are days on the dashboard's calendar.
     .filter((a) => !from || a.publishedAt >= midnightInZone(DEFAULT_TIME_ZONE, from).toISOString())
     .filter((a) => !cats.length || effectiveTags(a).categoryIds.some((c) => cats.includes(c)))
     .filter((a) => !sents.length || sents.includes(effectiveTags(a).sentiment))
@@ -111,16 +115,13 @@ function stock(id: string, range: StockRange) {
   };
 }
 
-/** The article's calendar day in Jakarta as a UTC-midnight timestamp (the candles' time convention). */
-function jakartaDay(iso: string): number {
-  const d = new Date(new Date(iso).getTime() + 7 * 3600_000);
-  return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()) / 1000;
-}
+/** The article's calendar day on an exchange's clock, as a UTC-midnight timestamp (the candles' time convention). */
+const tradingDay = (iso: string, timeZone: string) => Date.parse(`${dateInZone(timeZone, new Date(iso))}T00:00:00Z`) / 1000;
 
 // Keywords that map a chat question to a demo category (the real chat uses semantic search).
 const DEMO_TOPICS: [RegExp, string][] = [
-  [/regulat|ministry|tariff|accreditation/, 'c-reg'],
-  [/proline|diagnostic line|reagent/, 'c-proline'],
+  [/regulat|policy|ministry|surcharge|rules/, 'c-reg'],
+  [/electric|\bev\b|charging|battery/, 'c-ev'],
   [/competitor|rival/, 'c-comp'],
   [/digital|\bapp\b/, 'c-digital'],
 ];
@@ -146,13 +147,16 @@ function demoSearch(question: string) {
   return { matches, sources, days };
 }
 
-/** PRDA's close on the article's day (or the next trading day) and the change from the previous close. */
+/** The account's first asset: its close on the article's day (or the next trading day) and the change from the previous close. */
 function demoPriceNote(publishedAt: string): string {
-  const i = fx.dailyCandles.findIndex((c) => c.time >= jakartaDay(publishedAt));
+  const asset = ownAssets()[0];
+  if (!asset) return '';
+  const daily = fx.sampleCandles[asset.id]!.daily;
+  const i = daily.findIndex((c) => c.time >= tradingDay(publishedAt, asset.timeZone));
   if (i < 1) return '';
-  const c = fx.dailyCandles[i]!;
-  const prev = fx.dailyCandles[i - 1]!;
-  return ` PRDA closed at ${formatPrice(c.close)} (${formatPercent(((c.close - prev.close) / prev.close) * 100)}) on ${formatDate(c.time * 1000)}.`;
+  const c = daily[i]!;
+  const prev = daily[i - 1]!;
+  return ` ${displaySymbol(asset.id)} closed at ${formatPrice(c.close, asset.decimals)} (${formatPercent(((c.close - prev.close) / prev.close) * 100)}) on ${formatDate(c.time * 1000)}.`;
 }
 
 function chatStream(body: { id: string; message: { id: string; parts: { type: string; text?: string }[] } }) {
@@ -175,7 +179,7 @@ function chatStream(body: { id: string; message: { id: string; parts: { type: st
         `- **${effectiveTags(a).sentiment}** — [${a.title}](${a.url}), ${a.publishedAt.slice(0, 10)}: ${a.suggestion?.summary.split('.')[0]}.${withPrices ? demoPriceNote(a.publishedAt) : ''}`,
     ),
     '',
-    'In the deployed dashboard the assistant searches your real saved articles and PRDA prices, and cites each source.',
+    'In the deployed dashboard the assistant searches your real saved articles and asset prices, and cites each source.',
   ].join('\n');
   const parts: unknown[] = [
     { type: 'start', messageId: `msg-${Date.now()}` },
@@ -264,7 +268,7 @@ async function route(method: string, url: URL, body: unknown): Promise<Response>
     const failed = 'ids' in req ? req.ids.filter((id) => !doomed.has(id)).map((id) => ({ id, error: 'not skipped or filtered' })) : [];
     return json({ deleted: doomed.size, failed, more: false });
   }
-  if (method === 'GET' && path === 'digest/latest') return json({ digest: fx.digest });
+  if (method === 'GET' && path === 'digest/latest') return json({ digest: blank ? null : fx.digest });
 
   if (path === 'categories' && method === 'GET') return json({ items: [...state.categories].sort((a, b) => a.name.localeCompare(b.name)) });
   if (path === 'categories' && method === 'POST') {
@@ -290,11 +294,11 @@ async function route(method: string, url: URL, body: unknown): Promise<Response>
     return json({
       description: `News about ${name} (demo suggestion).`,
       queries: [
+        { q: `"${name}"`, edition: 'SG:en' },
+        { q: `"${name}" results OR outlook`, edition: 'US:en' },
         { q: `"${name}"`, edition: 'ID:id' },
-        { q: `"${name}" laba OR pendapatan`, edition: 'ID:id' },
-        { q: `"${name}" Indonesia`, edition: 'ID:en' },
       ],
-      exclude: ['prodia.com'],
+      exclude: ['cartoon'],
     });
   }
   if (seg[0] === 'categories' && seg[1]) {
@@ -324,7 +328,7 @@ async function route(method: string, url: URL, body: unknown): Promise<Response>
     await delay(700);
     return json({ ok: true, latencyMs: 812, output: 'OK', error: null });
   }
-  if (path === 'runs') return json({ items: fx.runs });
+  if (path === 'runs') return json({ items: blank ? [] : fx.runs });
   if (path === 'runs/daily') return json({ executionArn: 'demo' }, 202);
 
   const assetParam = url.searchParams.get('asset') ?? '';
@@ -381,15 +385,16 @@ async function route(method: string, url: URL, body: unknown): Promise<Response>
     return json({ items, minRatio: state.settings.stock.volumeRatio, window: 20 });
   }
   if (path === 'feedback/stats') {
-    return json({ total: 41 + state.decisions.length, corrections: 9 + state.decisions.filter((d) => d.changed).length });
+    const [total, corrections] = blank ? [0, 0] : [41, 9];
+    return json({ total: total + state.decisions.length, corrections: corrections + state.decisions.filter((d) => d.changed).length });
   }
 
   if (path === 'telegram/link' && method === 'POST') {
     return json({ code: 'demo', deepLink: 'https://t.me/', expiresAt: new Date(Date.now() + 600_000).toISOString() });
   }
   if (path === 'telegram/link/verify') {
-    state.settings.telegram = { configured: true, linked: true, chatTitle: 'Demo Exec', linkedAt: new Date().toISOString() };
-    return json({ linked: true, chatTitle: 'Demo Exec' });
+    state.settings.telegram = { configured: true, linked: true, chatTitle: 'Demo chat', linkedAt: new Date().toISOString() };
+    return json({ linked: true, chatTitle: 'Demo chat' });
   }
   if (path === 'telegram/link' && method === 'DELETE') {
     state.settings.telegram = { configured: true, linked: false, chatTitle: null, linkedAt: null };
