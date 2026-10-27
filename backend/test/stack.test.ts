@@ -134,7 +134,7 @@ describe('DashboardStack', () => {
 
   it('pins the AWS account from cdk.json and rejects a malformed one', () => {
     expect(loadConfig(new App({ context: { account: '297580066575' } })).account).toBe('297580066575');
-    expect(() => loadConfig(new App({ context: { account: 'prodia' } }))).toThrow(/Invalid account/);
+    expect(() => loadConfig(new App({ context: { account: 'acme' } }))).toThrow(/Invalid account/);
   });
 
   it('rejects an invalid time zone', () => {

@@ -38,7 +38,7 @@ async function replay(onError: (error: unknown) => string) {
   const model = new MockLanguageModelV4({
     doStream: [
       // Turn 1: think, call a tool that fails, think again, answer.
-      { stream: convertArrayToReadableStream([start, ...thinking('r1', 'sig-1'), { type: 'tool-call', toolCallId: 'call-1', toolName: 'searchNews', input: '{"query":"Prodia"}' }, finish('tool-calls')]) },
+      { stream: convertArrayToReadableStream([start, ...thinking('r1', 'sig-1'), { type: 'tool-call', toolCallId: 'call-1', toolName: 'searchNews', input: '{"query":"Acme"}' }, finish('tool-calls')]) },
       { stream: convertArrayToReadableStream([start, ...thinking('r2', 'sig-2'), ...answer('Search is unavailable.'), finish('stop')]) },
       // Turn 2: the follow-up.
       { stream: convertArrayToReadableStream([start, ...answer('Follow-up answer.'), finish('stop')]) },
@@ -53,7 +53,7 @@ async function replay(onError: (error: unknown) => string) {
     }),
   };
 
-  const first = [userMessage('u1', 'Any news on Prodia?')];
+  const first = [userMessage('u1', 'Any news on Acme?')];
   let saved: UIMessage[] = [];
   const turn1 = streamText({ model, tools, stopWhen: isStepCount(8), messages: await convertToModelMessages(first) });
   const ui = toUIMessageStream({ stream: turn1.stream, originalMessages: first, onError, onEnd: ({ messages }) => void (saved = json(messages)) });

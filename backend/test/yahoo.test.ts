@@ -16,9 +16,9 @@ vi.mock('yahoo-finance2', () => ({
       searched.push({ query, options });
       return {
         quotes: [
-          { isYahooFinance: true, symbol: 'PRDA.JK', exchange: 'JKT', exchDisp: 'Jakarta', quoteType: 'EQUITY', longname: 'PT Prodia Widyahusada Tbk', shortname: 'Prodia Widyahusada' },
-          { isYahooFinance: true, symbol: 'PRDA250117C00001000', exchange: 'OPR', quoteType: 'OPTION', shortname: 'An option' },
-          { isYahooFinance: false, name: 'Prodia (AI images)', permalink: 'prodia' },
+          { isYahooFinance: true, symbol: 'ACME.JK', exchange: 'JKT', exchDisp: 'Jakarta', quoteType: 'EQUITY', longname: 'PT Acme Laboratorium Tbk', shortname: 'Acme Laboratorium' },
+          { isYahooFinance: true, symbol: 'ACME250117C00001000', exchange: 'OPR', quoteType: 'OPTION', shortname: 'An option' },
+          { isYahooFinance: false, name: 'Acme (AI images)', permalink: 'acme' },
         ],
       };
     }
@@ -27,7 +27,7 @@ vi.mock('yahoo-finance2', () => ({
 
 const { YahooStockProvider } = await import('../src/stock/yahoo');
 
-const prda = { id: 'yahoo:PRDA.JK', symbol: 'PRDA.JK', timeZone: 'Asia/Jakarta' };
+const acme = { id: 'yahoo:ACME.JK', symbol: 'ACME.JK', timeZone: 'Asia/Jakarta' };
 
 describe('Yahoo provider', () => {
   beforeEach(() => {
@@ -36,14 +36,14 @@ describe('Yahoo provider', () => {
   });
 
   it('leaves period2 out when no end date is given (the full-history load)', async () => {
-    await new YahooStockProvider().daily(prda, new Date('2016-12-01T00:00:00Z'));
+    await new YahooStockProvider().daily(acme, new Date('2016-12-01T00:00:00Z'));
     expect(calls[0]).not.toHaveProperty('period2');
     expect(calls[0]).toMatchObject({ interval: '1d', return: 'array' });
   });
 
   it('passes period2 when an end date is given', async () => {
     const to = new Date('2026-10-16T00:00:00Z');
-    await new YahooStockProvider().daily(prda, new Date('2026-10-01T00:00:00Z'), to);
+    await new YahooStockProvider().daily(acme, new Date('2026-10-01T00:00:00Z'), to);
     expect(calls[0]).toMatchObject({ period2: to });
   });
 
@@ -68,7 +68,7 @@ describe('Yahoo provider', () => {
         dataGranularity: '15m',
         exchangeTimezoneName: 'Asia/Jakarta',
         instrumentType: 'EQUITY',
-        longName: 'PT Prodia Widyahusada Tbk',
+        longName: 'PT Acme Laboratorium Tbk',
         fullExchangeName: 'Jakarta',
         currency: 'IDR',
         priceHint: 2,
@@ -77,11 +77,11 @@ describe('Yahoo provider', () => {
       },
     };
     answers['1d'] = { quotes: [{ date: new Date(), open: 2880, high: 2910, low: 2870, close: 2900, volume: 120_000 }], meta: {} };
-    expect(await new YahooStockProvider().lookup('PRDA.JK')).toMatchObject({
-      id: 'yahoo:PRDA.JK',
+    expect(await new YahooStockProvider().lookup('ACME.JK')).toMatchObject({
+      id: 'yahoo:ACME.JK',
       source: 'yahoo',
-      symbol: 'PRDA.JK',
-      name: 'PT Prodia Widyahusada Tbk',
+      symbol: 'ACME.JK',
+      name: 'PT Acme Laboratorium Tbk',
       exchange: 'Jakarta',
       type: 'EQUITY',
       timeZone: 'Asia/Jakarta',
@@ -100,14 +100,14 @@ describe('Yahoo provider', () => {
   });
 
   it('searches for symbols with prices: no Crunchbase companies, no options', async () => {
-    expect(await new YahooStockProvider().search('prodia')).toEqual([
-      { id: 'yahoo:PRDA.JK', source: 'yahoo', symbol: 'PRDA.JK', name: 'PT Prodia Widyahusada Tbk', exchange: 'Jakarta', type: 'EQUITY', currency: null },
+    expect(await new YahooStockProvider().search('acme')).toEqual([
+      { id: 'yahoo:ACME.JK', source: 'yahoo', symbol: 'ACME.JK', name: 'PT Acme Laboratorium Tbk', exchange: 'Jakarta', type: 'EQUITY', currency: null },
     ]);
-    expect(searched[0]).toMatchObject({ query: 'prodia', options: { newsCount: 0 } });
+    expect(searched[0]).toMatchObject({ query: 'acme', options: { newsCount: 0 } });
   });
 
   it('quotes an asset under its ID', async () => {
     answers['1d'] = { quotes: [], meta: { regularMarketPrice: 2900, previousClose: 2850, currency: 'IDR', regularMarketTime: new Date('2026-10-21T09:00:00Z') } };
-    expect(await new YahooStockProvider().quote(prda)).toMatchObject({ asset: 'yahoo:PRDA.JK', price: 2900, change: 50, currency: 'IDR', marketTime: '2026-10-21T09:00:00.000Z' });
+    expect(await new YahooStockProvider().quote(acme)).toMatchObject({ asset: 'yahoo:ACME.JK', price: 2900, change: 50, currency: 'IDR', marketTime: '2026-10-21T09:00:00.000Z' });
   });
 });

@@ -47,7 +47,7 @@ describe('settings', () => {
 
   it('lets a profile update leave the asset list alone (assets are added via /stock/assets)', () => {
     expect(SettingsUpdateSchema.parse({ profile: { sentimentAsset: null } })).toEqual({ profile: { sentimentAsset: null } });
-    expect(SettingsUpdateSchema.parse({ profile: { sentimentAsset: 'Yahoo:prda.jk' } })).toEqual({ profile: { sentimentAsset: 'yahoo:PRDA.JK' } });
+    expect(SettingsUpdateSchema.parse({ profile: { sentimentAsset: 'Yahoo:acme.jk' } })).toEqual({ profile: { sentimentAsset: 'yahoo:ACME.JK' } });
     expect(SettingsUpdateSchema.parse({ stock: { assets: ['yahoo:AAPL'] } })).toEqual({ stock: {} });
   });
 
@@ -59,35 +59,35 @@ describe('settings', () => {
 
 describe('asset symbols and IDs', () => {
   it("checks symbols against each source's format", () => {
-    for (const s of ['PRDA.JK', 'aapl', '^JKSE', 'USDIDR=X', 'BTC-USD', 'GC=F', 'D05.SI']) expect(symbolProblem('yahoo', s), s).toBeNull();
+    for (const s of ['ACME.JK', 'aapl', '^JKSE', 'USDIDR=X', 'BTC-USD', 'GC=F', 'D05.SI']) expect(symbolProblem('yahoo', s), s).toBeNull();
     for (const s of ['', 'not a symbol', 'A'.repeat(21), '#X']) expect(symbolProblem('yahoo', s), s).toMatch(/^Not in Yahoo Finance's symbol format/);
-    for (const s of ['PRDA.JK', 'aapl.us', 'BRK-B.US', 'GSPC.INDX', 'EURUSD.FOREX', 'BTC-USD.CC']) expect(symbolProblem('eodhd', s), s).toBeNull();
+    for (const s of ['ACME.JK', 'aapl.us', 'BRK-B.US', 'GSPC.INDX', 'EURUSD.FOREX', 'BTC-USD.CC']) expect(symbolProblem('eodhd', s), s).toBeNull();
     // EODHD symbols need their exchange code.
-    for (const s of ['PRDA', 'AAPL', '^JKSE', 'PRDA.JK.']) expect(symbolProblem('eodhd', s), s).toMatch(/^Not in EODHD's symbol format/);
+    for (const s of ['ACME', 'AAPL', '^JKSE', 'ACME.JK.']) expect(symbolProblem('eodhd', s), s).toMatch(/^Not in EODHD's symbol format/);
   });
 
   it('names assets by source and symbol, normalized', () => {
-    expect(assetId('yahoo', ' prda.jk ')).toBe('yahoo:PRDA.JK');
+    expect(assetId('yahoo', ' acme.jk ')).toBe('yahoo:ACME.JK');
     expect(parseAssetId('eodhd:aapl.us')).toEqual({ source: 'eodhd', symbol: 'AAPL.US' });
     expect(AssetIdSchema.parse(' Yahoo:btc-usd ')).toBe('yahoo:BTC-USD');
-    for (const s of ['PRDA.JK', 'eodhd:PRDA', 'google:PRDA.JK', 'yahoo:', ':PRDA.JK']) expect(AssetIdSchema.safeParse(s).success, s).toBe(false);
+    for (const s of ['ACME.JK', 'eodhd:ACME', 'google:ACME.JK', 'yahoo:', ':ACME.JK']) expect(AssetIdSchema.safeParse(s).success, s).toBe(false);
   });
 
   it('validates new assets against their source', () => {
-    expect(AddAssetRequestSchema.parse({ source: 'eodhd', symbol: ' prda.jk' })).toEqual({ source: 'eodhd', symbol: 'PRDA.JK' });
-    const bad = AddAssetRequestSchema.safeParse({ source: 'eodhd', symbol: 'PRDA' });
+    expect(AddAssetRequestSchema.parse({ source: 'eodhd', symbol: ' acme.jk' })).toEqual({ source: 'eodhd', symbol: 'ACME.JK' });
+    const bad = AddAssetRequestSchema.safeParse({ source: 'eodhd', symbol: 'ACME' });
     expect(bad.success).toBe(false);
     expect(bad.error?.issues[0]).toMatchObject({ path: ['symbol'] });
-    expect(AddAssetRequestSchema.safeParse({ source: 'google', symbol: 'PRDA.JK' }).success).toBe(false);
+    expect(AddAssetRequestSchema.safeParse({ source: 'google', symbol: 'ACME.JK' }).success).toBe(false);
   });
 
   it('shows tickers without the exchange suffix and names intervals', () => {
-    expect(displaySymbol('yahoo:PRDA.JK')).toBe('PRDA');
+    expect(displaySymbol('yahoo:ACME.JK')).toBe('ACME');
     expect(displaySymbol('yahoo:BTC-USD')).toBe('BTC-USD');
     expect(displaySymbol('yahoo:^JKSE')).toBe('^JKSE');
-    expect(displaySymbol('eodhd:PRDA.JK')).toBe('PRDA');
+    expect(displaySymbol('eodhd:ACME.JK')).toBe('ACME');
     expect(displaySymbol('eodhd:EURUSD.FOREX')).toBe('EURUSD');
-    expect(displaySymbol('PRDA.JK')).toBe('PRDA.JK');
+    expect(displaySymbol('ACME.JK')).toBe('ACME.JK');
     expect(intervalLabel('15m')).toBe('15-min');
     expect(intervalLabel('1h')).toBe('1-hour');
     expect(intervalLabel('1d')).toBe('Daily');
@@ -96,7 +96,7 @@ describe('asset symbols and IDs', () => {
 
 describe('categories', () => {
   it('fills defaults for a minimal category', () => {
-    const c = CategoryInputSchema.parse({ name: 'Proline' });
+    const c = CategoryInputSchema.parse({ name: 'Acme Digital' });
     expect(c).toMatchObject({ description: '', backfillMonths: 6, search: { enabled: true, queries: [], sources: { googleNews: true, gdelt: true } } });
   });
 

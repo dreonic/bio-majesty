@@ -103,11 +103,11 @@ describe('news is per account', () => {
 });
 
 describe('chat over one account', () => {
-  const prda: StockAsset = {
-    id: 'yahoo:PRDA.JK',
+  const acme: StockAsset = {
+    id: 'yahoo:ACME.JK',
     source: 'yahoo',
-    symbol: 'PRDA.JK',
-    name: 'PT Prodia Widyahusada Tbk',
+    symbol: 'ACME.JK',
+    name: 'PT Acme Laboratorium Tbk',
     exchange: 'Jakarta',
     type: 'EQUITY',
     currency: 'IDR',
@@ -122,16 +122,16 @@ describe('chat over one account', () => {
 
   it("offers prices only for the account's own assets", () => {
     expect(Object.keys(buildChatTools({ sub: 'u1', assets: [] }))).toEqual(['searchNews', 'listNews', 'getArticle']);
-    const tools = buildChatTools({ sub: 'u1', assets: [prda] });
+    const tools = buildChatTools({ sub: 'u1', assets: [acme] });
     expect(tools).toHaveProperty('getAssetPrices');
-    expect(tools.getAssetPrices?.description).toContain('yahoo:PRDA.JK = PRDA (PT Prodia Widyahusada Tbk)');
+    expect(tools.getAssetPrices?.description).toContain('yahoo:ACME.JK = ACME (PT Acme Laboratorium Tbk)');
   });
 
   it("frames answers with the account's profile and sentiment basis", () => {
-    const profile = { subject: 'Acme Labs', context: 'A laboratory chain.', sentimentAsset: prda.id };
-    const text = chatInstructions({ profile, asset: prda }, [], [prda]);
+    const profile = { subject: 'Acme Labs', context: 'A laboratory chain.', sentimentAsset: acme.id };
+    const text = chatInstructions({ profile, asset: acme }, [], [acme]);
     expect(text).toContain('You support a reader who follows Acme Labs.\n\nA laboratory chain.');
-    expect(text).toContain('likely effect on the PRDA (PT Prodia Widyahusada Tbk) share price');
+    expect(text).toContain('likely effect on the ACME (PT Acme Laboratorium Tbk) share price');
   });
 
   it('falls back to the categories when a new account has no subject yet', () => {

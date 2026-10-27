@@ -24,28 +24,28 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllGlobals());
 
-const prdaQuote = { code: 'PRDA.JK', timestamp: 1_792_565_400, open: 2880, high: 2910, low: 2870, close: 2900, volume: 120_000, previousClose: 2850, change: 50, change_p: 1.7544 };
-const prdaDays = [
+const acmeQuote = { code: 'ACME.JK', timestamp: 1_792_565_400, open: 2880, high: 2910, low: 2870, close: 2900, volume: 120_000, previousClose: 2850, change: 50, change_p: 1.7544 };
+const acmeDays = [
   { date: '2026-10-20', open: 2850, high: 2870, low: 2840, close: 2850, adjusted_close: 2850, volume: 90_000 },
   { date: '2026-10-21', open: 2880, high: 2910, low: 2870, close: 2900, adjusted_close: 2900, volume: 120_000 },
 ];
 
 describe('EODHD provider', () => {
   it("looks up an asset from its quote, recent days, the search API and the exchange's details", async () => {
-    routes['/api/real-time/PRDA.JK'] = prdaQuote;
-    routes['/api/eod/PRDA.JK'] = prdaDays;
-    routes['/api/search/PRDA'] = [
-      { Code: 'PRDA', Exchange: 'JK', Name: 'Prodia Widyahusada Tbk PT', Type: 'Common Stock', Country: 'Indonesia', Currency: 'IDR' },
-      { Code: 'PRDAX', Exchange: 'US', Name: 'Something else', Type: 'FUND', Country: 'USA', Currency: 'USD' },
+    routes['/api/real-time/ACME.JK'] = acmeQuote;
+    routes['/api/eod/ACME.JK'] = acmeDays;
+    routes['/api/search/ACME'] = [
+      { Code: 'ACME', Exchange: 'JK', Name: 'Acme Laboratorium Tbk PT', Type: 'Common Stock', Country: 'Indonesia', Currency: 'IDR' },
+      { Code: 'ACMEX', Exchange: 'US', Name: 'Something else', Type: 'FUND', Country: 'USA', Currency: 'USD' },
     ];
     routes['/api/v2/exchange-details/JK'] = {
       data: { Name: 'Jakarta Exchange', Code: 'JK', Timezone: 'Asia/Jakarta', TradingHours: { Open: '09:00:00', Close: '16:00:00', WorkingDays: 'Mon, Tue, Wed, Thu, Fri' } },
     };
-    expect(await new EodhdStockProvider().lookup('PRDA.JK')).toMatchObject({
-      id: 'eodhd:PRDA.JK',
+    expect(await new EodhdStockProvider().lookup('ACME.JK')).toMatchObject({
+      id: 'eodhd:ACME.JK',
       source: 'eodhd',
-      symbol: 'PRDA.JK',
-      name: 'Prodia Widyahusada Tbk PT',
+      symbol: 'ACME.JK',
+      name: 'Acme Laboratorium Tbk PT',
       exchange: 'Jakarta Exchange',
       type: 'EQUITY',
       currency: 'IDR',
@@ -56,17 +56,17 @@ describe('EODHD provider', () => {
       hasVolume: true,
     });
     // The search is narrowed to the symbol's exchange.
-    expect(requests.find((u) => u.pathname === '/api/search/PRDA')?.searchParams.get('exchange')).toBe('JK');
+    expect(requests.find((u) => u.pathname === '/api/search/ACME')?.searchParams.get('exchange')).toBe('JK');
   });
 
   it('falls back to the legacy exchange details, and follows virtual exchanges around the clock on UTC', async () => {
-    routes['/api/real-time/AAPL.US'] = { ...prdaQuote, close: 230.5 };
-    routes['/api/eod/AAPL.US'] = [{ ...prdaDays[1], close: 230.5 }];
+    routes['/api/real-time/AAPL.US'] = { ...acmeQuote, close: 230.5 };
+    routes['/api/eod/AAPL.US'] = [{ ...acmeDays[1], close: 230.5 }];
     routes['/api/exchange-details/US'] = { Name: 'USA Stocks', Timezone: 'America/New_York', TradingHours: { Open: '09:30:00', Close: '16:00:00', WorkingDays: 'Mon,Tue,Wed,Thu,Fri' } };
     expect(await new EodhdStockProvider().lookup('AAPL.US')).toMatchObject({ timeZone: 'America/New_York', session: { start: '09:30', end: '16:00' }, decimals: 2 });
 
-    routes['/api/real-time/BTC-USD.CC'] = { ...prdaQuote, close: 67_123.45 };
-    routes['/api/eod/BTC-USD.CC'] = [{ ...prdaDays[1], close: 67_123.45 }];
+    routes['/api/real-time/BTC-USD.CC'] = { ...acmeQuote, close: 67_123.45 };
+    routes['/api/eod/BTC-USD.CC'] = [{ ...acmeDays[1], close: 67_123.45 }];
     const btc = await new EodhdStockProvider().lookup('BTC-USD.CC');
     expect(btc).toMatchObject({ type: 'CRYPTOCURRENCY', timeZone: 'UTC', session: { start: '00:00', end: '23:59', days: 'daily' } });
     expect(requests.some((u) => u.pathname.includes('exchange-details/CC'))).toBe(false);
@@ -74,8 +74,8 @@ describe('EODHD provider', () => {
 
   it('says when it has no data for a symbol, and never shows the API key in errors', async () => {
     await expect(new EodhdStockProvider().lookup('NOPE.JK')).rejects.toThrow('EODHD has no data for NOPE.JK');
-    routes['/api/real-time/PRDA.JK'] = reply(401, { error: 'Unauthenticated' });
-    const err = await new EodhdStockProvider().quote({ id: 'eodhd:PRDA.JK', symbol: 'PRDA.JK' }).catch((e: Error) => e);
+    routes['/api/real-time/ACME.JK'] = reply(401, { error: 'Unauthenticated' });
+    const err = await new EodhdStockProvider().quote({ id: 'eodhd:ACME.JK', symbol: 'ACME.JK' }).catch((e: Error) => e);
     expect(err).toBeInstanceOf(Error);
     expect((err as Error).message).toContain('HTTP 401');
     expect((err as Error).message).toContain('api_token=<EODHD_API_KEY>');
@@ -83,39 +83,39 @@ describe('EODHD provider', () => {
   });
 
   it('quotes an asset under its ID (missing values come as "NA")', async () => {
-    routes['/api/real-time/PRDA.JK'] = { ...prdaQuote, previousClose: 'NA', change: 'NA', change_p: 'NA' };
-    expect(await new EodhdStockProvider().quote({ id: 'eodhd:PRDA.JK', symbol: 'PRDA.JK' })).toMatchObject({
-      asset: 'eodhd:PRDA.JK',
+    routes['/api/real-time/ACME.JK'] = { ...acmeQuote, previousClose: 'NA', change: 'NA', change_p: 'NA' };
+    expect(await new EodhdStockProvider().quote({ id: 'eodhd:ACME.JK', symbol: 'ACME.JK' })).toMatchObject({
+      asset: 'eodhd:ACME.JK',
       price: 2900,
       previousClose: null,
       change: null,
       marketTime: new Date(1_792_565_400_000).toISOString(),
     });
-    routes['/api/real-time/PRDA.JK'] = { code: 'PRDA.JK', close: 'NA' };
-    expect(await new EodhdStockProvider().quote({ id: 'eodhd:PRDA.JK', symbol: 'PRDA.JK' })).toBeNull();
+    routes['/api/real-time/ACME.JK'] = { code: 'ACME.JK', close: 'NA' };
+    expect(await new EodhdStockProvider().quote({ id: 'eodhd:ACME.JK', symbol: 'ACME.JK' })).toBeNull();
   });
 
   it('searches in its own symbol format', async () => {
-    routes['/api/search/prodia'] = [
-      { Code: 'PRDA', Exchange: 'JK', Name: 'Prodia Widyahusada Tbk PT', Type: 'Common Stock', Country: 'Indonesia', Currency: 'IDR' },
+    routes['/api/search/acme'] = [
+      { Code: 'ACME', Exchange: 'JK', Name: 'Acme Laboratorium Tbk PT', Type: 'Common Stock', Country: 'Indonesia', Currency: 'IDR' },
       { Code: 'bad code!', Exchange: 'JK', Name: 'Not a symbol' },
     ];
-    expect(await new EodhdStockProvider().search('prodia')).toEqual([
-      { id: 'eodhd:PRDA.JK', source: 'eodhd', symbol: 'PRDA.JK', name: 'Prodia Widyahusada Tbk PT', exchange: 'JK · Indonesia', type: 'EQUITY', currency: 'IDR' },
+    expect(await new EodhdStockProvider().search('acme')).toEqual([
+      { id: 'eodhd:ACME.JK', source: 'eodhd', symbol: 'ACME.JK', name: 'Acme Laboratorium Tbk PT', exchange: 'JK · Indonesia', type: 'EQUITY', currency: 'IDR' },
     ]);
   });
 
   it('asks for 5-minute bars from a UNIX time and rolls them into 15-minute bars', async () => {
     const t0 = 1_792_548_000; // 2026-10-21 09:00 WIB
-    routes['/api/intraday/PRDA.JK'] = [0, 300, 600, 900].map((s, i) => ({ timestamp: t0 + s, open: 2880 + i, high: 2890 + i, low: 2870, close: 2885 + i, volume: 1000 }));
-    routes['/api/real-time/PRDA.JK'] = prdaQuote;
-    const { candles, quote } = await new EodhdStockProvider().intraday({ id: 'eodhd:PRDA.JK', symbol: 'PRDA.JK' }, new Date(t0 * 1000));
-    expect(requests.find((u) => u.pathname === '/api/intraday/PRDA.JK')?.searchParams.get('from')).toBe(String(t0));
+    routes['/api/intraday/ACME.JK'] = [0, 300, 600, 900].map((s, i) => ({ timestamp: t0 + s, open: 2880 + i, high: 2890 + i, low: 2870, close: 2885 + i, volume: 1000 }));
+    routes['/api/real-time/ACME.JK'] = acmeQuote;
+    const { candles, quote } = await new EodhdStockProvider().intraday({ id: 'eodhd:ACME.JK', symbol: 'ACME.JK' }, new Date(t0 * 1000));
+    expect(requests.find((u) => u.pathname === '/api/intraday/ACME.JK')?.searchParams.get('from')).toBe(String(t0));
     expect(candles).toEqual([
       { time: t0, open: 2880, high: 2892, low: 2870, close: 2887, volume: 3000 },
       { time: t0 + 900, open: 2883, high: 2893, low: 2870, close: 2888, volume: 1000 },
     ]);
-    expect(quote?.asset).toBe('eodhd:PRDA.JK');
+    expect(quote?.asset).toBe('eodhd:ACME.JK');
   });
 
   it("maps EODHD's instrument types and decimals", () => {

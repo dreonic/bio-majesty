@@ -12,7 +12,7 @@ function article(overrides: Partial<Article> = {}): Article {
     id: 'a1',
     url: 'https://kontan.co.id/a',
     sourceUrl: null,
-    title: 'Prodia membuka klinik baru',
+    title: 'Acme membuka klinik baru',
     sourceName: 'Kontan',
     sourceDomain: 'kontan.co.id',
     publishedAt: '2026-10-13T00:00:00Z',
@@ -26,7 +26,7 @@ function article(overrides: Partial<Article> = {}): Article {
       rationale: 'Expansion should lift volumes.',
       confidence: 0.8,
       relevance: 0.9,
-      summary: 'Prodia opens new clinics.',
+      summary: 'Acme opens new clinics.',
       model: 'anthropic:claude-opus-5-5',
     },
     final: null,
@@ -44,7 +44,7 @@ const known = new Set(['c1', 'c2']);
 
 describe('edited summary and rationale', () => {
   it('keeps exec text only when it differs from the AI suggestion', () => {
-    const same = reviewChange(article(), { action: 'approve', summary: ' Prodia opens new clinics. ' }, known);
+    const same = reviewChange(article(), { action: 'approve', summary: ' Acme opens new clinics. ' }, known);
     expect(same.final).toEqual({ categoryIds: ['c1'], sentiment: 'positive' });
 
     const edited = reviewChange(
@@ -75,7 +75,7 @@ describe('training feedback', () => {
     const final = { categoryIds: ['c1', 'c2'], sentiment: 'neutral' as const, rationale: 'Too small to matter.' };
     const f = buildFeedback(article(), 'approved', final, '2026-10-14T00:00:00Z');
     expect(f.changed).toEqual(['categories', 'sentiment', 'rationale']);
-    expect(f.exec).toMatchObject({ sentiment: 'neutral', summary: 'Prodia opens new clinics.', rationale: 'Too small to matter.' });
+    expect(f.exec).toMatchObject({ sentiment: 'neutral', summary: 'Acme opens new clinics.', rationale: 'Too small to matter.' });
     expect(f.ai?.sentiment).toBe('positive');
   });
 
@@ -145,7 +145,7 @@ describe('volume anomalies', () => {
   });
 
   it('writes a readable Telegram alert', () => {
-    const text = formatVolumeAlert({ id: 'yahoo:PRDA.JK', type: 'EQUITY', decimals: 0 }, {
+    const text = formatVolumeAlert({ id: 'yahoo:ACME.JK', type: 'EQUITY', decimals: 0 }, {
       date: '2026-10-14',
       time: 0,
       volume: 3_200_000,
@@ -155,7 +155,7 @@ describe('volume anomalies', () => {
       changePercent: 2.5,
       source: 'intraday',
     });
-    expect(text).toContain('Unusual PRDA trading volume today');
+    expect(text).toContain('Unusual ACME trading volume today');
     expect(text).toContain('3.2M shares traded so far — 3.2× the 20-day average (1M)');
     expect(text).toContain('Price 3,150 (+2.50%)');
   });

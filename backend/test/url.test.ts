@@ -31,18 +31,18 @@ describe('canonicalKey', () => {
 
 describe('titles', () => {
   it('strips the Google News source suffix', () => {
-    expect(displayTitle('Laba Prodia Naik 10% - Kontan', 'Kontan')).toBe('Laba Prodia Naik 10%');
-    expect(displayTitle('Laba Prodia Naik', null)).toBe('Laba Prodia Naik');
+    expect(displayTitle('Laba Acme Naik 10% - Kontan', 'Kontan')).toBe('Laba Acme Naik 10%');
+    expect(displayTitle('Laba Acme Naik', null)).toBe('Laba Acme Naik');
   });
 
   it('normalizes punctuation, accents and case', () => {
-    expect(normalizeTitle('  Prodia (PRDA) Bagikan Dividen!  - Bisnis.com', 'Bisnis.com')).toBe('prodia prda bagikan dividen');
+    expect(normalizeTitle('  Acme (ACME) Bagikan Dividen!  - Bisnis.com', 'Bisnis.com')).toBe('acme acme bagikan dividen');
   });
 });
 
 describe('aliasKeys', () => {
   it('uses url + title keys for publisher URLs', () => {
-    const keys = aliasKeys({ url: 'https://kontan.co.id/a', title: 'Prodia membuka klinik baru di Medan', sourceDomain: 'www.kontan.co.id' });
+    const keys = aliasKeys({ url: 'https://kontan.co.id/a', title: 'Acme membuka klinik baru di Medan', sourceDomain: 'www.kontan.co.id' });
     expect(keys.map((k) => k.kind)).toEqual(['url', 'title']);
   });
 
@@ -50,15 +50,15 @@ describe('aliasKeys', () => {
     const keys = aliasKeys({
       url: 'https://news.google.com/rss/articles/CBMiabc?oc=5',
       gnewsId: 'CBMiabc',
-      title: 'Prodia membuka klinik baru di Medan',
+      title: 'Acme membuka klinik baru di Medan',
       sourceDomain: 'kontan.co.id',
     });
     expect(keys.map((k) => k.kind)).toEqual(['gnews', 'title']);
   });
 
   it('matches the same headline from Google News and GDELT', () => {
-    const fromGoogle = aliasKeys({ title: 'Prodia membuka klinik baru di Medan - Kontan', sourceName: 'Kontan', sourceDomain: 'www.kontan.co.id' });
-    const fromGdelt = aliasKeys({ url: 'https://kontan.co.id/x', title: 'Prodia membuka klinik baru di Medan', sourceDomain: 'kontan.co.id' });
+    const fromGoogle = aliasKeys({ title: 'Acme membuka klinik baru di Medan - Kontan', sourceName: 'Kontan', sourceDomain: 'www.kontan.co.id' });
+    const fromGdelt = aliasKeys({ url: 'https://kontan.co.id/x', title: 'Acme membuka klinik baru di Medan', sourceDomain: 'kontan.co.id' });
     const titleKey = (ks: typeof fromGoogle) => ks.find((k) => k.kind === 'title')?.hash;
     expect(titleKey(fromGoogle)).toBe(titleKey(fromGdelt));
   });

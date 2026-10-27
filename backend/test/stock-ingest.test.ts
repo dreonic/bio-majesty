@@ -8,10 +8,10 @@ const statuses = new Map<string, { historyLoadedAt: string | null; eodDoneFor: s
 const state = { intradayFails: false };
 
 const idx: StockAsset = {
-  id: 'yahoo:PRDA.JK',
+  id: 'yahoo:ACME.JK',
   source: 'yahoo',
-  symbol: 'PRDA.JK',
-  name: 'PT Prodia Widyahusada Tbk',
+  symbol: 'ACME.JK',
+  name: 'PT Acme Laboratorium Tbk',
   exchange: 'Jakarta',
   type: 'EQUITY',
   currency: 'IDR',
@@ -24,7 +24,7 @@ const idx: StockAsset = {
   updatedAt: '2026-10-01T00:00:00.000Z',
 };
 const btc: StockAsset = { ...idx, id: 'yahoo:BTC-USD', symbol: 'BTC-USD', type: 'CRYPTOCURRENCY', timeZone: 'UTC', session: { start: '00:00', end: '23:59', days: 'daily' } };
-const eodhdIdx: StockAsset = { ...idx, id: 'eodhd:PRDA.JK', source: 'eodhd' };
+const eodhdIdx: StockAsset = { ...idx, id: 'eodhd:ACME.JK', source: 'eodhd' };
 const assets = new Map<string, StockAsset>();
 const accountAssets: Record<string, string[]> = {};
 
@@ -89,49 +89,49 @@ describe('stock refresh tick', () => {
     statuses.clear();
     state.intradayFails = false;
     for (const sub of Object.keys(accountAssets)) delete accountAssets[sub];
-    accountAssets.u1 = ['yahoo:PRDA.JK'];
-    accountAssets.u2 = ['yahoo:PRDA.JK', 'yahoo:BTC-USD'];
+    accountAssets.u1 = ['yahoo:ACME.JK'];
+    accountAssets.u2 = ['yahoo:ACME.JK', 'yahoo:BTC-USD'];
   });
   afterEach(() => vi.useRealTimers());
 
   it("fetches the last two days of intraday bars while each asset's market is open, once per asset", async () => {
     vi.setSystemTime(new Date('2026-10-21T05:00:00Z')); // Wednesday, 12:00 in Jakarta
-    loaded({ 'yahoo:PRDA.JK': '2026-10-20', 'yahoo:BTC-USD': '2026-10-20' });
-    expect(await handler({ mode: 'tick' })).toEqual({ refreshed: ['yahoo:PRDA.JK', 'yahoo:BTC-USD'] });
+    loaded({ 'yahoo:ACME.JK': '2026-10-20', 'yahoo:BTC-USD': '2026-10-20' });
+    expect(await handler({ mode: 'tick' })).toEqual({ refreshed: ['yahoo:ACME.JK', 'yahoo:BTC-USD'] });
     expect(fetched).toEqual([
-      { kind: 'intraday', asset: 'yahoo:PRDA.JK', daysBack: 2 },
+      { kind: 'intraday', asset: 'yahoo:ACME.JK', daysBack: 2 },
       { kind: 'intraday', asset: 'yahoo:BTC-USD', daysBack: 2 },
     ]);
     // Each account tracking an asset gets its own volume check.
     expect(checks).toEqual([
-      { kind: 'intraday', sub: 'u1', asset: 'yahoo:PRDA.JK' },
-      { kind: 'intraday', sub: 'u2', asset: 'yahoo:PRDA.JK' },
+      { kind: 'intraday', sub: 'u1', asset: 'yahoo:ACME.JK' },
+      { kind: 'intraday', sub: 'u2', asset: 'yahoo:ACME.JK' },
       { kind: 'intraday', sub: 'u2', asset: 'yahoo:BTC-USD' },
     ]);
   });
 
   it('runs the end-of-day refresh once after the close: two weeks of daily bars and a week of intraday bars', async () => {
     vi.setSystemTime(new Date('2026-10-21T10:30:00Z')); // 17:30 in Jakarta
-    loaded({ 'yahoo:PRDA.JK': '2026-10-20', 'yahoo:BTC-USD': '2026-10-20' });
+    loaded({ 'yahoo:ACME.JK': '2026-10-20', 'yahoo:BTC-USD': '2026-10-20' });
     await handler({ mode: 'tick' });
-    expect(fetched.filter((f) => f.asset === 'yahoo:PRDA.JK')).toEqual([
-      { kind: 'daily', asset: 'yahoo:PRDA.JK', daysBack: 15 },
-      { kind: 'intraday', asset: 'yahoo:PRDA.JK', daysBack: 7 },
+    expect(fetched.filter((f) => f.asset === 'yahoo:ACME.JK')).toEqual([
+      { kind: 'daily', asset: 'yahoo:ACME.JK', daysBack: 15 },
+      { kind: 'intraday', asset: 'yahoo:ACME.JK', daysBack: 7 },
     ]);
-    expect(statuses.get('yahoo:PRDA.JK')?.eodDoneFor).toBe('2026-10-21');
+    expect(statuses.get('yahoo:ACME.JK')?.eodDoneFor).toBe('2026-10-21');
     fetched.length = 0;
     await handler({ mode: 'tick' });
-    expect(fetched.filter((f) => f.asset === 'yahoo:PRDA.JK')).toEqual([]);
+    expect(fetched.filter((f) => f.asset === 'yahoo:ACME.JK')).toEqual([]);
   });
 
   it('follows a source whose intraday bars arrive after the close by its quote, and fetches the bars once settled', async () => {
-    accountAssets.u1 = ['eodhd:PRDA.JK'];
+    accountAssets.u1 = ['eodhd:ACME.JK'];
     accountAssets.u2 = [];
-    loaded({ 'eodhd:PRDA.JK': '2026-10-20' });
+    loaded({ 'eodhd:ACME.JK': '2026-10-20' });
     vi.setSystemTime(new Date('2026-10-21T05:00:00Z')); // 12:00 in Jakarta
     await handler({ mode: 'tick' });
-    expect(fetched).toEqual([{ kind: 'quote', asset: 'eodhd:PRDA.JK' }]);
-    expect(checks).toEqual([{ kind: 'intraday', sub: 'u1', asset: 'eodhd:PRDA.JK' }]);
+    expect(fetched).toEqual([{ kind: 'quote', asset: 'eodhd:ACME.JK' }]);
+    expect(checks).toEqual([{ kind: 'intraday', sub: 'u1', asset: 'eodhd:ACME.JK' }]);
 
     fetched.length = 0;
     vi.setSystemTime(new Date('2026-10-21T10:30:00Z')); // 17:30: Yahoo's bars would be final, EODHD's not yet
@@ -141,34 +141,34 @@ describe('stock refresh tick', () => {
     vi.setSystemTime(new Date('2026-10-21T12:15:00Z')); // 19:15
     await handler({ mode: 'tick' });
     expect(fetched).toEqual([
-      { kind: 'daily', asset: 'eodhd:PRDA.JK', daysBack: 15 },
-      { kind: 'intraday', asset: 'eodhd:PRDA.JK', daysBack: 7 },
+      { kind: 'daily', asset: 'eodhd:ACME.JK', daysBack: 15 },
+      { kind: 'intraday', asset: 'eodhd:ACME.JK', daysBack: 7 },
     ]);
   });
 
   it('loads the full history (and asks for metadata) the first time it sees an asset', async () => {
     vi.setSystemTime(new Date('2026-10-24T05:00:00Z')); // Saturday
     await handler({ mode: 'tick' });
-    const prda = fetched.filter((f) => f.asset === 'yahoo:PRDA.JK');
-    expect(prda[0]).toEqual({ kind: 'lookup', asset: 'yahoo:PRDA.JK' });
-    expect(prda[1]).toMatchObject({ kind: 'daily' });
-    expect(prda[1]!.daysBack).toBeGreaterThan(3600); // since the first trade in 2016
-    expect(prda[2]).toEqual({ kind: 'intraday', asset: 'yahoo:PRDA.JK', daysBack: 10 });
+    const acme = fetched.filter((f) => f.asset === 'yahoo:ACME.JK');
+    expect(acme[0]).toEqual({ kind: 'lookup', asset: 'yahoo:ACME.JK' });
+    expect(acme[1]).toMatchObject({ kind: 'daily' });
+    expect(acme[1]!.daysBack).toBeGreaterThan(3600); // since the first trade in 2016
+    expect(acme[2]).toEqual({ kind: 'intraday', asset: 'yahoo:ACME.JK', daysBack: 10 });
     // Friday's session is in that history, so no end-of-day pass is due right after.
-    expect(statuses.get('yahoo:PRDA.JK')).toMatchObject({ eodDoneFor: '2026-10-23', historyLoadedAt: '2026-10-24T05:00:00.000Z' });
+    expect(statuses.get('yahoo:ACME.JK')).toMatchObject({ eodDoneFor: '2026-10-23', historyLoadedAt: '2026-10-24T05:00:00.000Z' });
   });
 
   it('a failing intraday refill does not fail the daily refresh', async () => {
     vi.setSystemTime(new Date('2026-10-21T10:30:00Z'));
-    loaded({ 'yahoo:PRDA.JK': '2026-10-20', 'yahoo:BTC-USD': '2026-10-20' });
+    loaded({ 'yahoo:ACME.JK': '2026-10-20', 'yahoo:BTC-USD': '2026-10-20' });
     state.intradayFails = true;
     await handler({ mode: 'tick' });
-    expect(statuses.get('yahoo:PRDA.JK')).toMatchObject({ eodDoneFor: '2026-10-21', consecutiveFailures: 0 });
+    expect(statuses.get('yahoo:ACME.JK')).toMatchObject({ eodDoneFor: '2026-10-21', consecutiveFailures: 0 });
   });
 
   it('resyncs one asset on request', async () => {
     vi.setSystemTime(new Date('2026-10-21T05:00:00Z'));
-    loaded({ 'yahoo:PRDA.JK': '2026-10-20', 'yahoo:BTC-USD': '2026-10-20' });
+    loaded({ 'yahoo:ACME.JK': '2026-10-20', 'yahoo:BTC-USD': '2026-10-20' });
     expect(await handler({ mode: 'resync', asset: 'yahoo:BTC-USD' })).toEqual({ refreshed: ['yahoo:BTC-USD'] });
     expect(fetched.map((f) => f.kind)).toEqual(['lookup', 'daily', 'intraday']);
   });

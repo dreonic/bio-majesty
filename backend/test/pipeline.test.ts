@@ -7,16 +7,16 @@ import type { RawCandidate } from '../src/sources/types';
 function category(overrides: Partial<Category> = {}): Category {
   return {
     id: 'cat1',
-    name: 'Prodia Widyahusada',
+    name: 'Acme Laboratorium',
     description: '',
     color: '#2563eb',
     search: {
       enabled: true,
       queries: [
-        { q: '"Prodia Widyahusada"', edition: 'ID:id' },
-        { q: '"Prodia" laboratory', edition: 'ID:en' },
+        { q: '"Acme Laboratorium"', edition: 'ID:id' },
+        { q: '"Acme" laboratory', edition: 'ID:en' },
       ],
-      exclude: ['prodia.com'],
+      exclude: ['acme.example'],
       sources: { googleNews: true, gdelt: true },
     },
     backfill: { months: 0, status: 'none', runId: null, startedAt: null, completedAt: null, error: null },
@@ -34,7 +34,7 @@ function raw(overrides: Partial<RawCandidate>): RawCandidate {
     query: 'q',
     lang: 'id',
     categoryId: 'cat1',
-    title: 'Prodia membuka laboratorium baru di Surabaya',
+    title: 'Acme membuka laboratorium baru di Surabaya',
     url: 'https://news.google.com/rss/articles/AAA',
     gnewsId: 'AAA',
     sourceName: 'Kontan',
@@ -114,7 +114,7 @@ describe('mergeCandidates', () => {
   });
 
   it('keeps different stories apart', () => {
-    const merged = mergeCandidates([raw({}), raw({ gnewsId: 'BBB', url: 'https://news.google.com/rss/articles/BBB', title: 'Laba Prodia turun pada kuartal ketiga 2026' })]);
+    const merged = mergeCandidates([raw({}), raw({ gnewsId: 'BBB', url: 'https://news.google.com/rss/articles/BBB', title: 'Laba Acme turun pada kuartal ketiga 2026' })]);
     expect(merged).toHaveLength(2);
   });
 });
