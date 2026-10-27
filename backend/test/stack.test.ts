@@ -116,6 +116,18 @@ describe('DashboardStack', () => {
     expect(schedules(synth({ timeZone: 'Asia/Tokyo' }))['bio-majesty-test-news-dispatch']?.timeZone).toBe('Asia/Tokyo');
   }, 60_000);
 
+  it('tells every function that starts a state machine which one it is', () => {
+    const functions = Object.entries(template.findResources('AWS::Lambda::Function'));
+    const env = (name: string) => functions.find(([id]) => id.startsWith(name))?.[1].Properties.Environment?.Variables ?? {};
+    for (const [name, variable, machine] of [
+      ['NewsDispatch', 'DAILY_STATE_MACHINE_ARN', 'Daily'],
+      ['ApiSettings', 'DAILY_STATE_MACHINE_ARN', 'Daily'],
+      ['ApiCategories', 'BACKFILL_STATE_MACHINE_ARN', 'Backfill'],
+    ]) {
+      expect(JSON.stringify(env(name!)[variable!] ?? 'missing'), `${name} ${variable}`).toContain(machine);
+    }
+  });
+
   it('lets only the background jobs list the accounts (the dashboard-users group)', () => {
     const policies = Object.values(template.findResources('AWS::IAM::Policy')).filter((p) =>
       JSON.stringify(p.Properties.PolicyDocument).includes('cognito-idp:ListUsersInGroup'),

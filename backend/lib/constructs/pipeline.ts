@@ -87,6 +87,7 @@ export class PipelineConstruct extends Construct {
       entry: 'dispatch.ts',
       description: "Start each account's daily news run at its chosen time",
       timeout: Duration.minutes(1),
+      environment: { DAILY_STATE_MACHINE_ARN: this.dailyMachine.stateMachineArn },
     });
     data.table.grantReadData(this.dispatchFn);
     readAccounts(this.dispatchFn);
