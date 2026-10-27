@@ -29,6 +29,12 @@ function searchable(c: Category, settings: Settings) {
   return c.search.enabled && c.search.queries.length > 0 ? sources : null;
 }
 
+/** GDELT has no editions: each category's query is searched there once, whatever editions it is listed in. */
+function onceForGdelt(entries: SearchTask['queries']): SearchTask['queries'] {
+  const seen = new Set<string>();
+  return entries.filter((e) => !seen.has(`${e.categoryId}\n${e.q}`) && seen.add(`${e.categoryId}\n${e.q}`));
+}
+
 export function buildDailyTasks(categories: Category[], settings: Settings, from: Date, to: Date): SearchTask[] {
   const tasks: SearchTask[] = [];
   const gdeltQueries: SearchTask['queries'] = [];
@@ -37,7 +43,7 @@ export function buildDailyTasks(categories: Category[], settings: Settings, from
     const sources = searchable(c, settings);
     if (!sources) continue;
     for (const q of c.search.queries) {
-      const entry = { q: q.q, lang: q.lang, categoryId: c.id, exclude: c.search.exclude };
+      const entry = { q: q.q, edition: q.edition, categoryId: c.id, exclude: c.search.exclude };
       if (sources.googleNews) {
         tasks.push({ id: randomId(10), provider: 'gnews', categoryId: c.id, queries: [entry], from: from.toISOString(), to: to.toISOString(), mode: 'when' });
       }
@@ -45,7 +51,7 @@ export function buildDailyTasks(categories: Category[], settings: Settings, from
     }
   }
   if (gdeltQueries.length) {
-    tasks.push({ id: randomId(10), provider: 'gdelt', categoryId: null, queries: gdeltQueries, from: from.toISOString(), to: to.toISOString(), mode: 'range' });
+    tasks.push({ id: randomId(10), provider: 'gdelt', categoryId: null, queries: onceForGdelt(gdeltQueries), from: from.toISOString(), to: to.toISOString(), mode: 'range' });
   }
   return tasks;
 }
@@ -56,7 +62,7 @@ export function buildBackfillTasks(category: Category, settings: Settings, month
   const from = addMonths(now, -months);
   const windows = planWindows(from, now, backfillWindowDays(months));
   const tasks: SearchTask[] = [];
-  const entries = category.search.queries.map((q) => ({ q: q.q, lang: q.lang, categoryId: category.id, exclude: category.search.exclude }));
+  const entries = category.search.queries.map((q) => ({ q: q.q, edition: q.edition, categoryId: category.id, exclude: category.search.exclude }));
   if (sources.googleNews) {
     for (const w of windows) {
       for (const entry of entries) {
@@ -68,7 +74,7 @@ export function buildBackfillTasks(category: Category, settings: Settings, month
     // One sequential GDELT task per 14-day window inside GDELT's ~3-month horizon.
     const gdeltFrom = new Date(Math.max(from.getTime(), addDays(now, -GDELT_MAX_LOOKBACK_DAYS).getTime()));
     for (const w of planWindows(gdeltFrom, now, 14)) {
-      tasks.push({ id: randomId(10), provider: 'gdelt', categoryId: category.id, queries: entries, from: w.from.toISOString(), to: w.to.toISOString(), mode: 'range' });
+      tasks.push({ id: randomId(10), provider: 'gdelt', categoryId: category.id, queries: onceForGdelt(entries), from: w.from.toISOString(), to: w.to.toISOString(), mode: 'range' });
     }
   }
   return tasks;

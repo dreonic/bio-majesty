@@ -1,4 +1,4 @@
-import type { Category, Lang, SearchQuery } from '@bio-majesty/shared';
+import { DEFAULT_EDITION, EDITION_IDS, EDITIONS, type Category, type Edition, type SearchQuery } from '@bio-majesty/shared';
 import { Plus, Sparkles, Trash2 } from 'lucide-react';
 import { Fragment, useState, type ReactNode } from 'react';
 import { Modal } from '../../components/overlays';
@@ -155,15 +155,18 @@ export function CategoryDialog({ category, existingCount, onClose }: { category:
               {queries.map((q, i) => (
                 <div key={i} className="flex items-center gap-2">
                   <Input value={q.q} onChange={(e) => setQuery(i, { q: e.target.value })} placeholder='"electric vehicle" OR EV' />
-                  <Select value={q.lang} onChange={(e) => setQuery(i, { lang: e.target.value as Lang })} aria-label="Language" className="w-36">
-                    <option value="id">Indonesian</option>
-                    <option value="en">English</option>
+                  <Select value={q.edition} onChange={(e) => setQuery(i, { edition: e.target.value as Edition })} aria-label="Google News edition" className="w-56">
+                    {EDITION_IDS.map((id) => (
+                      <option key={id} value={id}>
+                        {EDITIONS[id].label}
+                      </option>
+                    ))}
                   </Select>
                   <Button size="sm" variant="ghost" aria-label="Remove query" onClick={() => setQueries(queries.filter((_, j) => j !== i))} icon={<Trash2 className="size-4" />} />
                 </div>
               ))}
               {queries.length < 20 && (
-                <Button size="sm" variant="ghost" icon={<Plus className="size-4" />} onClick={() => setQueries([...queries, { q: '', lang: 'id' }])}>
+                <Button size="sm" variant="ghost" icon={<Plus className="size-4" />} onClick={() => setQueries([...queries, { q: '', edition: queries.at(-1)?.edition ?? DEFAULT_EDITION }])}>
                   Add query
                 </Button>
               )}

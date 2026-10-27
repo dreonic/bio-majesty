@@ -13,8 +13,8 @@ function category(overrides: Partial<Category> = {}): Category {
     search: {
       enabled: true,
       queries: [
-        { q: '"Prodia Widyahusada"', lang: 'id' },
-        { q: '"Prodia" laboratory', lang: 'en' },
+        { q: '"Prodia Widyahusada"', edition: 'ID:id' },
+        { q: '"Prodia" laboratory', edition: 'ID:en' },
       ],
       exclude: ['prodia.com'],
       sources: { googleNews: true, gdelt: true },
@@ -67,6 +67,16 @@ describe('task planning', () => {
     expect(gdelt).toHaveLength(1);
     expect(gdelt[0]!.queries).toHaveLength(2);
     expect(tasks.every((t) => t.mode === 'when' || t.provider === 'gdelt')).toBe(true);
+  });
+
+  it('searches a query once per edition on Google News but only once on GDELT', () => {
+    const editions = category({ search: { ...category().search, queries: [{ q: 'acme', edition: 'US:en' }, { q: 'acme', edition: 'GB:en' }, { q: 'acme', edition: 'SG:en' }] } });
+    const tasks = buildDailyTasks([editions, category({ id: 'cat2', search: { ...category().search, queries: [{ q: 'acme', edition: 'US:en' }] } })], DEFAULT_SETTINGS, from, to);
+    expect(tasks.filter((t) => t.provider === 'gnews').map((t) => t.queries[0]!.edition)).toEqual(['US:en', 'GB:en', 'SG:en', 'US:en']);
+    // Once per category: GDELT results are credited to the category that searched them.
+    expect(tasks.find((t) => t.provider === 'gdelt')!.queries.map((q) => `${q.categoryId}:${q.q}`)).toEqual(['cat1:acme', 'cat2:acme']);
+    const backfill = buildBackfillTasks(editions, DEFAULT_SETTINGS, 1, new Date('2026-10-14T00:00:00Z'));
+    expect(backfill.filter((t) => t.provider === 'gdelt').every((t) => t.queries.length === 1)).toBe(true);
   });
 
   it('respects global and per-category source toggles and label-only categories', () => {

@@ -20,10 +20,6 @@ export const ARTICLE_STATUSES = ['PENDING', 'APPROVED', 'REJECTED', 'FILTERED'] 
 export const ArticleStatusSchema = z.enum(ARTICLE_STATUSES);
 export type ArticleStatus = z.infer<typeof ArticleStatusSchema>;
 
-export const LANGS = ['id', 'en'] as const;
-export const LangSchema = z.enum(LANGS);
-export type Lang = z.infer<typeof LangSchema>;
-
 /** ISO 8601 timestamp string (UTC). */
 export const IsoDateTime = z.string().min(10);
 

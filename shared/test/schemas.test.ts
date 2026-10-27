@@ -4,7 +4,10 @@ import {
   claimGroups,
   hasAccess,
   CategoryInputSchema,
+  DEFAULT_EDITION,
   DEFAULT_SETTINGS,
+  EDITION_IDS,
+  EDITIONS,
   SettingsSchema,
   SettingsUpdateSchema,
   AddAssetRequestSchema,
@@ -101,6 +104,15 @@ describe('categories', () => {
     expect(categoryColorFor(0)).toBe(CATEGORY_COLORS[0]);
     expect(categoryColorFor(7)).toBe(CATEGORY_COLORS[7]);
     expect(categoryColorFor(8)).toBe('#898781');
+  });
+
+  it('searches each query in a known Google News edition', () => {
+    const search = (queries: object[]) => CategoryInputSchema.safeParse({ name: 'Acme', search: { queries } }).success;
+    expect(search([{ q: 'acme', edition: 'ID:id' }, { q: 'acme', edition: 'SG:en' }])).toBe(true);
+    expect(search([{ q: 'acme', lang: 'id' }])).toBe(false);
+    expect(search([{ q: 'acme', edition: 'SG:zh-Hans' }])).toBe(false);
+    for (const id of EDITION_IDS) expect(id).toMatch(/^[A-Z]{2}:[a-z]{2}(-\w+)?$/);
+    expect(EDITIONS[DEFAULT_EDITION].lang).toBe('en');
   });
 });
 

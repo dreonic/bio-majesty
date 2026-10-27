@@ -1,4 +1,4 @@
-import type { Lang } from '@bio-majesty/shared';
+import type { Edition } from '@bio-majesty/shared';
 
 export type SourceProvider = 'gnews' | 'gdelt';
 
@@ -8,7 +8,7 @@ export interface SearchTask {
   provider: SourceProvider;
   /** Null for the shared GDELT task, which covers queries from several categories. */
   categoryId: string | null;
-  queries: { q: string; lang: Lang; categoryId: string; exclude: string[] }[];
+  queries: { q: string; edition: Edition; categoryId: string; exclude: string[] }[];
   from: string;
   to: string;
   /** 'when' = relative (daily runs), 'range' = absolute dates (backfills). */
@@ -21,7 +21,8 @@ export interface RawCandidate {
   id: string;
   provider: SourceProvider;
   query: string;
-  lang: Lang;
+  /** Language code: the article's own when the source says (GDELT), else the search edition's. */
+  lang: string;
   categoryId: string;
   title: string;
   /** Publisher URL when known; for Google News this is the news.google.com link. */

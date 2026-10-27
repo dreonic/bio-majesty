@@ -42,7 +42,7 @@ export const categories: Category[] = [
   color: color!,
   search: {
     enabled: true,
-    queries: [{ q: `"${name}"`, lang: 'id' as const }, { q: `"${name}" news`, lang: 'en' as const }],
+    queries: [{ q: `"${name}"`, edition: 'ID:id' as const }, { q: `"${name}" news`, edition: 'ID:en' as const }],
     exclude: i === 0 ? ['prodia.com'] : [],
     sources: { googleNews: true, gdelt: true },
   },

@@ -1,4 +1,5 @@
 export * from './common';
+export * from './editions';
 export * from './category';
 export * from './article';
 export * from './models';

@@ -1,4 +1,4 @@
-import type { Profile, SuggestQueriesResponse, TaskModelSettings } from '@bio-majesty/shared';
+import { EDITION_IDS, type Profile, type SuggestQueriesResponse, type TaskModelSettings } from '@bio-majesty/shared';
 import { z } from 'zod';
 import { profileContext } from '../prompts';
 import { runStructured } from '../run-task';
@@ -12,17 +12,19 @@ const OutputSchema = z.object({
     .array(
       z.object({
         q: z.string().describe('Google News query. Use "quotes" for exact phrases and OR between alternatives.'),
-        lang: z.enum(['id', 'en']).describe('Language edition to search: id = Indonesian, en = English'),
+        edition: z
+          .enum(EDITION_IDS)
+          .describe('Google News edition to search, as COUNTRY:language (e.g. ID:id = Indonesia in Indonesian, SG:en = Singapore in English, US:en = United States in English)'),
       }),
     )
-    .describe('Between 3 and 8 queries mixing Indonesian and English.'),
+    .describe('Between 3 and 8 queries, each searching the edition where that coverage appears.'),
   exclude: z.array(z.string()).describe('Words or phrases that indicate an unrelated result (may be empty).'),
 });
 
 function instructions(profile: Profile): string {
   return `${profileContext(profile)}
 
-You help configure a news monitor. Given a category name and optional description, propose Google News search queries that will find relevant articles with good precision. Prefer specific entity names and the phrasing local media use (in the local language for local subjects); include English variants only where English coverage is plausible. Avoid queries so broad that they would return mostly unrelated news (a bare company name may also match unrelated businesses, such as the look-alikes listed above).`;
+You help configure a news monitor. Given a category name and optional description, propose Google News search queries that will find relevant articles with good precision. Prefer specific entity names and the phrasing local media use. Search the edition of the subject's own country in its local language, and add English editions only where English coverage is plausible; for subjects without a home country, use the editions where most coverage appears. Avoid queries so broad that they would return mostly unrelated news (a bare company name may also match unrelated businesses, such as the look-alikes listed above).`;
 }
 
 export async function suggestQueries(
@@ -43,8 +45,8 @@ export async function suggestQueries(
   });
   const seen = new Set<string>();
   const queries = output.queries
-    .map((q) => ({ q: q.q.trim(), lang: q.lang }))
-    .filter((q) => q.q.length >= 2 && !seen.has(`${q.lang}|${q.q}`) && seen.add(`${q.lang}|${q.q}`))
+    .map((q) => ({ q: q.q.trim(), edition: q.edition }))
+    .filter((q) => q.q.length >= 2 && !seen.has(`${q.edition}|${q.q}`) && seen.add(`${q.edition}|${q.q}`))
     .slice(0, 10);
   return {
     description: output.description.trim(),

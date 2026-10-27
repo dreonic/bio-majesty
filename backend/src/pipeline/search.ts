@@ -23,7 +23,7 @@ export async function executeSearchTask(
       await jitter(500, 2_000); // be gentle with an unofficial endpoint
       try {
         candidates.push(
-          ...(await searchGoogleNews({ q: q.q, lang: q.lang, exclude: q.exclude, from, to, mode: task.mode, categoryId: q.categoryId })),
+          ...(await searchGoogleNews({ q: q.q, edition: q.edition, exclude: q.exclude, from, to, mode: task.mode, categoryId: q.categoryId })),
         );
       } catch (err) {
         errors++;

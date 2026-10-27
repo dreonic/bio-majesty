@@ -1,4 +1,4 @@
-import type { Lang } from '@bio-majesty/shared';
+import { EDITIONS, type Edition } from '@bio-majesty/shared';
 import { XMLParser } from 'fast-xml-parser';
 import { hashId } from '../lib/ids';
 import { addDays, jakartaDate } from '../lib/time';
@@ -13,21 +13,16 @@ export { extractGoogleNewsId };
  * the Google News UI: "exact phrase", OR, -exclude, and date operators
  * `when:Nd` / `after:YYYY-MM-DD before:YYYY-MM-DD`. Returns up to ~100 items.
  */
-const EDITIONS: Record<Lang, string> = {
-  id: 'hl=id&gl=ID&ceid=ID:id',
-  en: 'hl=en-ID&gl=ID&ceid=ID:en',
-};
-
 export interface GoogleNewsQuery {
   q: string;
-  lang: Lang;
+  edition: Edition;
   exclude?: string[];
   from: Date;
   to: Date;
   mode: 'when' | 'range';
 }
 
-export function buildGoogleNewsQuery(input: Omit<GoogleNewsQuery, 'lang'>): string {
+export function buildGoogleNewsQuery(input: Omit<GoogleNewsQuery, 'edition'>): string {
   const parts = [input.q.trim()];
   for (const term of input.exclude ?? []) {
     const t = term.trim();
@@ -43,9 +38,14 @@ export function buildGoogleNewsQuery(input: Omit<GoogleNewsQuery, 'lang'>): stri
   return parts.join(' ');
 }
 
+/** An edition's query parameters, e.g. "hl=id&gl=ID&ceid=ID:id". */
+export function editionParams(edition: Edition): string {
+  return `hl=${EDITIONS[edition].hl}&gl=${edition.slice(0, edition.indexOf(':'))}&ceid=${edition}`;
+}
+
 export function buildGoogleNewsUrl(input: GoogleNewsQuery): string {
   const q = encodeURIComponent(buildGoogleNewsQuery(input));
-  return `https://news.google.com/rss/search?q=${q}&${EDITIONS[input.lang]}`;
+  return `https://news.google.com/rss/search?q=${q}&${editionParams(input.edition)}`;
 }
 
 interface RssItem {
@@ -61,7 +61,7 @@ const parser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: '@_
 
 export function parseGoogleNewsRss(
   xml: string,
-  meta: { query: string; lang: Lang; categoryId: string },
+  meta: { query: string; lang: string; categoryId: string },
 ): RawCandidate[] {
   const doc = parser.parse(xml) as { rss?: { channel?: { item?: RssItem | RssItem[] } } };
   const rawItems = doc.rss?.channel?.item;
@@ -111,5 +111,5 @@ export async function searchGoogleNews(
     headers: { ...BROWSER_HEADERS, Accept: 'application/rss+xml, application/xml;q=0.9, */*;q=0.8' },
   });
   const xml = await res.text();
-  return parseGoogleNewsRss(xml, { query: query.q, lang: query.lang, categoryId: query.categoryId });
+  return parseGoogleNewsRss(xml, { query: query.q, lang: EDITIONS[query.edition].lang, categoryId: query.categoryId });
 }

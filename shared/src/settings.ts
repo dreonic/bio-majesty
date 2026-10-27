@@ -11,7 +11,7 @@ export type AiTask = z.infer<typeof AiTaskSchema>;
 export const AI_TASK_LABELS: Record<AiTask, { label: string; description: string }> = {
   querySuggest: {
     label: 'Query suggestions',
-    description: 'Suggests search queries (Indonesian + English) when you create a category.',
+    description: 'Suggests search queries, each with its Google News edition, when you create a category.',
   },
   prefilter: {
     label: 'Headline prefilter',

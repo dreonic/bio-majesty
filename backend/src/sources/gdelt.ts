@@ -1,4 +1,4 @@
-import type { Lang } from '@bio-majesty/shared';
+import { EDITIONS, type Edition } from '@bio-majesty/shared';
 import { hashId } from '../lib/ids';
 import { errorMessage, logger } from '../lib/logger';
 import { addDays, sleep } from '../lib/time';
@@ -80,9 +80,28 @@ interface GdeltArticle {
   language?: string;
 }
 
+/** Language codes for the names GDELT gives the editions' languages; others keep the query edition's. */
+const GDELT_LANGUAGES: Record<string, string> = {
+  arabic: 'ar',
+  chinese: 'zh',
+  dutch: 'nl',
+  english: 'en',
+  french: 'fr',
+  german: 'de',
+  indonesian: 'id',
+  italian: 'it',
+  japanese: 'ja',
+  korean: 'ko',
+  malay: 'ms',
+  portuguese: 'pt',
+  spanish: 'es',
+  thai: 'th',
+  vietnamese: 'vi',
+};
+
 export function parseGdeltResponse(
   body: string,
-  meta: { query: string; lang: Lang; categoryId: string },
+  meta: { query: string; lang: string; categoryId: string },
 ): RawCandidate[] {
   const trimmed = body.trim();
   if (!trimmed) return [];
@@ -102,7 +121,7 @@ export function parseGdeltResponse(
       id: hashId(url),
       provider: 'gdelt',
       query: meta.query,
-      lang: a.language?.toLowerCase().startsWith('indones') ? 'id' : a.language?.toLowerCase().startsWith('engl') ? 'en' : meta.lang,
+      lang: GDELT_LANGUAGES[a.language?.toLowerCase() ?? ''] ?? meta.lang,
       categoryId: meta.categoryId,
       title: a.title.trim(),
       url,
@@ -124,7 +143,7 @@ function parseSeenDate(s?: string): string | null {
 
 /** Run several GDELT queries sequentially, respecting the rate limit. */
 export async function searchGdeltSequential(
-  queries: { q: string; lang: Lang; categoryId: string; exclude: string[] }[],
+  queries: { q: string; edition: Edition; categoryId: string; exclude: string[] }[],
   from: Date,
   to: Date,
   deadline: number,
@@ -141,7 +160,7 @@ export async function searchGdeltSequential(
     if (!query) continue;
     try {
       const res = await fetchWithRetry(buildGdeltUrl(query, from, to), { retries: 2, baseDelayMs: 6_000 });
-      candidates.push(...parseGdeltResponse(await res.text(), { query: item.q, lang: item.lang, categoryId: item.categoryId }));
+      candidates.push(...parseGdeltResponse(await res.text(), { query: item.q, lang: EDITIONS[item.edition].lang, categoryId: item.categoryId }));
     } catch (err) {
       errors++;
       logger.warn('GDELT query failed', { query, error: errorMessage(err) });

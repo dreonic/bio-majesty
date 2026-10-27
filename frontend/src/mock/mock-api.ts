@@ -290,9 +290,9 @@ async function route(method: string, url: URL, body: unknown): Promise<Response>
     return json({
       description: `News about ${name} (demo suggestion).`,
       queries: [
-        { q: `"${name}"`, lang: 'id' },
-        { q: `"${name}" laba OR pendapatan`, lang: 'id' },
-        { q: `"${name}" Indonesia`, lang: 'en' },
+        { q: `"${name}"`, edition: 'ID:id' },
+        { q: `"${name}" laba OR pendapatan`, edition: 'ID:id' },
+        { q: `"${name}" Indonesia`, edition: 'ID:en' },
       ],
       exclude: ['prodia.com'],
     });

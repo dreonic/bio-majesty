@@ -1,9 +1,11 @@
 import { z } from 'zod';
-import { IdSchema, IsoDateTime, LangSchema } from './common';
+import { IdSchema, IsoDateTime } from './common';
+import { EditionSchema } from './editions';
 
 export const SearchQuerySchema = z.object({
   q: z.string().trim().min(2).max(200),
-  lang: LangSchema,
+  /** The Google News edition (country and language) the query searches. */
+  edition: EditionSchema,
 });
 export type SearchQuery = z.infer<typeof SearchQuerySchema>;
 

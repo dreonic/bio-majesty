@@ -286,7 +286,7 @@ describe('settings and schedule', () => {
     // 22:59:30 UTC = 06:59 in Singapore, in the 06:45 slot.
     const slot = quarterSlot(new Date('2026-10-20T22:59:30Z'), 'Asia/Singapore');
     expect(slot).toEqual({ ymd: '2026-10-21', hhmm: '06:45' });
-    const searching = [{ active: true, search: { enabled: true, queries: [{ q: 'Prodia', lang: 'id' as const }], exclude: [], sources: { googleNews: true, gdelt: true } } }];
+    const searching = [{ active: true, search: { enabled: true, queries: [{ q: 'Prodia', edition: 'ID:id' as const }], exclude: [], sources: { googleNews: true, gdelt: true } } }];
     const schedule = (dailyTime: string, enabled = true) => ({ schedule: { enabled, dailyTime } });
     expect(isDue(schedule('06:45'), searching, slot)).toBe(true);
     expect(isDue(schedule('06:00'), searching, slot)).toBe(false);

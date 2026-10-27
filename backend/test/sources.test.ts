@@ -54,10 +54,12 @@ describe('Google News RSS', () => {
     expect(q).toBe('PRDA after:2026-09-01 before:2026-09-15');
   });
 
-  it('uses the Indonesian or English edition', () => {
+  it("searches the query's edition", () => {
     const base = { q: 'prodia', from: new Date(), to: new Date(), mode: 'when' as const };
-    expect(buildGoogleNewsUrl({ ...base, lang: 'id' })).toContain('hl=id&gl=ID&ceid=ID:id');
-    expect(buildGoogleNewsUrl({ ...base, lang: 'en' })).toContain('ceid=ID:en');
+    expect(buildGoogleNewsUrl({ ...base, edition: 'ID:id' })).toContain('&hl=id&gl=ID&ceid=ID:id');
+    expect(buildGoogleNewsUrl({ ...base, edition: 'ID:en' })).toContain('&hl=en-ID&gl=ID&ceid=ID:en');
+    expect(buildGoogleNewsUrl({ ...base, edition: 'SG:en' })).toContain('&hl=en-SG&gl=SG&ceid=SG:en');
+    expect(buildGoogleNewsUrl({ ...base, edition: 'CN:zh-Hans' })).toContain('&hl=zh-CN&gl=CN&ceid=CN:zh-Hans');
   });
 
   it('parses items, strips the source suffix and keeps the article token', () => {
