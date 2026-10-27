@@ -84,6 +84,17 @@ AWS_PROFILE=biomajesty AWS_REGION=ap-southeast-1 npm run migrate:editions -w bac
 
 Run it without `--dry-run` right before pushing the version with editions, and again right after its deploy: it is idempotent and keeps the old `lang` field, so both versions work while the deploy runs, and the second run picks up categories saved in between. It also lists accounts that have categories but never saved a profile or asset list (those used the old defaults and now start blank). Once all is well, `--cleanup --yes` removes `lang`; delete the local `backend/backup/` folder afterwards.
 
+### One-off: overall sentiment for existing digests
+
+Digests now carry the run's overall sentiment (`overall`, null when the digest model failed). `migrate:digest-overall` gives the digests stored before it `overall: null`:
+
+```bash
+AWS_PROFILE=biomajesty AWS_REGION=ap-southeast-1 npm run migrate:digest-overall -w backend -- \
+  --function <StockIngestFunction> --dry-run
+```
+
+Run it without `--dry-run` right before pushing that version and again right after its deploy (it only adds the attribute, and is idempotent).
+
 ### After the first deploy
 
 1. **API keys** — the stack creates one secret with `REPLACE_ME` placeholders. Put real values for the providers you use:
