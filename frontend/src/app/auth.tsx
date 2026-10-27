@@ -63,8 +63,8 @@ function AuthGate({ config, children }: { config: RuntimeConfig; children: React
       <div className="flex h-full items-center justify-center p-6">
         <Card className="w-full max-w-sm p-8 text-center">
           <img src="/favicon.svg" alt="" className="mx-auto size-10" />
-          <h1 className="mt-4 text-lg font-semibold text-ink">Prodia News Desk</h1>
-          <p className="mt-1 text-sm text-ink-2">News, stock and research assistant for the Prodia group.</p>
+          <h1 className="mt-4 text-lg font-semibold text-ink">News Accumulator</h1>
+          <p className="mt-1 text-sm text-ink-2">Collects, tags and summarises the news you follow, with a research assistant and a price panel.</p>
           {auth.error && <p className="mt-4 rounded-md bg-critical-wash px-3 py-2 text-left text-sm text-ink">Sign-in failed: {auth.error.message}</p>}
           <Button variant="primary" className="mt-6 w-full" onClick={signIn}>
             Sign in

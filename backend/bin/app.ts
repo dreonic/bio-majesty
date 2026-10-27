@@ -9,7 +9,7 @@ const config = loadConfig(app);
 new DashboardStack(app, `BioMajesty-${config.stage}`, {
   config,
   env: { account: config.account, region: config.region },
-  description: `Prodia exec dashboard (${config.stage}): news curation, chat over saved news, PRDA stock panel`,
+  description: `News Accumulator (${config.stage}): news curation, chat over saved news, price panel`,
 });
 
 // cdk-nag (AWS Solutions rule pack); disable with `-c nag=false`.

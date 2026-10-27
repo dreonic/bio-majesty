@@ -12,7 +12,7 @@ const config = loadConfig(app);
 
 new GitHubCiStack(app, 'BioMajesty-GitHubCi', {
   env: { account: config.account, region: config.region },
-  description: 'GitHub Actions OIDC deploy role for the Prodia exec dashboard',
+  description: 'GitHub Actions OIDC deploy role for News Accumulator',
   repository: String(app.node.tryGetContext('githubRepository') ?? 'dreonic/bio-majesty'),
   subjectPrefix: String(app.node.tryGetContext('githubSubjectPrefix') ?? 'repo:dreonic@106462413/bio-majesty@1418969105'),
   branch: String(app.node.tryGetContext('githubBranch') ?? 'main'),

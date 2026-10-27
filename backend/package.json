@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "AWS CDK infrastructure and Lambda handlers for the Prodia exec dashboard.",
+  "description": "AWS CDK infrastructure and Lambda handlers for News Accumulator.",
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run",

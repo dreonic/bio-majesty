@@ -19,7 +19,7 @@ export function Shell({ config }: { config: RuntimeConfig }) {
       <header className="flex h-14 shrink-0 items-center gap-4 border-b border-hairline bg-raised px-4">
         <div className="flex items-center gap-2">
           <img src="/favicon.svg" alt="" className="size-7" />
-          <span className="font-semibold text-ink">Prodia News Desk</span>
+          <span className="font-semibold text-ink">News Accumulator</span>
           {demo ? (
             <Badge className="border-warning/40 bg-warning-wash text-ink" title="Mock mode: fictional sample data, no AWS calls">Demo data</Badge>
           ) : (

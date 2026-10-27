@@ -1,7 +1,7 @@
 {
   "name": "bio-majesty",
   "private": true,
-  "description": "Prodia executive dashboard: AI-curated news, chat over saved news, and PRDA stock panel (AWS serverless, CDK).",
+  "description": "News Accumulator: AI-curated news on any subject, chat over saved news, and a price panel (AWS serverless, CDK).",
   "workspaces": [
     "shared",
     "backend",

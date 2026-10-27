@@ -34,7 +34,7 @@ export function applyNagSuppressions(stack: Stack, refs: NagRefs): void {
     'AwsSolutions-APIG4': 'All routes use the Cognito authorizer; only CORS preflight (OPTIONS) mock methods are unauthenticated.',
     'AwsSolutions-COG4': 'All routes use the Cognito authorizer; only CORS preflight (OPTIONS) mock methods are unauthenticated.',
     'AwsSolutions-APIG6': 'Access logging is enabled at the stage; execution logging is left off to avoid logging request bodies.',
-    'AwsSolutions-CFR1': 'No geo restriction: the exec may travel.',
+    'AwsSolutions-CFR1': 'No geo restriction: users may travel.',
     'AwsSolutions-CFR2': 'WAF is optional for a static SPA whose API is protected by Cognito.',
     'AwsSolutions-CFR3': 'CloudFront access logs are not needed for a small internal dashboard.',
     'AwsSolutions-CFR4': 'The default CloudFront certificate is used until a custom domain is configured.',

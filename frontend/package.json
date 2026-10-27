@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "React SPA for the Prodia exec dashboard (hosted on S3 + CloudFront).",
+  "description": "React SPA for News Accumulator (hosted on S3 + CloudFront).",
   "scripts": {
     "dev": "vite",
     "dev:mock": "vite --mode mock",

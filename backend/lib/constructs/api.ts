@@ -32,7 +32,7 @@ export class ApiConstruct extends Construct {
     const accessLogs = new logs.LogGroup(this, 'AccessLogs', { retention: logs.RetentionDays.ONE_MONTH });
     this.api = new apigateway.RestApi(this, 'Api', {
       restApiName: `bio-majesty-${config.stage}`,
-      description: 'Prodia exec dashboard API',
+      description: 'News Accumulator API',
       endpointConfiguration: { types: [apigateway.EndpointType.REGIONAL] },
       // gzip JSON responses of 1 KB or more for browsers that accept it (e.g. MAX history,
       // CSV downloads). Streamed chat responses are never compressed by API Gateway.
