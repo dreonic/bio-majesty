@@ -4,19 +4,22 @@ import { Fragment, useState, type ReactNode } from 'react';
 import { Modal } from '../../components/overlays';
 import { useToast } from '../../components/toast';
 import { Button, Field, Input, Select, Switch, Textarea } from '../../components/ui';
-import { useCreateCategory, useSuggestQueries, useUpdateCategory } from '../../lib/queries';
+import { useCreateCategory, useSettings, useSuggestQueries, useUpdateCategory } from '../../lib/queries';
 import { BACKFILL_OPTIONS } from './constants';
 
-/** Starting points for the Prodia group (editable before saving). */
-const SUGGESTED: { name: string; description: string }[] = [
-  { name: 'Prodia Widyahusada', description: 'News about PT Prodia Widyahusada Tbk (PRDA) itself: results, corporate actions, management, dividends, expansion, partnerships.' },
-  { name: 'Prodia Digital Indonesia', description: 'PT Prodia Digital Indonesia, the digital health subsidiary.' },
-  { name: 'Proline (Prodia Diagnostic Line)', description: 'PT Prodia Diagnostic Line: reagents, diagnostic supplies and distribution.' },
-  { name: 'ProSTEM', description: 'PT Prodia StemCell Indonesia and stem-cell services.' },
-  { name: 'Prodia Utama', description: 'PT Prodia Utama, the controlling shareholder of PRDA.' },
-  { name: 'Healthcare regulation', description: 'Indonesian regulation and policy affecting clinical laboratories (Kemenkes, BPJS Kesehatan, BPOM, tariffs).' },
-  { name: 'Competitors', description: 'News about competing clinical laboratory and diagnostics chains in Indonesia.' },
-];
+/** Generic starting points, named after the profile's subject when it has one (editable before saving). */
+function categoryTemplates(subject: string): { name: string; description: string }[] {
+  const s = subject.trim();
+  const about = (withSubject: string, without: string) => (s ? withSubject : without);
+  const own = s.replace(/^the\s+/i, '');
+  return [
+    ...(s ? [{ name: own.charAt(0).toUpperCase() + own.slice(1), description: `News about ${s} itself: results, announcements, leadership, partnerships and plans.` }] : []),
+    { name: 'Regulation and policy', description: about(`Laws, regulators and government policy affecting ${s}.`, 'Laws, regulators and government policy in the areas you follow.') },
+    { name: 'Competitors', description: about(`Rivals of ${s} and competing offerings.`, 'Rivals and competing offerings of what you follow.') },
+    { name: 'Industry and market', description: about(`Trends, demand, prices and major deals in the industry or market around ${s}.`, 'Trends, demand, prices and major deals in the industries and markets you follow.') },
+    { name: 'People and leadership', description: about(`Leaders, founders, officials and major shareholders connected to ${s}.`, 'Leaders, founders, officials and other key people you follow.') },
+  ];
+}
 
 /** Query reference shown under "Search queries"; each operator was checked against Google News RSS search. */
 const QUERY_SYNTAX: { op: string; meaning: string }[] = [
@@ -25,7 +28,7 @@ const QUERY_SYNTAX: { op: string; meaning: string }[] = [
   { op: '-word', meaning: 'leave out results with this word' },
   { op: '(A OR B) word', meaning: 'group alternatives' },
   { op: 'intitle:word', meaning: 'word must be in the headline' },
-  { op: 'site:kontan.co.id', meaning: 'only that site' },
+  { op: 'site:reuters.com', meaning: 'only that site' },
   { op: 'site:linkedin.com/posts', meaning: 'only LinkedIn posts' },
   { op: '-site:example.com', meaning: 'leave out that site; also adds social media and other non-news pages' },
 ];
@@ -44,6 +47,7 @@ export function CategoryDialog({ category, existingCount, onClose }: { category:
   const update = useUpdateCategory();
   const suggest = useSuggestQueries();
   const toast = useToast();
+  const templates = categoryTemplates(useSettings().data?.profile.subject ?? '');
 
   const applySuggestion = () =>
     suggest.mutate(
@@ -89,12 +93,12 @@ export function CategoryDialog({ category, existingCount, onClose }: { category:
     >
       <div className="space-y-5">
         {isNew && (
-          <Field label="Start from a suggestion (optional)">
+          <Field label="Start from a template (optional)">
             <Select
               className="w-full"
               value=""
               onChange={(e) => {
-                const s = SUGGESTED[Number(e.target.value)];
+                const s = templates[Number(e.target.value)];
                 if (s) {
                   setName(s.name);
                   setDescription(s.description);
@@ -102,7 +106,7 @@ export function CategoryDialog({ category, existingCount, onClose }: { category:
               }}
             >
               <option value="">Choose…</option>
-              {SUGGESTED.map((s, i) => (
+              {templates.map((s, i) => (
                 <option key={s.name} value={i}>
                   {s.name}
                 </option>
@@ -111,7 +115,7 @@ export function CategoryDialog({ category, existingCount, onClose }: { category:
           </Field>
         )}
         <Field label="Name">
-          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Prodia Widyahusada" maxLength={80} />
+          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Electric vehicles" maxLength={80} />
         </Field>
         <Field label="Description" hint="The AI reads this to decide which articles belong here.">
           <Textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2} maxLength={1000} />
@@ -145,12 +149,12 @@ export function CategoryDialog({ category, existingCount, onClose }: { category:
                   <Op>source:</Op> don't work properly here.
                 </p>
                 <p>
-                  GDELT can't handle <Op>site:</Op>, <Op>intitle:</Op> or <Op>( )</Op> groups; switch it off in categories that use them.
+                  GDELT has no <Op>site:</Op> or <Op>intitle:</Op>: it searches the rest of the query, so switch it off in categories that rely on them.
                 </p>
               </div>
               {queries.map((q, i) => (
                 <div key={i} className="flex items-center gap-2">
-                  <Input value={q.q} onChange={(e) => setQuery(i, { q: e.target.value })} placeholder='"Prodia Widyahusada" OR PRDA' />
+                  <Input value={q.q} onChange={(e) => setQuery(i, { q: e.target.value })} placeholder='"electric vehicle" OR EV' />
                   <Select value={q.lang} onChange={(e) => setQuery(i, { lang: e.target.value as Lang })} aria-label="Language" className="w-36">
                     <option value="id">Indonesian</option>
                     <option value="en">English</option>
@@ -164,8 +168,8 @@ export function CategoryDialog({ category, existingCount, onClose }: { category:
                 </Button>
               )}
             </div>
-            <Field label="Exclude terms" hint="Comma-separated. Results mentioning these are treated as unrelated (e.g. prodia.com for the AI company).">
-              <Input value={exclude} onChange={(e) => setExclude(e.target.value)} placeholder="prodia.com, image generation" />
+            <Field label="Exclude terms" hint="Comma-separated. Results mentioning these are treated as unrelated (e.g. the name or website of a look-alike company).">
+              <Input value={exclude} onChange={(e) => setExclude(e.target.value)} placeholder="toy car, video game" />
             </Field>
             <div className="flex flex-wrap gap-6">
               <Switch checked={googleNews} onChange={setGoogleNews} label="Google News" />

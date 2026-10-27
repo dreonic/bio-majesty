@@ -14,7 +14,8 @@ const OutputSchema = z.object({
 });
 
 function instructions(ctx: ProfileContext): string {
-  const lead = ctx.asset ? `${sentimentBasis(ctx.profile, ctx.asset)} or the business of ${ctx.profile.subject}` : sentimentBasis(ctx.profile, null);
+  const { subject } = ctx.profile;
+  const lead = ctx.asset && subject ? `${sentimentBasis(ctx.profile, ctx.asset)} or the business of ${subject}` : sentimentBasis(ctx.profile, ctx.asset);
   return `${profileContext(ctx.profile)}
 
 Write a brief digest of newly found news items for the executive, who will review them in the dashboard. Lead with what could matter most for ${lead}. Be factual and concise; do not invent details beyond the item summaries.`;

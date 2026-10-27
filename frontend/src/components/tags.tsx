@@ -7,9 +7,9 @@ import { cn } from '../lib/cn';
  * badge carries an icon and a text label (text stays in ink tokens).
  */
 export const SENTIMENT_META: Record<Sentiment, { label: string; hint: string; color: string; wash: string; Icon: typeof TrendingUp }> = {
-  positive: { label: 'Positive', hint: 'Likely to support the share price', color: 'var(--color-good)', wash: 'var(--color-good-wash)', Icon: TrendingUp },
-  negative: { label: 'Negative', hint: 'Likely to pressure the share price', color: 'var(--color-critical)', wash: 'var(--color-critical-wash)', Icon: TrendingDown },
-  neutral: { label: 'Neutral', hint: 'Unlikely to move the share price', color: 'var(--color-neutral)', wash: 'var(--color-wash)', Icon: Minus },
+  positive: { label: 'Positive', hint: "Likely good news for your profile's subject or asset", color: 'var(--color-good)', wash: 'var(--color-good-wash)', Icon: TrendingUp },
+  negative: { label: 'Negative', hint: "Likely bad news for your profile's subject or asset", color: 'var(--color-critical)', wash: 'var(--color-critical-wash)', Icon: TrendingDown },
+  neutral: { label: 'Neutral', hint: 'Relevant, but unlikely to matter either way', color: 'var(--color-neutral)', wash: 'var(--color-wash)', Icon: Minus },
   undecided: { label: 'Undecided', hint: 'Could matter, direction unclear', color: 'var(--color-warning)', wash: 'var(--color-warning-wash)', Icon: CircleHelp },
 };
 

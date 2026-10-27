@@ -1,5 +1,5 @@
 import { useChat } from '@ai-sdk/react';
-import { displaySymbol, type Sentiment } from '@bio-majesty/shared';
+import { displaySymbol, type Category, type Sentiment, type StockAsset } from '@bio-majesty/shared';
 import { useQueryClient } from '@tanstack/react-query';
 import { DefaultChatTransport, getToolName, isToolUIPart, type UIMessage } from 'ai';
 import { Loader2, MessageSquarePlus, Search, SendHorizontal, Square, Trash2 } from 'lucide-react';
@@ -11,18 +11,23 @@ import { Button, EmptyState, Spinner, Textarea } from '../../components/ui';
 import { authHeader } from '../../lib/api';
 import { cn } from '../../lib/cn';
 import { relativeTime } from '../../lib/format';
-import { qk, useConversation, useConversations, useDeleteConversation } from '../../lib/queries';
+import { qk, useCategories, useConversation, useConversations, useDeleteConversation, useStockAssets } from '../../lib/queries';
 import { useOpenArticle } from '../news/ArticleSheet';
 import { Markdown } from './Markdown';
 
 const newId = () => crypto.randomUUID().replace(/-/g, '');
 
-const SUGGESTIONS = [
-  'What negative news about Prodia appeared in the last 30 days, and how did PRDA trade around it?',
-  'Summarise recent coverage of Prodia Diagnostic Line (Proline).',
-  'Is there any regulatory news that could affect clinical laboratories?',
-  'Compare positive and negative coverage over the last quarter.',
-];
+/** Starter questions, named after the account's first category and asset when it has them. */
+function suggestions(categories: Pick<Category, 'name'>[], assets: Pick<StockAsset, 'id'>[]): string[] {
+  const ticker = assets[0] ? displaySymbol(assets[0].id) : null;
+  const topic = categories[0]?.name;
+  return [
+    ticker ? `What negative news appeared in the last 30 days, and how did ${ticker} trade around it?` : 'What negative news appeared in the last 30 days?',
+    topic ? `Summarise recent coverage of ${topic}.` : 'Summarise the most important news of the past week.',
+    'Is there any regulatory or policy news in the saved articles?',
+    'Compare positive and negative coverage over the last quarter.',
+  ];
+}
 
 export function ChatTab({ config }: { config: RuntimeConfig }) {
   const conversations = useConversations();
@@ -103,6 +108,8 @@ function ChatSession({ id, initialMessages, config }: { id: string; initialMessa
   });
   const busy = status === 'submitted' || status === 'streaming';
   const bottomRef = useRef<HTMLDivElement>(null);
+  const assets = useStockAssets().data ?? [];
+  const starters = suggestions(useCategories().data ?? [], assets);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ block: 'end' });
@@ -126,10 +133,10 @@ function ChatSession({ id, initialMessages, config }: { id: string; initialMessa
           <div className="mx-auto max-w-2xl py-10">
             <h2 className="text-lg font-semibold text-ink">Ask about the saved news</h2>
             <p className="mt-1 text-sm text-ink-2">
-              Answers come from articles you have saved, with links to the sources, plus PRDA price data.
+              Answers come from articles you have saved, with links to the sources{assets.length ? ', plus price data for your assets' : ''}.
             </p>
             <div className="mt-6 grid gap-2 sm:grid-cols-2">
-              {SUGGESTIONS.map((s) => (
+              {starters.map((s) => (
                 <button key={s} onClick={() => submit(s)} className="rounded-lg border border-hairline bg-raised p-3 text-left text-sm text-ink hover:bg-wash">
                   {s}
                 </button>

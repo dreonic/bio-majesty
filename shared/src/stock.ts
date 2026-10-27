@@ -35,7 +35,7 @@ export const STOCK_SOURCE_INFO: Record<StockSource, StockSourceInfo> = {
     label: 'Yahoo Finance',
     site: 'finance.yahoo.com',
     pattern: /^[A-Z0-9^][A-Z0-9.\-=^&]{0,19}$/,
-    examples: 'PRDA.JK, AAPL, ^JKSE (index), USDIDR=X (currency), BTC-USD, GC=F (gold)',
+    examples: 'AAPL, D05.SI, ^GSPC (index), EURUSD=X (currency), BTC-USD, GC=F (gold)',
     intraday: 'live',
     intradayDays: 60,
     settleMinutes: 60,
@@ -45,7 +45,7 @@ export const STOCK_SOURCE_INFO: Record<StockSource, StockSourceInfo> = {
     site: 'eodhd.com',
     // TICKER.EXCHANGE: the exchange code is part of every symbol.
     pattern: /^[A-Z0-9^][A-Z0-9.\-_]{0,30}\.[A-Z]{2,6}$/,
-    examples: 'PRDA.JK, AAPL.US, GSPC.INDX (index), EURUSD.FOREX (currency), BTC-USD.CC (crypto)',
+    examples: 'AAPL.US, GSPC.INDX (index), EURUSD.FOREX (currency), BTC-USD.CC (crypto)',
     // Its intraday bars are finalized about 2-3 hours after the close.
     intraday: 'after-close',
     intradayDays: 120,

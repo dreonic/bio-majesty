@@ -74,37 +74,22 @@ export function quarterHour(hhmm: string): string {
 export const MAX_ASSETS = 10;
 
 /**
- * Who the account's news is about. It sets the context of every AI task and what
- * sentiment means: the price of one of the account's assets, or (no asset) the
- * subject's business outlook.
+ * Who or what the account's news is about. It sets the context of every AI task and what
+ * sentiment means: the price of one of the account's assets, or (no asset) good or bad
+ * news for the subject itself.
  */
 export const ProfileSchema = z.object({
-  /** How the AI refers to the subject, e.g. "the Prodia group". */
-  subject: z.string().trim().min(2).max(120),
-  /** Entities and their aliases, unrelated look-alikes, typical sources, what moves the price. */
+  /** How the AI refers to the subject, e.g. "Acme Group" or "the Singapore property market"; empty = the topics of the account's categories. */
+  subject: z.string().trim().max(120),
+  /** Entities and their aliases, unrelated look-alikes, typical sources, what counts as good or bad news. */
   context: z.string().trim().max(6000),
-  /** Sentiment is judged against this asset's price (its ID); null = the subject's business outlook. */
+  /** Sentiment is judged against this asset's price (its ID); null = the subject itself. */
   sentimentAsset: AssetIdSchema.nullable(),
 });
 export type Profile = z.infer<typeof ProfileSchema>;
 
-/** Starting profile of every account (the dashboard was built for the Prodia group). */
-export const DEFAULT_PROFILE: Profile = {
-  subject: 'the Prodia group',
-  context: `A company group in Indonesia. The group's listed parent is PT Prodia Widyahusada Tbk (IDX ticker: PRDA), Indonesia's largest independent clinical laboratory network. Related entities:
-- PT Prodia Widyahusada Tbk ("Prodia", "PRDA", Laboratorium Klinik Prodia) — listed parent, clinical labs, health checks, specialty testing
-- PT Prodia Digital Indonesia — 99%-owned subsidiary (digital health / information services)
-- PT Prodia Diagnostic Line ("Proline") — 39% associate (reagents and diagnostic supplies)
-- PT Prodia StemCell Indonesia ("ProSTEM") — 30% associate (stem-cell services)
-- PT Prodia Utama — controlling shareholder of PRDA
-
-Not related, despite the name: "Prodia", the AI image-generation API company (prodia.com), and unrelated businesses that merely share the word.
-
-News is mostly Indonesian-language (e.g. Kontan, Bisnis.com, CNBC Indonesia, Kompas, Detik, IDX Channel, Investor Daily, Emiten News) with some English coverage.
-
-Specific to Prodia: strong demand for testing services supports the share price; adverse policy such as tariff cuts for BPJS-covered tests pressures it.`,
-  sentimentAsset: 'yahoo:PRDA.JK',
-};
+/** Starting profile of every account: blank until the account describes what it follows. */
+export const DEFAULT_PROFILE: Profile = { subject: '', context: '', sentimentAsset: null };
 
 export const SettingsSchema = z.object({
   models: z.object({
@@ -192,7 +177,7 @@ export const DEFAULT_SETTINGS: Settings = {
   schedule: { enabled: true, dailyTime: '06:00' },
   sources: { googleNews: true, gdelt: true },
   notifications: { notifyWhenEmpty: false },
-  stock: { assets: ['yahoo:PRDA.JK'], volumeAlerts: true, volumeRatio: 2.5 },
+  stock: { assets: [], volumeAlerts: true, volumeRatio: 2.5 },
   profile: DEFAULT_PROFILE,
   learning: { useFeedbackContext: false, maxExamples: 8 },
   updatedAt: null,

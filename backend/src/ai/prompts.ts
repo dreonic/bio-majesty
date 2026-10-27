@@ -5,7 +5,8 @@ import { displaySymbol, type Category, type Profile, type StockAsset } from '@bi
  * or per-request data) so providers that support prompt caching can reuse it.
  */
 export function profileContext(profile: Profile): string {
-  return `You support an executive who follows ${profile.subject}.${profile.context ? `\n\n${profile.context}` : ''}`;
+  const follows = profile.subject || 'the topics of their news categories';
+  return `You support an executive who follows ${follows}.${profile.context ? `\n\n${profile.context}` : ''}`;
 }
 
 /** The asset sentiment is judged against, as the prompts name it. */
@@ -13,7 +14,7 @@ export type SentimentAsset = Pick<StockAsset, 'id' | 'name' | 'type'>;
 
 /** What "positive" and "negative" mean for the account: one of its assets' price, or the subject's business outlook. */
 export function sentimentBasis(profile: Profile, asset: SentimentAsset | null): string {
-  if (!asset) return `${profile.subject}'s business outlook`;
+  if (!asset) return profile.subject ? `${profile.subject}'s business outlook` : 'the outlook of what each article is about';
   const ticker = displaySymbol(asset.id);
   const label = asset.name ? `${ticker} (${asset.name})` : ticker;
   return `the ${label} ${asset.type === 'EQUITY' ? 'share price' : 'price'}`;
@@ -27,7 +28,7 @@ export function sentimentRubric(profile: Profile, asset: SentimentAsset | null):
   return `Sentiment is judged relative to ${basis} — how ${reader} would likely read the news:
 - positive: likely to ${help} (e.g. revenue or profit growth, expansion, new partnerships or contracts, dividends, favourable regulation or policy, analyst upgrades).
 - negative: likely to ${hurt} (e.g. falling profit, losses, legal or regulatory problems, fines, scandals, management departures, adverse policy, aggressive competition, analyst downgrades).
-- neutral: relevant to ${profile.subject} but unlikely to matter either way (e.g. routine CSR events, general awareness articles, minor announcements).
+- neutral: relevant to ${profile.subject || 'the topics followed'} but unlikely to matter either way (e.g. routine CSR events, general awareness articles, minor announcements).
 - undecided: the effect could be material but its direction is unclear or mixed (e.g. a regulation with both upside and downside, early-stage reports).
 Use "undecided" rather than guessing when the direction is genuinely ambiguous, and "neutral" when the news simply does not matter much. Follow any subject-specific examples in the context above.`;
 }

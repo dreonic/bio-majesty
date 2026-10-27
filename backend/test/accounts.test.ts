@@ -128,9 +128,16 @@ describe('chat over one account', () => {
   });
 
   it("frames answers with the account's profile and sentiment basis", () => {
-    const text = chatInstructions({ profile: DEFAULT_PROFILE, asset: prda }, [], [prda]);
-    expect(text).toContain('You support an executive who follows the Prodia group.');
+    const profile = { subject: 'Acme Labs', context: 'A laboratory chain.', sentimentAsset: prda.id };
+    const text = chatInstructions({ profile, asset: prda }, [], [prda]);
+    expect(text).toContain('You support an executive who follows Acme Labs.\n\nA laboratory chain.');
     expect(text).toContain('likely effect on the PRDA (PT Prodia Widyahusada Tbk) share price');
+  });
+
+  it('falls back to the categories when a new account has no subject yet', () => {
+    const text = chatInstructions({ profile: DEFAULT_PROFILE, asset: null }, [], []);
+    expect(text).toContain('You support an executive who follows the topics of their news categories.');
+    expect(text).toContain('likely effect on the outlook of what each article is about');
   });
 });
 

@@ -34,9 +34,12 @@ const OutputSchema = z.object({
 const BATCH_SIZE = 50;
 
 function instructions(categories: Category[], exclude: string[], profile: Profile): string {
+  const about = profile.subject
+    ? `${profile.subject}, its businesses, or a topic covered by one of the categories below (for example regulation or competitors affecting ${profile.subject})`
+    : 'a topic covered by one of the categories below';
   return `${profileContext(profile)}
 
-You screen search results before articles are fetched and read in full. Mark a headline relevant if it is plausibly about ${profile.subject}, its businesses, or a topic covered by one of the categories below (for example regulation or competitors affecting ${profile.subject}). Mark it irrelevant when it clearly concerns something else — when unsure, keep it (relevant = true), because a person reviews everything that passes.
+You screen search results before articles are fetched and read in full. Mark a headline relevant if it is plausibly about ${about}. Mark it irrelevant when it clearly concerns something else — when unsure, keep it (relevant = true), because a person reviews everything that passes.
 ${exclude.length ? `\nResults mentioning any of these are usually unrelated: ${exclude.join(', ')}.` : ''}
 
 ${categoriesBlock(categories)}

@@ -12,7 +12,7 @@ export function ProfileSection() {
   const toast = useToast();
   const [subject, setSubject] = useState('');
   const [context, setContext] = useState('');
-  /** An asset ID, or '' for the subject's business outlook. */
+  /** An asset ID, or '' for the subject itself. */
   const [basis, setBasis] = useState('');
 
   useEffect(() => {
@@ -46,16 +46,16 @@ export function ProfileSection() {
         title="Profile"
         description="Who your news is about. The AI uses this to filter and tag news, write digests and answer in chat. Changes apply from the next run; news already found keeps its tags."
         actions={
-          <Button variant="primary" size="sm" disabled={!dirty || subject.trim().length < 2} loading={update.isPending} onClick={save}>
+          <Button variant="primary" size="sm" disabled={!dirty} loading={update.isPending} onClick={save}>
             Save profile
           </Button>
         }
       />
       <div className="space-y-4 px-5 py-4">
-        <Field label="Subject" hint='How the AI refers to it, e.g. "the Prodia group".'>
+        <Field label="Subject" hint='How the AI refers to what you follow, e.g. "Acme Group", "the Singapore property market" or "EU AI rules". Leave it empty to follow only the topics of your categories.'>
           <Input value={subject} onChange={(e) => setSubject(e.target.value)} maxLength={120} />
         </Field>
-        <Field label="Context" hint="Entities and their other names, look-alikes that are not related, typical news sources, what tends to move the price.">
+        <Field label="Context" hint="Entities and their other names, look-alikes that are not related, typical news sources, and what counts as good or bad news.">
           <Textarea value={context} onChange={(e) => setContext(e.target.value)} rows={10} maxLength={6000} />
         </Field>
         <Field label="Judge news sentiment against" hint="Positive and negative mean likely to help or hurt this. Add assets under Assets.">
@@ -66,7 +66,7 @@ export function ProfileSection() {
                 {ambiguous(displaySymbol(a.id)) ? ` from ${STOCK_SOURCE_INFO[a.source].label}` : ''}
               </option>
             ))}
-            <option value="">The subject&apos;s business outlook (no asset)</option>
+            <option value="">The subject itself: good or bad news for it (no asset)</option>
           </Select>
         </Field>
       </div>

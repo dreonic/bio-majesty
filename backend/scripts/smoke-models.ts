@@ -12,15 +12,15 @@ import { DEFAULT_SETTINGS, LANGUAGE_MODELS, type Category } from '@bio-majesty/s
 import { generateText, isStepCount, tool } from 'ai';
 import { z } from 'zod';
 import { configuredProviders, languageModel } from '../src/ai/registry';
-import { DEFAULT_PROFILE_CONTEXT } from '../src/ai/profile';
 import { mergeProviderOptions } from '../src/ai/run-task';
 import { classifyArticle } from '../src/ai/tasks/classify';
+import { SAMPLE_PROFILE_CONTEXT } from './sample-profile';
 
 const categories: Category[] = [
   {
     id: 'corp',
-    name: 'Prodia Widyahusada',
-    description: 'Corporate news about PT Prodia Widyahusada Tbk (PRDA).',
+    name: 'Acme Group',
+    description: 'Corporate news about PT Acme Laboratorium Tbk (ACME), a fictional laboratory chain.',
     color: '#2a78d6',
     search: { enabled: false, queries: [], exclude: [], sources: { googleNews: false, gdelt: false } },
     backfill: { months: 0, status: 'none', runId: null, startedAt: null, completedAt: null, error: null },
@@ -32,8 +32,8 @@ const categories: Category[] = [
 
 const FIXTURES = [
   {
-    title: 'Prodia membukukan kenaikan laba bersih 12% pada kuartal III',
-    text: 'PT Prodia Widyahusada Tbk (PRDA) melaporkan laba bersih naik 12% secara tahunan pada kuartal ketiga, didorong oleh peningkatan layanan pemeriksaan kesehatan korporat dan tes khusus. Manajemen menargetkan pembukaan klinik baru tahun depan.',
+    title: 'Acme membukukan kenaikan laba bersih 12% pada kuartal III',
+    text: 'PT Acme Laboratorium Tbk (ACME) melaporkan laba bersih naik 12% secara tahunan pada kuartal ketiga, didorong oleh peningkatan layanan pemeriksaan kesehatan korporat dan tes khusus. Manajemen menargetkan pembukaan klinik baru tahun depan.',
   },
   {
     title: 'Kemenkes kaji ulang tarif pemeriksaan laboratorium untuk peserta BPJS',
@@ -51,7 +51,7 @@ async function smoke(model: string): Promise<boolean> {
         { title: f.title, sourceName: 'Smoke test', url: 'https://example.com', publishedAt: null, text: f.text, snippet: null, categoryHints: ['corp'] },
         categories,
         settings,
-        DEFAULT_PROFILE_CONTEXT,
+        SAMPLE_PROFILE_CONTEXT,
       );
       console.log(`  ✓ tagging (${Date.now() - started} ms): ${c.sentiment}, categories=[${c.categoryIds.join(',')}], conf=${c.confidence.toFixed(2)}`);
     } catch (err) {
@@ -64,10 +64,10 @@ async function smoke(model: string): Promise<boolean> {
     const res = await generateText({
       model: await languageModel(model),
       instructions: 'Answer using the tool.',
-      prompt: 'What is the latest PRDA closing price?',
+      prompt: 'What is the latest ACME closing price?',
       tools: {
         getStockPrices: tool({
-          description: 'Get PRDA prices',
+          description: 'Get ACME prices',
           inputSchema: z.object({ from: z.string() }),
           execute: async () => {
             called = true;

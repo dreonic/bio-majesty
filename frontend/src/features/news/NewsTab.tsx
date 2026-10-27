@@ -1,6 +1,7 @@
 import { SENTIMENTS, type Sentiment } from '@bio-majesty/shared';
 import { Newspaper, Search } from 'lucide-react';
 import { useMemo, useState } from 'react';
+import { Link } from 'react-router';
 import { MultiSelect } from '../../components/overlays';
 import { SENTIMENT_META } from '../../components/tags';
 import { Button, EmptyState, Input, Select, Spinner } from '../../components/ui';
@@ -36,7 +37,8 @@ export function NewsTab() {
   const [filters, setFilters] = useStoredState<Filters>('bm:news-filters', DEFAULT_FILTERS);
   const [q, setQ] = useState(filters.q);
   const debouncedQ = useDebounced(q, 350);
-  const categories = useCategories().data ?? [];
+  const categoriesQuery = useCategories();
+  const categories = categoriesQuery.data ?? [];
   const update = (patch: Partial<Filters>) => setFilters({ ...filters, ...patch });
 
   const range = useMemo(() => {
@@ -141,6 +143,15 @@ export function NewsTab() {
         ) : items.length === 0 ? (
           <EmptyState icon={<Newspaper className="size-8" />} title={filtered ? 'No saved news matches these filters' : 'No saved news yet'}>
             {filtered ? 'Try a wider time window or fewer filters.' : 'Articles you save from the Review tab appear here.'}
+            {!filtered && categoriesQuery.data?.length === 0 && (
+              <>
+                {' '}To get started, describe what you follow and add a category in{' '}
+                <Link to="/settings" className="text-accent-strong hover:underline">
+                  Settings
+                </Link>
+                .
+              </>
+            )}
           </EmptyState>
         ) : (
           <div className="mx-auto max-w-3xl space-y-3">

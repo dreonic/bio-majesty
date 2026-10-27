@@ -109,7 +109,7 @@ export async function enrichCandidate(input: EnrichInput): Promise<{ outcome: En
       lang: extracted?.lang ?? candidate.lang,
       snippet: candidate.snippet ?? extracted?.excerpt ?? null,
       textStatus: extracted ? extracted.status : 'skipped',
-      filterReason: classification.relevant ? null : `Tagger: not about ${settings.profile.subject} or any category`,
+      filterReason: classification.relevant ? null : `Tagger: not about ${settings.profile.subject ? `${settings.profile.subject} or ` : ''}any category`,
       suggestion: {
         categoryIds: classification.categoryIds,
         sentiment: classification.sentiment,

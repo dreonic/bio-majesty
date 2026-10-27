@@ -34,7 +34,7 @@ export function CategoriesSection() {
           <Spinner />
         </div>
       ) : !categories.data?.length ? (
-        <EmptyState title="No categories yet">Add one for the company itself first (e.g. “Prodia Widyahusada”), then subsidiaries, regulation or competitors.</EmptyState>
+        <EmptyState title="No categories yet">Add a category for each topic you follow (a company, a person, an industry or a policy area), or start from a template in the Add dialog.</EmptyState>
       ) : (
         <ul className="divide-y divide-hairline">
           {categories.data.map((c) => (
