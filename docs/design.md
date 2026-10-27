@@ -17,7 +17,7 @@ Text always uses ink tokens; color is carried by a mark beside the text (dot, ic
 
 ## Sentiment (status colors, never color alone)
 
-Sentiment means good/bad for the share price, so it uses the reserved status colors — always paired with an icon and a label.
+Sentiment means good/bad news for the profile's subject (or the price of one of its assets), so it uses the reserved status colors — always paired with an icon and a label.
 
 | Sentiment | Color | Icon | Chart marker |
 |---|---|---|---|

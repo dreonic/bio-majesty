@@ -22,14 +22,14 @@ Every member of the Cognito group `dashboard-users` is an account (its Cognito `
 
 ## Time zones
 
-- **The exec's clock**: `timeZone` in `backend/cdk.json` (default `Asia/Singapore`), passed to the Lambdas as `TIME_ZONE` and to the SPA in `config.json`. Each account's daily-run time is a quarter hour on this clock; it also sets every time the dashboard shows, "today" in chat, news date filters (a `YYYY-MM-DD` is a day in this zone) and the digest's date.
-- **The markets' clocks**: each asset's exchange time zone (from its source: Yahoo's chart metadata or EODHD's exchange details; `Asia/Jakarta` for IDX, `America/New_York` for US listings, `UTC` for crypto…). It sets the asset's trading session, trading dates, daily candles and volume anomalies. Dates printed by Indonesian publishers are read as Jakarta days (`MARKET_TIME_ZONE` in `shared/src/time.ts`).
+- **The dashboard's clock**: `timeZone` in `backend/cdk.json` (default `Asia/Singapore`), passed to the Lambdas as `TIME_ZONE` and to the SPA in `config.json`. Each account's daily-run time is a quarter hour on this clock; it also sets every time the dashboard shows, "today" in chat, news date filters (a `YYYY-MM-DD` is a day in this zone) and the digest's date.
+- **The markets' clocks**: each asset's exchange time zone (from its source: Yahoo's chart metadata or EODHD's exchange details; `Asia/Jakarta` for IDX, `America/New_York` for US listings, `UTC` for crypto…). It sets the asset's trading session, trading dates, daily candles and volume anomalies.
 
 ## Pipelines (Step Functions)
 
 Both state machines share the same steps (`backend/src/handlers/pipeline.ts`, logic in `src/pipeline/`). Every execution belongs to one account (`sub` in the state) and uses only its categories, settings, profile and dedupe keys:
 
-1. **start** — create the run record and the search tasks (one per Google News query; GDELT queries are batched into sequential tasks to respect its rate limit). Daily window: since the account's last successful run, between 24 hours and 7 days. Backfill: date windows of 7/14/30 days depending on the period.
+1. **start** — create the run record and the search tasks (one per Google News query, in the query's edition: country and language, `EDITIONS` in `shared/src/editions.ts`; GDELT, which has no editions, gets each category's query once, batched into sequential tasks to respect its rate limit). Daily window: since the account's last successful run, between 24 hours and 7 days. Backfill: date windows of 7/14/30 days depending on the period.
 2. **search** (Map, concurrency 2–3) — fetch results, store raw hits in S3. A failing query is skipped, not fatal.
 3. **collect** — merge duplicates across queries/providers (URL, Google News id, headline + outlet) and drop anything the account already knows (its alias items in DynamoDB).
 4. **prefilter** — the LLM screens headlines in batches of 50 against the account's profile; obvious noise is stored as `FILTERED` (restorable for 30 days), the rest becomes one S3 item per candidate.
@@ -43,13 +43,13 @@ Both state machines share the same steps (`backend/src/handlers/pipeline.ts`, lo
 
 Keys `PK`/`SK`, index `GSI1` (`GSI1PK`/`GSI1SK`), TTL attribute `expiresAt`, stream `NEW_AND_OLD_IMAGES`.
 
-Everything an account owns lives in its partition `USER#<sub>`; market data is shared per asset. Assets are named by an ID, `<source>:<symbol>` with the symbol in the source's own format (`yahoo:PRDA.JK`, `eodhd:AAPL.US`; `assetId` in `shared/src/stock.ts`).
+Everything an account owns lives in its partition `USER#<sub>`; market data is shared per asset. Assets are named by an ID, `<source>:<symbol>` with the symbol in the source's own format (`yahoo:D05.SI`, `eodhd:AAPL.US`; `assetId` in `shared/src/stock.ts`).
 
 | Item | PK / SK | Notes |
 |---|---|---|
 | Article | `USER#<sub>` / `ART#<id>` | `suggestion` (AI), `final` (reviewer: tags, sentiment, edited summary/reason), status `PENDING/APPROVED/REJECTED/FILTERED`, `aliasIds`, `deletedAt` (soft-deleted filtered). GSI1 = `USER#<sub>#STATUS#<status>` / `<publishedAt>#<id>` |
 | Alias | `USER#<sub>` / `ALIAS#<url\|gnews\|title>#<hash>` | De-duplication (`articleId`); deleted with a recycle-bin article, kept for a filtered one |
-| Category | `USER#<sub>` / `CATEGORY#<id>` | Queries, exclusions, sources, backfill status |
+| Category | `USER#<sub>` / `CATEGORY#<id>` | Queries (each with its Google News edition), exclusions, sources, backfill status |
 | Settings | `USER#<sub>` / `SETTINGS` | Profile (incl. the sentiment asset), assets (`stock.assets`: asset IDs), models, schedule, sources, notifications, learning |
 | Telegram link | `USER#<sub>` / `TELEGRAM` | The account's chat; the bot's getUpdates offset is `TELEGRAM` / `BOT` |
 | Run | `USER#<sub>` / `RUN#<runId>` (time-sortable) | Stats (atomic counters), usage, error |

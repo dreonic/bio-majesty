@@ -12,7 +12,7 @@
  *   ... --cleanup --yes   later, once all is well: remove `lang` from queries that have an edition
  *
  * Every run also lists accounts that have categories but no stored profile subject or asset list:
- * their settings came from the defaults, which used to describe Prodia and are now blank.
+ * their settings came from the defaults, which used to describe one company and are now blank.
  */
 import { GetFunctionConfigurationCommand, LambdaClient } from '@aws-sdk/client-lambda';
 import { BatchWriteCommand, ScanCommand, type ScanCommandOutput } from '@aws-sdk/lib-dynamodb';

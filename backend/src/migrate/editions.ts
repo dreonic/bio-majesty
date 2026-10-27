@@ -8,7 +8,7 @@
  * from queries that have an edition.
  *
  * It also lists the accounts that have categories but no stored profile subject or asset list:
- * their settings came from the defaults, which used to describe Prodia and are now blank.
+ * their settings came from the defaults, which used to describe one company and are now blank.
  */
 
 export type Item = Record<string, unknown>;

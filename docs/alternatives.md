@@ -16,11 +16,11 @@ Not an option: the **Google Custom Search JSON API** is closed to new customers 
 
 ## Stock data
 
-Each asset picks its source when it is added (**Settings → Assets**). For this dashboard the test is whether a source has **PRDA.JK daily and 15-minute bars**, and whether a company may use it. Researched on 21 October 2026.
+Each asset picks its source when it is added (**Settings → Assets**). The research below (21 October 2026) tested whether a source has **daily and 15-minute bars for an IDX listing** (the first deployment's market) and whether a company may use it; for other markets, check each vendor's coverage first.
 
-| Option | Price | PRDA (IDX) | Notes | Integration |
+| Option | Price | IDX listing | Notes | Integration |
 |---|---|---|---|---|
-| **EODHD** | $29.99/mo for the personal plan with intraday data ($19.99 is end-of-day only); commercial *Internal use* $399/mo | Daily since listing (verified, data current to 13 Oct 2026); 5-minute bars since Oct 2020, finalized 2–3 hours after the close | Also SGX, US, indices, FX, crypto. The self-serve plans are for personal use; *Internal use* allows use "only inside your company" (1 seat: ask how a staff dashboard counts). During the session EODHD assets show only their quote | Implemented: add `EODHD_API_KEY` to the secret, then add assets from EODHD in **Settings → Assets** (symbols like `PRDA.JK`, `AAPL.US`) |
+| **EODHD** | $29.99/mo for the personal plan with intraday data ($19.99 is end-of-day only); commercial *Internal use* $399/mo | Daily since listing (verified, data current to 13 Oct 2026); 5-minute bars since Oct 2020, finalized 2–3 hours after the close | Also SGX, US, indices, FX, crypto. The self-serve plans are for personal use; *Internal use* allows use "only inside your company" (1 seat: ask how a staff dashboard counts). During the session EODHD assets show only their quote | Implemented: add `EODHD_API_KEY` to the secret, then add assets from EODHD in **Settings → Assets** (symbols like `AAPL.US`, `VOD.LSE`) |
 | **Invezgo** (Indonesian) | Rp 499,900 / 999,000 / 1,999,900 / 4,000,000 (Advance, Prime, Max, Elite; promotional prices, billing period not stated); free tier | Intraday endpoints, updated every 5 seconds; history back to 2009 (its claim) | IDX only (900+ stocks, IHSG, LQ45, IDX30). The only cheap source found that claims live IDX intraday. Check its terms and bar intervals with a free key first | New provider (below) |
 | **GoAPI** (Indonesian) | Behind its login; free trial | Prices and history; intraday not stated | IDX only; also company profiles and technical indicators | New provider |
 | **Sectors.app** | $59/mo (*Insider*: API with 5,000 credits a month; the $49 plan has no API) | End-of-day close, volume and market cap; no intraday | IDX, SGX, Bursa Malaysia. Strong on fundamentals, broker and foreign flow, filings: a complement for the chat rather than a price source | Chat tool or enrichment, not a provider |
@@ -33,7 +33,7 @@ No IDX intraday at all: **Alpha Vantage** ($49.99–249.99/mo; Indonesia isn't a
 
 **Free:** Google Finance (`GOOGLEFINANCE` in Google Sheets: IDX quotes 10 minutes delayed and daily history, but no API, and Google's terms forbid commercial use without written consent); the IDX website (official daily stock summary; its data endpoints aren't public and are hard to call from Lambda); EODHD's free tier (20 calls a day, one year of daily bars).
 
-**Enterprise** (price on request, typically tens of thousands of dollars a year): ICE Data Services (lists IDX feeds), LSEG, Bloomberg (a Terminal seat can't feed a web app; B-PIPE can), FactSet, S&P Capital IQ, or a data licence from IDX itself. Worth asking Prodia's investor-relations or finance team what they already license.
+**Enterprise** (price on request, typically tens of thousands of dollars a year): ICE Data Services (lists IDX feeds), LSEG, Bloomberg (a Terminal seat can't feed a web app; B-PIPE can), FactSet, S&P Capital IQ, or a data licence from IDX itself. Worth asking the company's investor-relations or finance team what it already licenses.
 
 **Adding a source:** implement `StockProvider` (`backend/src/stock/provider.ts`: lookup, search, daily, intraday, quote) next to `yahoo.ts` and `eodhd.ts`; add the source to `STOCK_SOURCES` and `STOCK_SOURCE_INFO` in `shared/src/stock.ts` (symbol format, examples, whether intraday bars arrive live or after the close, how long it takes to settle the day, how many days of intraday it serves), and to `PROVIDERS` and `SOURCE_SECRET_KEYS` in `backend/src/stock/index.ts`; put its API key in `SECRET_KEYS` (`backend/lib/constructs/data.ts`) and `KNOWN_KEYS` (`backend/src/lib/secrets.ts`). It then appears in the Add form once its key is in the secret.
 
