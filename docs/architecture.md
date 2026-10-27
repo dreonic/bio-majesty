@@ -13,12 +13,12 @@ EventBridge Scheduler, every 15 min (timeZone)
   └─ Lambda StockIngest: every asset any account tracks (each from its own source), when its market is open / its end-of-day pass is due (+ volume checks per account)
 New category / "Backfill" ─> Step Functions "Backfill" { sub }
 DynamoDB stream (accounts' article items) ─> Lambda Indexer ─> embeddings ─> S3 Vectors
-Secrets Manager: provider API keys + Telegram bot token.   CloudWatch alarms ─> SNS (alarmEmail)
+SSM Parameter Store: provider API keys + Telegram bot token (SecureString).   CloudWatch alarms ─> SNS (alarmEmail)
 ```
 
 ## Accounts
 
-Every member of the Cognito group `dashboard-users` is an account (its Cognito `sub`), with its own profile, categories, settings, review queue, saved news, digests, runs, review decisions, chats, volume alerts and Telegram chat. API handlers take the account from the token (`(event, user)` in `backend/src/lib/router.ts`), never from the request, and every repository function takes the account first. Background jobs list the accounts with `ListUsersInGroup` (`backend/src/lib/accounts.ts`), so removing someone from the group also stops their runs and price refreshes. Shared: market data per asset (public), the API-key secret, the Telegram bot.
+Every member of the Cognito group `dashboard-users` is an account (its Cognito `sub`), with its own profile, categories, settings, review queue, saved news, digests, runs, review decisions, chats, volume alerts and Telegram chat. API handlers take the account from the token (`(event, user)` in `backend/src/lib/router.ts`), never from the request, and every repository function takes the account first. Background jobs list the accounts with `ListUsersInGroup` (`backend/src/lib/accounts.ts`), so removing someone from the group also stops their runs and price refreshes. Shared: market data per asset (public), the API keys parameter, the Telegram bot.
 
 ## Time zones
 
@@ -66,7 +66,7 @@ Everything an account owns lives in its partition `USER#<sub>`; market data is s
 
 **S3 Vectors index** `articles-<embedding-model>-<dims>`: one vector per chunk (`<sub>#<articleId>#<n>`; chunk 0 = headline + effective summary). Filterable metadata: `owner` (the account; every query filters on it), `articleId`, `publishedAt`, `categoryIds`, `sentiment`; non-filterable: `title`, `text`, `source`. Only `APPROVED` articles are indexed; edits re-index, un-saving removes the vectors.
 
-**Market data:** the stock refresh (`backend/src/handlers/stock-ingest.ts`) runs every 15 minutes for the union of all accounts' assets, each through its source's provider (`backend/src/stock/`: `yahoo.ts`, `eodhd.ts`, picked by `stockProvider(source)`; `STOCK_SOURCE_INFO` in `shared/src/stock.ts` describes each source's symbol format and timing). Each asset's session pattern (local start/end, weekdays or every day) comes from its source and decides when it is polled (`backend/src/stock/session.ts`): while open, the latest intraday bars and quote (only the quote for EODHD, whose bars arrive after the close); one end-of-day pass once the source has settled the day (an hour after the close for Yahoo, three for EODHD). 15-minute bars expire after 10 days; the intraday CSV download asks the source instead (Yahoo: 60 days, EODHD: 120). Sources other than Yahoo are offered once their API key is in the secret (`configuredSources`).
+**Market data:** the stock refresh (`backend/src/handlers/stock-ingest.ts`) runs every 15 minutes for the union of all accounts' assets, each through its source's provider (`backend/src/stock/`: `yahoo.ts`, `eodhd.ts`, picked by `stockProvider(source)`; `STOCK_SOURCE_INFO` in `shared/src/stock.ts` describes each source's symbol format and timing). Each asset's session pattern (local start/end, weekdays or every day) comes from its source and decides when it is polled (`backend/src/stock/session.ts`): while open, the latest intraday bars and quote (only the quote for EODHD, whose bars arrive after the close); one end-of-day pass once the source has settled the day (an hour after the close for Yahoo, three for EODHD). 15-minute bars expire after 10 days; the intraday CSV download asks the source instead (Yahoo: 60 days, EODHD: 120). Sources other than Yahoo are offered once their API key is in the API keys parameter (`configuredSources`).
 
 ## API (all routes Cognito-authorized)
 

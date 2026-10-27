@@ -67,7 +67,7 @@ export class PipelineConstruct extends Construct {
     for (const fn of this.pipelineFunctions) {
       data.table.grantReadWriteData(fn);
       data.dataBucket.grantReadWrite(fn);
-      data.secret.grantRead(fn);
+      data.apiKeys.grantRead(fn);
     }
 
     const logGroup = new logs.LogGroup(this, 'StateMachineLogs', { retention: logs.RetentionDays.ONE_MONTH });
@@ -107,7 +107,7 @@ export class PipelineConstruct extends Construct {
       timeout: Duration.minutes(5),
     });
     data.table.grantReadWriteData(this.stockIngestFn);
-    data.secret.grantRead(this.stockIngestFn);
+    data.apiKeys.grantRead(this.stockIngestFn);
     readAccounts(this.stockIngestFn);
     new scheduler.Schedule(this, 'StockRefreshSchedule', {
       scheduleName: `bio-majesty-${config.stage}-stock-refresh`,
@@ -129,7 +129,7 @@ export class PipelineConstruct extends Construct {
     });
     data.table.grantReadWriteData(this.indexerFn);
     data.dataBucket.grantRead(this.indexerFn);
-    data.secret.grantRead(this.indexerFn);
+    data.apiKeys.grantRead(this.indexerFn);
     this.indexerFn.addToRolePolicy(
       new iam.PolicyStatement({
         actions: ['s3vectors:PutVectors', 's3vectors:DeleteVectors', 's3vectors:GetVectors', 's3vectors:ListVectors'],

@@ -141,7 +141,7 @@ export type StockAsset = z.infer<typeof StockAssetSchema>;
 
 export const StockAssetsResponseSchema = z.object({
   items: z.array(StockAssetSchema),
-  /** Sources new assets can come from: Yahoo always, the others once their API key is in the secret. */
+  /** Sources new assets can come from: Yahoo always, the others once their API key is in the API keys parameter. */
   sources: z.array(StockSourceSchema),
 });
 export type StockAssetsResponse = z.infer<typeof StockAssetsResponseSchema>;

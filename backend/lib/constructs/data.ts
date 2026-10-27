@@ -1,20 +1,10 @@
-import { Duration, RemovalPolicy, SecretValue, Stack } from 'aws-cdk-lib';
+import { Duration, RemovalPolicy, Stack } from 'aws-cdk-lib';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as s3vectors from 'aws-cdk-lib/aws-s3vectors';
-import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
+import * as ssm from 'aws-cdk-lib/aws-ssm';
 import { Construct } from 'constructs';
-import type { AppConfig } from '../config';
-
-/** Placeholder keys created in the secret; fill in the ones you use after deploying. */
-export const SECRET_KEYS = [
-  'ANTHROPIC_API_KEY',
-  'OPENAI_API_KEY',
-  'GOOGLE_GENERATIVE_AI_API_KEY',
-  'OPENROUTER_API_KEY',
-  'TELEGRAM_BOT_TOKEN',
-  'EODHD_API_KEY',
-] as const;
+import { apiKeysParameterName, type AppConfig } from '../config';
 
 export class DataConstruct extends Construct {
   readonly table: dynamodb.TableV2;
@@ -22,7 +12,8 @@ export class DataConstruct extends Construct {
   readonly vectorBucketName: string;
   readonly vectorIndexName: string;
   readonly vectorIndexArn: string;
-  readonly secret: secretsmanager.Secret;
+  /** Provider API keys and the Telegram bot token (an existing SecureString, encrypted with aws/ssm). */
+  readonly apiKeys: ssm.IStringParameter;
 
   constructor(scope: Construct, id: string, config: AppConfig) {
     super(scope, id);
@@ -81,10 +72,10 @@ export class DataConstruct extends Construct {
     index.applyRemovalPolicy(removalPolicy);
     this.vectorIndexArn = index.attrIndexArn;
 
-    this.secret = new secretsmanager.Secret(this, 'ApiKeys', {
-      description: `bio-majesty ${config.stage}: LLM provider API keys and Telegram bot token (replace REPLACE_ME values)`,
-      secretObjectValue: Object.fromEntries(SECRET_KEYS.map((k) => [k, SecretValue.unsafePlainText('REPLACE_ME')])),
-      removalPolicy,
+    // Created by hand (see README): CloudFormation can't create SecureStrings. Its AWS managed key's
+    // policy lets anyone allowed to read the parameter decrypt it through SSM, so no KMS grant is needed.
+    this.apiKeys = ssm.StringParameter.fromSecureStringParameterAttributes(this, 'ApiKeys', {
+      parameterName: apiKeysParameterName(config.stage),
     });
   }
 }

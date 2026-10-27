@@ -51,7 +51,7 @@ export function TelegramSection() {
         ) : !tg?.configured ? (
           <p className="text-sm text-ink-2">
             The bot is not configured yet. Create a bot with <span className="font-medium text-ink">@BotFather</span> in Telegram and add its token as{' '}
-            <code className="rounded bg-wash px-1">TELEGRAM_BOT_TOKEN</code> in the stack's secret (see README).
+            <code className="rounded bg-wash px-1">TELEGRAM_BOT_TOKEN</code> in the stack's API keys parameter (see README).
           </p>
         ) : tg.linked ? (
           <div className="flex flex-wrap items-center gap-3">

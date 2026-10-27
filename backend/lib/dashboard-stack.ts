@@ -35,7 +35,7 @@ export class DashboardStack extends Stack {
       DATA_BUCKET: data.dataBucket.bucketName,
       VECTOR_BUCKET: data.vectorBucketName,
       VECTOR_INDEX: data.vectorIndexName,
-      SECRET_ARN: data.secret.secretArn,
+      API_KEYS_PARAMETER: data.apiKeys.parameterName,
       DASHBOARD_URL: web.url,
       ALLOWED_ORIGINS: origins.join(','),
       EMBEDDING_MODEL: config.embeddingModel,
@@ -81,7 +81,7 @@ export class DashboardStack extends Stack {
     new CfnOutput(this, 'UserPoolId', { value: auth.userPool.userPoolId });
     new CfnOutput(this, 'UserPoolClientId', { value: auth.client.userPoolClientId });
     new CfnOutput(this, 'CognitoDomain', { value: auth.domainUrl });
-    new CfnOutput(this, 'SecretArn', { value: data.secret.secretArn, description: 'Put API keys and the Telegram bot token here' });
+    new CfnOutput(this, 'ApiKeysParameter', { value: data.apiKeys.parameterName, description: 'SSM SecureString to create with the API keys and the Telegram bot token (see README)' });
     new CfnOutput(this, 'StockIngestFunction', { value: pipeline.stockIngestFn.functionName });
     new CfnOutput(this, 'DailyStateMachineArn', { value: pipeline.dailyMachine.stateMachineArn });
 

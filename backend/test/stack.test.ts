@@ -41,7 +41,7 @@ describe('DashboardStack', () => {
       ProviderType: 'Google',
       ProviderDetails: Match.objectLike({
         client_id: '1234-abc.apps.googleusercontent.com',
-        client_secret: '{{resolve:secretsmanager:bio-majesty/test/google-client-secret:SecretString:::}}',
+        client_secret: '{{resolve:ssm:/bio-majesty/test/google-client-secret}}',
         authorize_scopes: 'openid email profile',
       }),
       AttributeMapping: { email: 'email', email_verified: 'email_verified', name: 'name' },
@@ -49,6 +49,17 @@ describe('DashboardStack', () => {
     t.hasResourceProperties('AWS::Cognito::UserPoolClient', { SupportedIdentityProviders: ['COGNITO', 'Google'] });
     expect(() => loadConfig(new App({ context: { googleClientId: 'not-a-client-id' } }))).toThrow(/Invalid googleClientId/);
   }, 60_000);
+
+  it('reads the API keys from the SSM parameter, with no Secrets Manager secret', () => {
+    template.resourceCountIs('AWS::SecretsManager::Secret', 0);
+    const fns = Object.values(template.findResources('AWS::Lambda::Function'));
+    const withKeys = fns.filter((f) => f.Properties.Environment?.Variables?.API_KEYS_PARAMETER === '/bio-majesty/test/api-keys');
+    expect(withKeys.length).toBeGreaterThan(5);
+    const grants = Object.values(template.findResources('AWS::IAM::Policy')).filter((p) =>
+      JSON.stringify(p.Properties.PolicyDocument).includes(':parameter/bio-majesty/test/api-keys'),
+    );
+    expect(grants.length).toBeGreaterThan(5);
+  });
 
   it('protects every non-preflight API method with the Cognito authorizer', () => {
     const methods = template.findResources('AWS::ApiGateway::Method');

@@ -41,7 +41,7 @@ export function ModelsSection() {
     <Card>
       <SectionTitle
         title="AI models"
-        description="Choose the model for each task. Any provider with an API key in the stack's secret can be used; changes apply to the next run."
+        description="Choose the model for each task. Any provider whose API key is in the stack's API keys parameter can be used; changes apply to the next run."
         actions={
           <Button variant="primary" onClick={save} disabled={!dirty} loading={update.isPending}>
             Save models
@@ -50,7 +50,7 @@ export function ModelsSection() {
       />
       <div className="flex flex-wrap gap-2 border-b border-hairline px-5 py-3 text-xs">
         {PROVIDERS.map((p) => (
-          <Badge key={p} title={configured.has(p) ? 'API key configured' : `Add ${PROVIDER_SECRET_KEYS[p]} to the secret to enable`}>
+          <Badge key={p} title={configured.has(p) ? 'API key configured' : `Add ${PROVIDER_SECRET_KEYS[p]} to the API keys parameter to enable`}>
             {configured.has(p) ? <CheckCircle2 className="size-3.5 text-good" aria-hidden /> : <CircleAlert className="size-3.5 text-muted" aria-hidden />}
             {PROVIDER_LABELS[p]} {configured.has(p) ? '' : '(no key)'}
           </Badge>

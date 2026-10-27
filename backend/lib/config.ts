@@ -23,9 +23,9 @@ export interface AppConfig {
   alarmEmail: string | null;
   customDomainName: string | null;
   customDomainCertificateArn: string | null;
-  /** Google OAuth client ID: adds "Sign in with Google" (client secret in Secrets Manager, see googleClientSecretName). */
+  /** Google OAuth client ID: adds "Sign in with Google" (client secret in Parameter Store, see googleClientSecretParameterName). */
   googleClientId: string | null;
-  /** Keep data (table, buckets, secret, user pool) when the stack is deleted. */
+  /** Keep data (table, buckets, user pool) when the stack is deleted. */
   retainData: boolean;
   /** Extra origin allowed to call the API and to receive Cognito redirects (local dev). */
   localDevOrigin: string | null;
@@ -78,7 +78,19 @@ export function loadConfig(app: App): AppConfig {
   };
 }
 
-/** Secrets Manager secret (plain string) holding the Google OAuth client secret; create it before deploying with googleClientId. */
-export function googleClientSecretName(stage: string): string {
-  return `bio-majesty/${stage}/google-client-secret`;
+/**
+ * SSM parameter (SecureString) holding the API keys and the Telegram bot token as JSON. Created by
+ * hand: CloudFormation can't create SecureStrings.
+ */
+export function apiKeysParameterName(stage: string): string {
+  return `/bio-majesty/${stage}/api-keys`;
+}
+
+/**
+ * SSM parameter holding the Google OAuth client secret; create it before deploying with googleClientId.
+ * A plain String: CloudFormation can't pass a SecureString to Cognito (and Cognito returns the secret
+ * to anyone allowed to describe the identity provider anyway).
+ */
+export function googleClientSecretParameterName(stage: string): string {
+  return `/bio-majesty/${stage}/google-client-secret`;
 }

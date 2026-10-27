@@ -82,7 +82,7 @@ interface ExchangeDetails {
 }
 
 /**
- * EODHD (paid, https://eodhd.com). Requires EODHD_API_KEY in the secret. Symbols are
+ * EODHD (paid, https://eodhd.com). Requires EODHD_API_KEY in the API keys parameter. Symbols are
  * TICKER.EXCHANGE (AAPL.US, VOD.LSE). Intraday bars come in 5-minute resolution, are rolled up
  * to 15 minutes, and are only finalized 2-3 hours after the close (STOCK_SOURCE_INFO.eodhd).
  */
@@ -212,7 +212,7 @@ export class EodhdStockProvider implements StockProvider {
 
   private async get<T>(path: string, params: Record<string, string> = {}): Promise<T> {
     const token = await getSecret('EODHD_API_KEY');
-    if (!token) throw new EodhdError('EODHD_API_KEY is not set in the secret', null);
+    if (!token) throw new EodhdError('EODHD_API_KEY is not set in the API keys parameter', null);
     const query = new URLSearchParams({ ...params, api_token: token, fmt: 'json' });
     try {
       const res = await fetchWithRetry(`${API}/${path}?${query}`);

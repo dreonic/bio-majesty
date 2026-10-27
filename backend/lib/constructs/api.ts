@@ -78,7 +78,7 @@ export class ApiConstruct extends Construct {
         environment: opts.environment,
       });
       data.table.grantReadWriteData(fn);
-      data.secret.grantRead(fn);
+      data.apiKeys.grantRead(fn);
       this.functions.push(fn);
       return fn;
     };

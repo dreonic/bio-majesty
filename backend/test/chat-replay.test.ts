@@ -48,7 +48,7 @@ async function replay(onError: (error: unknown) => string) {
     searchNews: tool({
       inputSchema: z.object({ query: z.string() }),
       execute: async (): Promise<string> => {
-        throw new ModelConfigError('No API key configured for google. Add GOOGLE_GENERATIVE_AI_API_KEY to the secret.');
+        throw new ModelConfigError('No API key configured for google. Add GOOGLE_GENERATIVE_AI_API_KEY to the API keys parameter.');
       },
     }),
   };

@@ -34,14 +34,14 @@ All deployment settings live in `backend/cdk.json` → `context` and can be over
 
 | Key | Default | Notes |
 |---|---|---|
-| `stage` | `dev` | `prod` retains data (table, buckets, secret, user pool) on stack deletion and disables the localhost callback |
+| `stage` | `dev` | `prod` retains data (table, buckets, user pool) on stack deletion and disables the localhost callback |
 | `region` | `ap-southeast-1` (Singapore) | **The one place to change the region**, e.g. `-c region=ap-southeast-3` for Jakarta (an opt-in region: enable it in the account first). The region must offer S3 Vectors, API Gateway REST response streaming and Cognito managed login (Singapore and Jakarta do) |
 | `account` | `297580066575` (the company account) | The AWS account to deploy to. A command run with another account's credentials (e.g. a personal default profile) stops with an account-mismatch error instead of deploying there. Use the company profile: `--profile biomajesty` or `$env:AWS_PROFILE='biomajesty'` |
 | `timeZone` | `Asia/Singapore` | The dashboard's clock: the daily-run times the accounts pick in Settings, the times the dashboard shows, and what "today" means in chat and news filters. Market data follows each asset's own exchange clock (e.g. Jakarta for IDX, New York for US listings). Changing it moves every account's run time to the same clock time in the new zone |
 | `embeddingModel` / `embeddingDimensions` | `google:gemini-embedding-2` / `768` | Changing either creates a new vector index; saved articles must then be re-indexed |
 | `alarmEmail` | — | Receives CloudWatch alarm emails (pipeline failures, ingest errors) |
 | `customDomainName` / `customDomainCertificateArn` | — | Optional custom domain for the dashboard (ACM certificate in us-east-1) |
-| `googleClientId` | — | Adds **Sign in with Google** to the login page (see *Google sign-in* below). The client secret goes in the Secrets Manager secret `bio-majesty/<stage>/google-client-secret` |
+| `googleClientId` | — | Adds **Sign in with Google** to the login page (see *Google sign-in* below). The client secret goes in the SSM parameter `/bio-majesty/<stage>/google-client-secret` |
 
 Runtime settings (profile, categories, assets, AI model per task, daily run time, data-source toggles, Telegram, volume alerts, "use past corrections") are edited in the dashboard's **Settings** page, separately for each account.
 
@@ -59,7 +59,7 @@ npm run deploy                          # builds the frontend, then `cdk deploy 
 # production: npm run build && (cd backend && npx cdk deploy -c stage=prod)
 ```
 
-The stack prints `DashboardUrl`, `ApiUrl`, `UserPoolId`, `UserPoolClientId`, `CognitoDomain` and `SecretArn`.
+The stack prints `DashboardUrl`, `ApiUrl`, `UserPoolId`, `UserPoolClientId`, `CognitoDomain`, `ApiKeysParameter` and `StockIngestFunction`.
 
 ### Continuous deployment (GitHub Actions)
 
@@ -97,9 +97,9 @@ Run it without `--dry-run` right before pushing that version and again right aft
 
 ### After the first deploy
 
-1. **API keys** — the stack creates one secret with `REPLACE_ME` placeholders. Put real values for the providers you use:
+1. **API keys** — all keys live in one encrypted SSM parameter (SecureString, free on the standard tier with the AWS managed key `aws/ssm`), named by the `ApiKeysParameter` stack output. CloudFormation can't create SecureStrings, so create it yourself (leave out the providers you don't use, or keep `REPLACE_ME`):
    ```bash
-   aws secretsmanager put-secret-value --secret-id <SecretArn> --secret-string '{
+   aws ssm put-parameter --name /bio-majesty/dev/api-keys --type SecureString --value '{
      "ANTHROPIC_API_KEY": "...",
      "GOOGLE_GENERATIVE_AI_API_KEY": "...",
      "OPENAI_API_KEY": "REPLACE_ME",
@@ -108,7 +108,7 @@ Run it without `--dry-run` right before pushing that version and again right aft
      "EODHD_API_KEY": "REPLACE_ME"
    }'
    ```
-   With the defaults you need an Anthropic key (Claude models) and a Google key (Gemini embeddings for chat search). Providers without a key are simply unavailable in Settings.
+   To change a key later, edit the JSON in the console (Systems Manager → Parameter Store → the parameter → Edit) or run the same command with `--overwrite`; the Lambdas pick it up within 5 minutes. With the defaults you need an Anthropic key (Claude models) and a Google key (Gemini embeddings for chat search). Providers without a key are simply unavailable in Settings.
 2. **Users** — there is no public sign-up. Invite each user:
    ```bash
    aws cognito-idp admin-create-user --user-pool-id <UserPoolId> --username someone@company.com \
@@ -130,13 +130,14 @@ Run it without `--dry-run` right before pushing that version and again right aft
       - Authorized redirect URI: `<CognitoDomain>/oauth2/idpresponse`
    2. Store the client secret, then put the client ID in `googleClientId` in `backend/cdk.json` and deploy:
       ```bash
-      aws secretsmanager create-secret --name bio-majesty/dev/google-client-secret --secret-string '<client secret>'
+      aws ssm put-parameter --name /bio-majesty/dev/google-client-secret --type String --value '<client secret>'
       ```
+      It is a plain `String`, not a SecureString: CloudFormation can't pass SecureStrings to Cognito (and Cognito shows the secret to anyone allowed to view the identity provider anyway). CloudFormation reads it only when it creates or changes the Google identity provider, so after changing the secret later, also paste it into the Cognito console (the user pool → Social and external providers → Google → Edit).
    3. A colleague signs in with Google once (they see *No access yet*), then you add them to `dashboard-users`; they press *Check again*. In the console, Google users are listed as `google_<number>` with their email.
-3. **Telegram** — create a bot with [@BotFather](https://t.me/BotFather), put its token in the secret, then each account uses **Settings → Connect Telegram** and presses *Start* in the chat that should receive its notifications (one bot serves every account).
+3. **Telegram** — create a bot with [@BotFather](https://t.me/BotFather), put its token in the API keys parameter (`TELEGRAM_BOT_TOKEN`), then each account uses **Settings → Connect Telegram** and presses *Start* in the chat that should receive its notifications (one bot serves every account).
 4. **Profile** — **Settings → Profile**: who or what the news is about (blank for a new account; left empty, the AI follows the topics of the categories) and what sentiment is judged against.
 5. **Categories** — **Settings → Add category**. Start from a template (named after the profile's subject: the subject itself, regulation and policy, competitors, industry and market, people and leadership) or your own name and description. *Suggest with AI* drafts the queries, each with the Google News edition (country and language) to search. Each new category runs a backfill and joins the daily run when it finishes.
-6. **Assets** — **Settings → Assets → Add** (up to 10): type a name to search, or a symbol in the source's own format, and check the match shown under the box. Yahoo Finance is always offered; EODHD joins it in the source list once `EODHD_API_KEY` is in the secret. The history loads in the background; **Resync** reloads it.
+6. **Assets** — **Settings → Assets → Add** (up to 10): type a name to search, or a symbol in the source's own format, and check the match shown under the box. Yahoo Finance is always offered; EODHD joins it in the source list once `EODHD_API_KEY` is in the API keys parameter. The history loads in the background; **Resync** reloads it.
 
 ### Local development against a deployed stack
 
@@ -174,7 +175,7 @@ Free/unofficial by choice; each has a documented paid fallback in [docs/alternat
 - **Google News RSS** — 26 country and language editions, picked per query (`EDITIONS` in `shared/src/editions.ts`, each checked on 2026-10-27); links are Google redirects that are decoded to publisher URLs on a best-effort basis (unofficial; if decoding fails the Google link is kept). About 100 results per query and window.
 - **GDELT** — free, publisher URLs, but only the last ~3 months and one request per 5 seconds.
 - **Yahoo Finance** (via `yahoo-finance2`) — unofficial, may rate-limit AWS IPs; each extra asset adds requests (an asset trading around the clock costs 96 a day), hence the 10-asset limit per account. The panel shows a *Not updating* badge and Telegram alerts after three failed refreshes; then add the asset again from EODHD.
-- **EODHD** (optional, paid) — offered in **Settings → Assets** once `EODHD_API_KEY` is in the secret. Its own symbol format (`TICKER.EXCHANGE`, e.g. `AAPL.US`, `VOD.LSE`); intraday bars only after the close. The self-serve plans are for personal use; see [docs/alternatives.md](docs/alternatives.md) for the commercial terms.
+- **EODHD** (optional, paid) — offered in **Settings → Assets** once `EODHD_API_KEY` is in the API keys parameter. Its own symbol format (`TICKER.EXCHANGE`, e.g. `AAPL.US`, `VOD.LSE`); intraday bars only after the close. The self-serve plans are for personal use; see [docs/alternatives.md](docs/alternatives.md) for the commercial terms.
 - The Google Custom Search JSON API is closed to new customers and shuts down on 1 January 2027, so it is not used.
 
 ## Costs (rough, per month)

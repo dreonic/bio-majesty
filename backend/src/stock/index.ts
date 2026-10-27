@@ -27,10 +27,10 @@ export function stockProvider(source: StockSource): StockProvider {
   return provider;
 }
 
-/** The API key each source needs in the secret (Yahoo needs none). */
+/** The API key each source needs in the API keys parameter (Yahoo needs none). */
 export const SOURCE_SECRET_KEYS: Record<StockSource, string | null> = { yahoo: null, eodhd: 'EODHD_API_KEY' };
 
-/** Sources new assets can come from: Yahoo always, the others once their API key is in the secret. */
+/** Sources new assets can come from: Yahoo always, the others once their API key is in the API keys parameter. */
 export async function configuredSources(): Promise<StockSource[]> {
   const secrets = await getSecrets();
   return STOCK_SOURCES.filter((source) => {

@@ -62,10 +62,10 @@ async function assetList(settings: Settings): Promise<StockAssetsResponse> {
   return { items: settings.stock.assets.map((id) => byId.get(id) ?? fallbackAsset(id)), sources };
 }
 
-/** A source this deployment can use (its API key is in the secret), or 400. */
+/** A source this deployment can use (its API key is in the API keys parameter), or 400. */
 async function usableSource(source: StockSource): Promise<StockProvider> {
   if (!(await configuredSources()).includes(source)) {
-    throw badRequest(`${STOCK_SOURCE_INFO[source].label} is not set up: add ${SOURCE_SECRET_KEYS[source]} to the secret first`);
+    throw badRequest(`${STOCK_SOURCE_INFO[source].label} is not set up: add ${SOURCE_SECRET_KEYS[source]} to the API keys parameter first`);
   }
   return stockProvider(source);
 }

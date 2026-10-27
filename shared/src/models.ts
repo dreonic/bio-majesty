@@ -17,7 +17,7 @@ export const PROVIDER_LABELS: Record<ProviderId, string> = {
   openrouter: 'OpenRouter',
 };
 
-/** Key names expected in the Secrets Manager secret (and env vars for local scripts). */
+/** Key names expected in the API keys parameter (and env vars for local scripts). */
 export const PROVIDER_SECRET_KEYS: Record<ProviderId, string> = {
   anthropic: 'ANTHROPIC_API_KEY',
   openai: 'OPENAI_API_KEY',

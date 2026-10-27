@@ -1,30 +1,34 @@
-import { GetSecretValueCommand, SecretsManagerClient } from '@aws-sdk/client-secrets-manager';
+import { GetParameterCommand, SSMClient } from '@aws-sdk/client-ssm';
 import { env } from './env';
 import { logger } from './logger';
 
 /**
- * All third-party credentials live in one JSON secret per stage, e.g.
- * {"ANTHROPIC_API_KEY": "...", "GOOGLE_GENERATIVE_AI_API_KEY": "...", "TELEGRAM_BOT_TOKEN": "..."}.
+ * All third-party credentials live in one encrypted SSM parameter (SecureString) per stage, a JSON
+ * object such as {"ANTHROPIC_API_KEY": "...", "GOOGLE_GENERATIVE_AI_API_KEY": "...", "TELEGRAM_BOT_TOKEN": "..."}.
+ * It is created by hand (CloudFormation can't create SecureStrings), so until it exists there are no keys.
  * Local scripts fall back to environment variables of the same names.
  */
 export type SecretBag = Record<string, string | undefined>;
 
 const TTL_MS = 5 * 60 * 1000;
 let cache: { value: SecretBag; expires: number } | undefined;
-let client: SecretsManagerClient | undefined;
+let client: SSMClient | undefined;
 
 export async function getSecrets(): Promise<SecretBag> {
   if (cache && cache.expires > Date.now()) return cache.value;
 
   let fromSecret: SecretBag = {};
-  if (env.secretArn) {
-    client ??= new SecretsManagerClient({});
+  if (env.apiKeysParameter) {
+    client ??= new SSMClient({});
     try {
-      const res = await client.send(new GetSecretValueCommand({ SecretId: env.secretArn }));
-      fromSecret = res.SecretString ? (JSON.parse(res.SecretString) as SecretBag) : {};
+      const res = await client.send(new GetParameterCommand({ Name: env.apiKeysParameter, WithDecryption: true }));
+      fromSecret = res.Parameter?.Value ? (JSON.parse(res.Parameter.Value) as SecretBag) : {};
     } catch (err) {
-      logger.error('Failed to read secrets', { err });
-      throw err;
+      if ((err as Error).name !== 'ParameterNotFound') {
+        logger.error('Failed to read the API keys', { err });
+        throw err;
+      }
+      logger.warn('The API keys parameter does not exist yet: no provider keys or Telegram token', { name: env.apiKeysParameter });
     }
   }
 

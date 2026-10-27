@@ -25,7 +25,6 @@ export function applyNagSuppressions(stack: Stack, refs: NagRefs): void {
     'AwsSolutions-IAM5[Resource::*]':
       'X-Ray tracing and CloudWatch Logs delivery for Step Functions require "*" (AWS service limitation).',
     'AwsSolutions-L1': 'Functions use Node.js 24; CDK-internal singleton functions (bucket deployment, auto-delete) are managed by CDK.',
-    'AwsSolutions-SMG4': 'The secret holds third-party API keys that cannot be rotated automatically; rotate them at the provider.',
     'AwsSolutions-COG2': 'MFA is OPTIONAL with TOTP enabled; switch to REQUIRED if company policy demands it.',
     'AwsSolutions-COG3': 'Threat protection (Plus tier) is not needed for a handful of invited users.',
     'AwsSolutions-COG8': 'Plus feature plan (threat protection) is not needed for a handful of invited users.',

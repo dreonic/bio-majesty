@@ -1,8 +1,8 @@
 import { ACCESS_GROUP } from '@bio-majesty/shared';
-import { Aws, Duration, RemovalPolicy, SecretValue } from 'aws-cdk-lib';
+import { Aws, CfnDynamicReference, CfnDynamicReferenceService, Duration, RemovalPolicy, SecretValue } from 'aws-cdk-lib';
 import * as cognito from 'aws-cdk-lib/aws-cognito';
 import { Construct } from 'constructs';
-import { googleClientSecretName, type AppConfig } from '../config';
+import { googleClientSecretParameterName, type AppConfig } from '../config';
 
 export interface AuthProps {
   config: AppConfig;
@@ -56,7 +56,10 @@ export class AuthConstruct extends Construct {
       ? new cognito.UserPoolIdentityProviderGoogle(this, 'Google', {
           userPool: this.userPool,
           clientId: config.googleClientId,
-          clientSecretValue: SecretValue.secretsManager(googleClientSecretName(config.stage)),
+          // Read by CloudFormation when it creates or changes the identity provider ({{resolve:ssm:...}}).
+          clientSecretValue: SecretValue.cfnDynamicReference(
+            new CfnDynamicReference(CfnDynamicReferenceService.SSM, googleClientSecretParameterName(config.stage)),
+          ),
           scopes: ['openid', 'email', 'profile'],
           attributeMapping: {
             email: cognito.ProviderAttribute.GOOGLE_EMAIL,

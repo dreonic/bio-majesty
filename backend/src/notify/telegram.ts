@@ -10,7 +10,7 @@ const API = 'https://api.telegram.org';
 
 export class TelegramNotConfiguredError extends Error {
   constructor() {
-    super('TELEGRAM_BOT_TOKEN is not set in the secret');
+    super('TELEGRAM_BOT_TOKEN is not set in the API keys parameter');
   }
 }
 

@@ -17,7 +17,7 @@ const LINK_TTL_MS = 10 * 60 * 1000;
 
 async function requireConfigured(): Promise<void> {
   if (!(await isTelegramConfigured())) {
-    throw badRequest('Telegram is not configured. Add TELEGRAM_BOT_TOKEN to the secret (see README).');
+    throw badRequest('Telegram is not configured. Add TELEGRAM_BOT_TOKEN to the API keys parameter (see README).');
   }
 }
 

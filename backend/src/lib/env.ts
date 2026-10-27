@@ -38,9 +38,9 @@ export const env = {
   get vectorIndex() {
     return required('VECTOR_INDEX');
   },
-  /** Secrets Manager secret holding provider API keys and the Telegram bot token. */
-  get secretArn() {
-    return optional('SECRET_ARN');
+  /** SSM parameter (SecureString, JSON) holding provider API keys and the Telegram bot token. */
+  get apiKeysParameter() {
+    return optional('API_KEYS_PARAMETER');
   },
   get dashboardUrl() {
     return optional('DASHBOARD_URL', 'http://localhost:5173');

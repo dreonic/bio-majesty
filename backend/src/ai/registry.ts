@@ -65,7 +65,7 @@ function assertUsable(ref: string, configured: ProviderId[]): `${string}:${strin
   if (!isKnownProvider(parsed.provider)) throw new ModelConfigError(`Unknown provider "${parsed.provider}"`);
   if (!configured.includes(parsed.provider)) {
     throw new ModelConfigError(
-      `No API key configured for ${parsed.provider}. Add ${PROVIDER_SECRET_KEYS[parsed.provider]} to the secret.`,
+      `No API key configured for ${parsed.provider}. Add ${PROVIDER_SECRET_KEYS[parsed.provider]} to the API keys parameter.`,
     );
   }
   return ref as `${string}:${string}`;

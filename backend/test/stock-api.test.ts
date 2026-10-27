@@ -160,7 +160,7 @@ describe('/stock/assets', () => {
     settings.stock.assets = ['yahoo:ACME.JK'];
     const notSetUp = await add({ source: 'eodhd', symbol: 'AAPL.US' });
     expect(notSetUp.statusCode).toBe(400);
-    expect(bodyOf<{ message: string }>(notSetUp).message).toBe('EODHD is not set up: add EODHD_API_KEY to the secret first');
+    expect(bodyOf<{ message: string }>(notSetUp).message).toBe('EODHD is not set up: add EODHD_API_KEY to the API keys parameter first');
     configured.sources = ['yahoo', 'eodhd'];
     expect((await add({ source: 'eodhd', symbol: 'AAPL' })).statusCode).toBe(400); // EODHD needs the exchange code
     // The same ticker from another source is another asset, with its own history.
