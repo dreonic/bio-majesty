@@ -1,7 +1,7 @@
 import { EDITIONS, type Edition } from '@bio-majesty/shared';
 import { XMLParser } from 'fast-xml-parser';
 import { hashId } from '../lib/ids';
-import { addDays, jakartaDate } from '../lib/time';
+import { addDays, localDate } from '../lib/time';
 import { displayTitle, domainOf, extractGoogleNewsId } from '../lib/url';
 import { BROWSER_HEADERS, fetchWithRetry } from './http-fetch';
 import type { RawCandidate } from './types';
@@ -32,8 +32,9 @@ export function buildGoogleNewsQuery(input: Omit<GoogleNewsQuery, 'edition'>): s
     const days = Math.min(7, Math.max(1, Math.ceil((input.to.getTime() - input.from.getTime()) / 86_400_000)));
     parts.push(`when:${days}d`);
   } else {
-    // `before:` is exclusive, so add one day to include the window's last day.
-    parts.push(`after:${jakartaDate(input.from)}`, `before:${jakartaDate(addDays(input.to, 1))}`);
+    // `before:` is exclusive, so add one day to include the window's last day. Days on the
+    // deployment's clock: windows overlap by a day, so publishers in other zones lose nothing.
+    parts.push(`after:${localDate(input.from)}`, `before:${localDate(addDays(input.to, 1))}`);
   }
   return parts.join(' ');
 }

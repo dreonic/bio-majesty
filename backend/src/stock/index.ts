@@ -1,6 +1,5 @@
 import {
   dateInZone,
-  MARKET_TIME_ZONE,
   parseAssetId,
   STOCK_SOURCE_INFO,
   STOCK_SOURCES,
@@ -58,19 +57,18 @@ export function fallbackAsset(id: string): StockAsset {
   const parsed = parseAssetId(id);
   if (!parsed) throw new Error(`Invalid asset ID "${id}"`);
   const { source, symbol } = parsed;
-  const idx = symbol.endsWith('.JK');
   return {
     id,
     source,
     symbol,
     name: null,
-    exchange: idx ? 'Jakarta' : null,
+    exchange: null,
     type: null,
-    currency: idx ? 'IDR' : null,
-    timeZone: idx ? MARKET_TIME_ZONE : 'UTC',
-    session: idx ? { start: '09:00', end: '16:15', days: 'weekdays' } : { start: '00:00', end: '23:59', days: 'weekdays' },
+    currency: null,
+    timeZone: 'UTC',
+    session: { start: '00:00', end: '23:59', days: 'weekdays' },
     intradayInterval: '15m',
-    decimals: idx ? 0 : 2,
+    decimals: 2,
     hasVolume: true,
     firstTradeDate: null,
     updatedAt: new Date(0).toISOString(),

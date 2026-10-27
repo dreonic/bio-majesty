@@ -1,15 +1,12 @@
 /**
- * Two clocks:
- *  - the exec's time zone (deployment setting `timeZone`, default Singapore) decides when the
- *    daily run fires, how times are shown and what "today" means for news;
- *  - the market time zone (IDX, Jakarta) decides trading hours and trading dates.
+ * Two kinds of clock:
+ *  - the deployment's time zone (setting `timeZone`, default Singapore) decides when the daily
+ *    runs fire, how times are shown and what "today" means for news;
+ *  - each asset's exchange time zone decides its trading hours and trading dates.
  */
 
-/** The exec's time zone unless the deployment sets another (`timeZone` in backend/cdk.json). */
+/** The dashboard's time zone unless the deployment sets another (`timeZone` in backend/cdk.json). */
 export const DEFAULT_TIME_ZONE = 'Asia/Singapore';
-
-/** IDX trades on Jakarta time (WIB, UTC+7, no DST): stock schedules and trading dates use it. */
-export const MARKET_TIME_ZONE = 'Asia/Jakarta';
 
 /** Abbreviations people use; in English, Intl only offers "GMT+8"-style names for these zones. */
 const LABELS: Record<string, string> = {

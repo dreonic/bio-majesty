@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { dateInZone, isValidTimeZone, MARKET_TIME_ZONE, midnightInZone, timeZoneLabel, zoneOffsetMinutes } from '../src';
+import { dateInZone, isValidTimeZone, midnightInZone, timeZoneLabel, zoneOffsetMinutes } from '../src';
 
 describe('time zones', () => {
-  it('knows the offsets of the exec and market zones', () => {
+  it('knows the offsets of the dashboard and exchange zones', () => {
     expect(zoneOffsetMinutes('Asia/Singapore', new Date('2026-10-14T00:00:00Z'))).toBe(480);
-    expect(zoneOffsetMinutes(MARKET_TIME_ZONE, new Date('2026-10-14T00:00:00Z'))).toBe(420);
+    expect(zoneOffsetMinutes('Asia/Jakarta', new Date('2026-10-14T00:00:00Z'))).toBe(420);
     expect(zoneOffsetMinutes('UTC')).toBe(0);
     expect(zoneOffsetMinutes('America/New_York', new Date('2026-01-15T12:00:00Z'))).toBe(-300);
   });

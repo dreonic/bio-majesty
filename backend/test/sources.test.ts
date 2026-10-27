@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { buildGdeltUrl, GDELT_MAX_LOOKBACK_DAYS, parseGdeltResponse, toGdeltQuery } from '../src/sources/gdelt';
 import {
   buildBatchExecuteBody,
@@ -44,14 +44,13 @@ describe('Google News RSS', () => {
     expect(q).toBe('"Prodia Widyahusada" -prodia.com -"image generation" when:1d');
   });
 
-  it('builds absolute date ranges (before: is exclusive)', () => {
-    const q = buildGoogleNewsQuery({
-      q: 'PRDA',
-      from: new Date('2026-09-01T00:00:00+07:00'),
-      to: new Date('2026-09-14T12:00:00+07:00'),
-      mode: 'range',
-    });
-    expect(q).toBe('PRDA after:2026-09-01 before:2026-09-15');
+  it("builds absolute date ranges on the deployment's calendar (before: is exclusive)", () => {
+    const window = { q: 'PRDA', from: new Date('2026-09-01T00:00:00+08:00'), to: new Date('2026-09-14T08:00:00+08:00'), mode: 'range' as const };
+    vi.stubEnv('TIME_ZONE', 'Asia/Singapore');
+    expect(buildGoogleNewsQuery(window)).toBe('PRDA after:2026-09-01 before:2026-09-15');
+    vi.stubEnv('TIME_ZONE', 'America/New_York');
+    expect(buildGoogleNewsQuery(window)).toBe('PRDA after:2026-08-31 before:2026-09-14');
+    vi.unstubAllEnvs();
   });
 
   it("searches the query's edition", () => {

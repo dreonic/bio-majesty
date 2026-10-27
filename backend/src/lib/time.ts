@@ -1,25 +1,14 @@
 import { dateInZone, midnightInZone } from '@bio-majesty/shared';
 import { env } from './env';
 
-/**
- * Asia/Jakarta is UTC+7 all year (no DST). Jakarta dates are the IDX/publisher
- * calendar: trading dates, Google News date operators, dates read from articles.
- */
-export const JAKARTA_OFFSET_MS = 7 * 60 * 60 * 1000;
-
-/** YYYY-MM-DD in Asia/Jakarta. */
-export function jakartaDate(date: Date = new Date()): string {
-  return new Date(date.getTime() + JAKARTA_OFFSET_MS).toISOString().slice(0, 10);
-}
-
-/** YYYY-MM-DD on the exec's calendar (TIME_ZONE, default Asia/Singapore). */
+/** YYYY-MM-DD on the deployment's calendar (TIME_ZONE, default Asia/Singapore). */
 export function localDate(date: Date = new Date()): string {
   return dateInZone(env.timeZone, date);
 }
 
 /**
  * Parse a YYYY-MM-DD or full ISO string. YYYY-MM-DD is a day in `timeZone`: the
- * exec's by default (news filters); pass MARKET_TIME_ZONE for IDX trading dates.
+ * deployment's by default (news filters); pass an asset's zone for its trading dates.
  */
 export function parseDateInput(value: string, endOfDay = false, timeZone = env.timeZone): Date {
   if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {

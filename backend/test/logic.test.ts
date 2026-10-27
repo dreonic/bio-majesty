@@ -1,4 +1,4 @@
-import { DEFAULT_SETTINGS, MARKET_TIME_ZONE, type Article, type Digest } from '@bio-majesty/shared';
+import { dateInZone, DEFAULT_SETTINGS, type Article, type Digest } from '@bio-majesty/shared';
 import type { APIGatewayProxyEvent } from 'aws-lambda';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
@@ -7,7 +7,7 @@ import { isDue, quarterSlot } from '../src/handlers/dispatch';
 import { decideAction, image } from '../src/handlers/indexer';
 import { parseQuery } from '../src/lib/http';
 import { createRouter } from '../src/lib/router';
-import { jakartaDate, localDate, parseDateInput } from '../src/lib/time';
+import { localDate, parseDateInput } from '../src/lib/time';
 import { isPrivateAddress } from '../src/lib/ssrf';
 import { escapeHtml, formatDigestMessage } from '../src/notify/telegram';
 import { mergeSettings } from '../src/repo/settings';
@@ -119,7 +119,7 @@ describe('dates', () => {
     vi.unstubAllEnvs();
   });
 
-  it("reads news dates on the exec's calendar", () => {
+  it("reads news dates on the deployment's calendar", () => {
     vi.stubEnv('TIME_ZONE', 'Asia/Singapore');
     expect(localDate(new Date('2026-10-13T16:30:00Z'))).toBe('2026-10-14');
     expect(parseDateInput('2026-10-14').toISOString()).toBe('2026-10-13T16:00:00.000Z');
@@ -127,13 +127,13 @@ describe('dates', () => {
     expect(parseDateInput('2026-10-14T03:00:00Z').toISOString()).toBe('2026-10-14T03:00:00.000Z');
   });
 
-  it('keeps trading dates on Jakarta days', () => {
+  it("reads trading dates on the asset's own exchange clock", () => {
     vi.stubEnv('TIME_ZONE', 'Asia/Singapore');
-    const tradingDay = parseDateInput('2026-10-14', false, MARKET_TIME_ZONE);
+    const tradingDay = parseDateInput('2026-10-14', false, 'Asia/Jakarta');
     expect(tradingDay.toISOString()).toBe('2026-10-13T17:00:00.000Z');
-    expect(jakartaDate(tradingDay)).toBe('2026-10-14');
-    // Why the stock routes pass MARKET_TIME_ZONE: a Singapore midnight is the previous Jakarta day.
-    expect(jakartaDate(parseDateInput('2026-10-14'))).toBe('2026-10-13');
+    expect(dateInZone('Asia/Jakarta', tradingDay)).toBe('2026-10-14');
+    // Why the stock routes pass the asset's zone: a Singapore midnight is the previous Jakarta day.
+    expect(dateInZone('Asia/Jakarta', parseDateInput('2026-10-14'))).toBe('2026-10-13');
   });
 });
 
