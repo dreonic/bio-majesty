@@ -1,6 +1,6 @@
 /**
- * Paragraph-aware chunking (~500 tokens ≈ 2,000 characters for mixed
- * Indonesian/English text) with a small overlap so facts spanning a boundary
+ * Paragraph-aware chunking (~500 tokens ≈ 2,000 characters of Latin-script text such
+ * as English or Indonesian) with a small overlap so facts spanning a boundary
  * still land in one chunk.
  */
 export function chunkText(text: string, maxChars = 2000, overlapChars = 200): string[] {

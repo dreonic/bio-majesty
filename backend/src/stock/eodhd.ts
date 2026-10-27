@@ -83,7 +83,7 @@ interface ExchangeDetails {
 
 /**
  * EODHD (paid, https://eodhd.com). Requires EODHD_API_KEY in the secret. Symbols are
- * TICKER.EXCHANGE (PRDA.JK, AAPL.US). Intraday bars come in 5-minute resolution, are rolled up
+ * TICKER.EXCHANGE (AAPL.US, VOD.LSE). Intraday bars come in 5-minute resolution, are rolled up
  * to 15 minutes, and are only finalized 2-3 hours after the close (STOCK_SOURCE_INFO.eodhd).
  */
 export class EodhdStockProvider implements StockProvider {
@@ -227,7 +227,7 @@ export class EodhdStockProvider implements StockProvider {
   }
 }
 
-/** PRDA.JK -> { code: 'PRDA', exchange: 'JK' } (the exchange code follows the last dot). */
+/** VOD.LSE -> { code: 'VOD', exchange: 'LSE' } (the exchange code follows the last dot). */
 function splitSymbol(symbol: string): { code: string; exchange: string } {
   const dot = symbol.lastIndexOf('.');
   return { code: symbol.slice(0, dot), exchange: symbol.slice(dot + 1) };

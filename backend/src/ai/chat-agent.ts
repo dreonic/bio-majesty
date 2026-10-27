@@ -48,7 +48,7 @@ export function chatProviderOptions(
   };
 }
 
-/** How the chat names an asset: "PRDA (PT Prodia Widyahusada Tbk)". */
+/** How the chat names an asset: "D05 (DBS Group Holdings Ltd)". */
 function assetLabel(asset: Pick<StockAsset, 'id' | 'name'>): string {
   return asset.name ? `${displaySymbol(asset.id)} (${asset.name})` : displaySymbol(asset.id);
 }

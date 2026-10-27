@@ -22,7 +22,7 @@ export const env = {
   get region() {
     return optional('AWS_REGION', optional('AWS_DEFAULT_REGION', 'ap-southeast-1'));
   },
-  /** The exec's IANA time zone: daily-run times, "today" in chat, news date filters. */
+  /** The dashboard's IANA time zone: daily-run times, "today" in chat, news date filters. */
   get timeZone() {
     return optional('TIME_ZONE', DEFAULT_TIME_ZONE);
   },

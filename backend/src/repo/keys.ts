@@ -5,7 +5,7 @@ export const accountPk = (sub: string) => `USER#${sub}`;
 
 /**
  * Single-table key layout (see docs/architecture.md). Everything an account owns lives in its
- * partition `USER#<sub>`; market data is shared per asset (`STOCK#<asset ID>`, e.g. `STOCK#yahoo:PRDA.JK`).
+ * partition `USER#<sub>`; market data is shared per asset (`STOCK#<asset ID>`, e.g. `STOCK#yahoo:D05.SI`).
  */
 export const keys = {
   article: (sub: string, id: string) => ({ PK: accountPk(sub), SK: `ART#${id}` }),

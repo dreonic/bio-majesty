@@ -10,7 +10,7 @@ import { useBulkReview, useCategories, useCounts, useDeleteNews, useNews, useRev
 import { ArticleCard, type ArticleCardHandle } from '../news/ArticleCard';
 
 /**
- * Review queue: every AI-suggested article waits here until the exec saves
+ * Review queue: every AI-suggested article waits here until the reviewer saves
  * (with optional edits) or skips it. Skipped articles go to the recycle bin (later runs
  * leave them out while they are there), where they can be restored or deleted for good
  * (then a later run may find them again). Keyboard: J/K move, S save, X skip, E details.
@@ -206,7 +206,7 @@ const AFTER_DELETE: Record<DeletableStatus, string> = {
 };
 
 /**
- * Filtered (by the AI) or skipped (by the exec) articles, each restorable to the review
+ * Filtered (by the AI) or skipped (by the reviewer) articles, each restorable to the review
  * queue. With `selectable`, articles can also be deleted (not to the recycle bin), one at a
  * time or picked with checkboxes and restored or deleted together.
  */

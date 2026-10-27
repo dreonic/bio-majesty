@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { IsoDateTime, SentimentSchema } from './common';
 
 /**
- * One review decision by the exec, stored as a labelled example for future
+ * One review decision (save or skip, with any edits), stored as a labelled example for future
  * classifier training (and, when enabled in Settings, as in-context examples
  * for the tagging model).
  */
@@ -31,7 +31,7 @@ export const FeedbackSchema = z.object({
       rationale: z.string(),
     })
     .nullable(),
-  /** Which fields the exec changed relative to the AI suggestion. */
+  /** Which fields the reviewer changed relative to the AI suggestion. */
   changed: z.array(z.enum(['categories', 'sentiment', 'summary', 'rationale', 'relevance'])),
 });
 export type Feedback = z.infer<typeof FeedbackSchema>;

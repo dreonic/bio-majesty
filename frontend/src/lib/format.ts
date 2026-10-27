@@ -1,7 +1,7 @@
 import { DEFAULT_TIME_ZONE, dateInZone, isValidTimeZone, timeZoneLabel as labelFor, zoneOffsetMinutes } from '@bio-majesty/shared';
 
 /**
- * Formatting helpers. Dates and times are shown in the exec's time zone (config.json
+ * Formatting helpers. Dates and times are shown in the dashboard's time zone (config.json
  * `timeZone`, default Asia/Singapore), set once at startup by setDisplayTimeZone().
  */
 let tz = DEFAULT_TIME_ZONE;

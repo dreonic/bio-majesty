@@ -64,6 +64,6 @@ const n = examples.length - errors;
 const tokens = usage.toEntries().reduce((s, u) => ({ in: s.in + u.inputTokens, out: s.out + u.outputTokens }), { in: 0, out: 0 });
 console.log(`Model: ${model}`);
 console.log(`Examples: ${n} (errors: ${errors})`);
-console.log(`Sentiment agreement with the exec: ${((sentimentHits / Math.max(1, n)) * 100).toFixed(1)}%`);
+console.log(`Sentiment agreement with the reviewer: ${((sentimentHits / Math.max(1, n)) * 100).toFixed(1)}%`);
 console.log(`Category overlap (mean Jaccard): ${((jaccardSum / Math.max(1, n)) * 100).toFixed(1)}%`);
 console.log(`Tokens: ${tokens.in} in / ${tokens.out} out`);

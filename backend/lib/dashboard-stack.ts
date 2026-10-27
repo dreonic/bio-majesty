@@ -29,7 +29,7 @@ export class DashboardStack extends Stack {
 
     const functions = new FunctionFactory(this, {
       STAGE: config.stage,
-      // The exec's time zone (Lambda reserves TZ; code passes zones explicitly).
+      // The dashboard's time zone (Lambda reserves TZ; code passes zones explicitly).
       TIME_ZONE: config.timeZone,
       TABLE_NAME: data.table.tableName,
       DATA_BUCKET: data.dataBucket.bucketName,

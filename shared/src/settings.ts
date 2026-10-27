@@ -109,7 +109,7 @@ export const SettingsSchema = z.object({
     notifyWhenEmpty: z.boolean(),
   }),
   stock: z.object({
-    /** Asset IDs ("yahoo:PRDA.JK"), in the order the stock panel lists them (added and removed via /stock/assets). */
+    /** Asset IDs ("yahoo:D05.SI"), in the order the stock panel lists them (added and removed via /stock/assets). */
     assets: z.array(AssetIdSchema).max(MAX_ASSETS),
     /** Telegram alert when volume is far above its 20-day average. */
     volumeAlerts: z.boolean(),
@@ -119,7 +119,7 @@ export const SettingsSchema = z.object({
   profile: ProfileSchema,
   learning: z.object({
     /**
-     * Give the tagging model the exec's recent corrections as examples.
+     * Give the tagging model the account's recent corrections as examples.
      * Corrections are always stored for future training, even when off.
      */
     useFeedbackContext: z.boolean(),

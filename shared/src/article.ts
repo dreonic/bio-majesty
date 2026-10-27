@@ -14,14 +14,14 @@ export const SuggestionSchema = z.object({
   rationale: z.string(),
   /** 0..1 — how confident the model is in its sentiment call. */
   confidence: z.number(),
-  /** 0..1 — how relevant the article is to the Prodia group. */
+  /** 0..1 — how relevant the article is to the account's subject. */
   relevance: z.number(),
   summary: z.string(),
   model: z.string(),
 });
 export type Suggestion = z.infer<typeof SuggestionSchema>;
 
-/** The exec's decision. Summary/rationale are present only when the exec edited the AI's text. */
+/** The reviewer's decision. Summary/rationale are present only when the reviewer edited the AI's text. */
 export const FinalTagsSchema = z.object({
   categoryIds: z.array(z.string()),
   sentiment: SentimentSchema,
@@ -62,7 +62,7 @@ export const ArticleSchema = z.object({
 });
 export type Article = z.infer<typeof ArticleSchema>;
 
-/** Effective tags: the exec's decision if reviewed, otherwise the AI suggestion. */
+/** Effective tags: the reviewer's decision if reviewed, otherwise the AI suggestion. */
 export function effectiveTags(a: Pick<Article, 'final' | 'suggestion'>): FinalTags {
   if (a.final) return a.final;
   return {
@@ -71,7 +71,7 @@ export function effectiveTags(a: Pick<Article, 'final' | 'suggestion'>): FinalTa
   };
 }
 
-/** Summary shown to users: the exec's edit if any, otherwise the AI's. */
+/** Summary shown to users: the reviewer's edit if any, otherwise the AI's. */
 export function effectiveSummary(a: Pick<Article, 'final' | 'suggestion' | 'snippet'>): string {
   return a.final?.summary ?? a.suggestion?.summary ?? a.snippet ?? '';
 }
@@ -108,7 +108,7 @@ export const ReviewRequestSchema = z.object({
   action: z.enum(REVIEW_ACTIONS),
   categoryIds: z.array(z.string()).optional(),
   sentiment: SentimentSchema.optional(),
-  /** Exec-edited text (stored as training feedback for the classifier). */
+  /** Reviewer-edited text (stored as training feedback for the classifier). */
   summary: z.string().trim().max(2000).optional(),
   rationale: z.string().trim().max(1000).optional(),
 });
@@ -127,7 +127,7 @@ export const BulkReviewResponseSchema = z.object({
 });
 
 /**
- * Statuses whose articles can be deleted: skipped by the exec (the recycle bin: deleted for good and
+ * Statuses whose articles can be deleted: skipped by the reviewer (the recycle bin: deleted for good and
  * forgotten, so a later run or backfill can find them again) or filtered by the AI (soft-deleted:
  * hidden but remembered, so later runs keep filtering them out).
  */
@@ -154,7 +154,7 @@ export type DeleteNewsResponse = z.infer<typeof DeleteNewsResponseSchema>;
 export const PendingCountsSchema = z.object({
   pending: z.number(),
   filtered: z.number(),
-  /** Skipped by the exec (the recycle bin). */
+  /** Skipped by the reviewer (the recycle bin). */
   skipped: z.number(),
 });
 export type PendingCounts = z.infer<typeof PendingCountsSchema>;

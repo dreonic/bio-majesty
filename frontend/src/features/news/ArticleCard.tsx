@@ -22,7 +22,7 @@ export interface ArticleCardHandle {
 /**
  * One article. In the Review tab it is always editable (tags, sentiment,
  * summary, reason) with Save / Skip; in the News tab it is read-only until the
- * exec clicks Edit. Edits are sent with the decision and stored as training
+ * reviewer clicks Edit. Edits are sent with the decision and stored as training
  * feedback for the classifier.
  */
 export function ArticleCard({

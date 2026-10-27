@@ -2,7 +2,7 @@
 export interface RuntimeConfig {
   stage: string;
   region: string;
-  /** IANA time zone to show times in (the exec's); defaults to Asia/Singapore. */
+  /** IANA time zone to show times in (the deployment's); defaults to Asia/Singapore. */
   timeZone?: string;
   apiUrl: string;
   cognito: { authority: string; clientId: string; domain: string };

@@ -11,9 +11,9 @@ export type Sentiment = z.infer<typeof SentimentSchema>;
 
 /**
  * Lifecycle of a discovered article.
- * - PENDING: suggested by the pipeline, waiting for the exec's review
- * - APPROVED: saved by the exec (shown in the News tab, indexed for chat)
- * - REJECTED: skipped by the exec (the recycle bin; later runs drop it while it is there)
+ * - PENDING: suggested by the pipeline, waiting for review
+ * - APPROVED: saved by the reviewer (shown in the News tab, indexed for chat)
+ * - REJECTED: skipped by the reviewer (the recycle bin; later runs drop it while it is there)
  * - FILTERED: dropped by the AI headline prefilter (restorable for 30 days)
  */
 export const ARTICLE_STATUSES = ['PENDING', 'APPROVED', 'REJECTED', 'FILTERED'] as const;

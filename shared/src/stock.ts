@@ -65,7 +65,7 @@ export function symbolProblem(source: StockSource, symbol: string): string | nul
 }
 
 /**
- * An asset's ID: its source and its symbol in that source's own format, e.g. "yahoo:PRDA.JK" or
+ * An asset's ID: its source and its symbol in that source's own format, e.g. "yahoo:D05.SI" or
  * "eodhd:AAPL.US". Settings, stored market data and the API name assets by it, so the same
  * ticker from two sources is two assets with separate price histories.
  */
@@ -83,22 +83,22 @@ export function parseAssetId(id: string): { source: StockSource; symbol: string 
   return symbolProblem(source.data, symbol) ? null : { source: source.data, symbol };
 }
 
-/** An asset ID, normalized: " Yahoo:prda.jk" -> "yahoo:PRDA.JK". */
+/** An asset ID, normalized: " Yahoo:d05.si" -> "yahoo:D05.SI". */
 export const AssetIdSchema = z.string().transform((value, ctx) => {
   const parsed = parseAssetId(value);
   if (parsed) return assetId(parsed.source, parsed.symbol);
-  ctx.addIssue({ code: 'custom', message: 'expected an asset ID such as yahoo:PRDA.JK' });
+  ctx.addIssue({ code: 'custom', message: 'expected an asset ID such as yahoo:AAPL' });
   return z.NEVER;
 });
 
 /**
- * Ticker as people say it: the exchange suffix dropped ("yahoo:PRDA.JK", "eodhd:PRDA.JK" -> "PRDA");
- * others unchanged ("yahoo:BTC-USD", "yahoo:^JKSE"). Anything that is not an asset ID is returned as it is.
+ * Ticker as people say it: the exchange suffix dropped ("yahoo:D05.SI" -> "D05", "eodhd:AAPL.US" -> "AAPL");
+ * others unchanged ("yahoo:BTC-USD", "yahoo:^GSPC"). Anything that is not an asset ID is returned as it is.
  */
 export function displaySymbol(id: string): string {
   const parsed = parseAssetId(id);
   if (!parsed) return id;
-  // EODHD symbols always end in an exchange code; Yahoo's only for listings outside the US (PRDA.JK, D05.SI).
+  // EODHD symbols always end in an exchange code; Yahoo's only for listings outside the US (D05.SI, BBCA.JK).
   return parsed.symbol.replace(parsed.source === 'eodhd' ? /\.[A-Z]+$/ : /\.[A-Z]{1,3}$/, '');
 }
 
@@ -114,10 +114,10 @@ export type TradingSession = z.infer<typeof TradingSessionSchema>;
 
 /** What the market-data source says about an asset (shared by every account that tracks it). */
 export const StockAssetSchema = z.object({
-  /** "yahoo:PRDA.JK": see assetId. */
+  /** "yahoo:D05.SI": see assetId. */
   id: z.string(),
   source: StockSourceSchema,
-  /** The symbol in the source's own format ("PRDA.JK"). */
+  /** The symbol in the source's own format ("D05.SI"). */
   symbol: z.string(),
   name: z.string().nullable(),
   exchange: z.string().nullable(),
@@ -267,7 +267,7 @@ export function candleDate(time: number): string {
 /**
  * Bars as CSV (CRLF rows), oldest first, numbers unformatted. `interval` is "1d" or the intraday bar
  * interval ("15m"). Daily bars carry their trading date, intraday bars their start time in
- * `timeZone` (the exec's clock). No cell needs quoting.
+ * `timeZone` (the dashboard's clock). No cell needs quoting.
  */
 export function stockCsv(symbol: string, interval: string, candles: Candle[], timeZone: string): StockExportResponse {
   const daily = interval === '1d';

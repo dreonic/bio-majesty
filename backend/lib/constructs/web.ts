@@ -15,7 +15,7 @@ import { REPO_ROOT } from './functions';
 export interface WebRuntimeConfig {
   stage: string;
   region: string;
-  /** IANA time zone the dashboard shows times in (the exec's). */
+  /** IANA time zone the dashboard shows times in (the deployment's `timeZone`). */
   timeZone: string;
   apiUrl: string;
   cognito: { authority: string; clientId: string; domain: string };

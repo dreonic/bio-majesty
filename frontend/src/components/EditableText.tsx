@@ -4,7 +4,7 @@ import { cn } from '../lib/cn';
 import { Button, Textarea } from './ui';
 
 /**
- * Text the exec can correct in place (summary, reason). Shows an "Edited"
+ * Text the reviewer can correct in place (summary, reason). Shows an "Edited"
  * marker and a reset link when it differs from the AI's original.
  */
 export function EditableText({

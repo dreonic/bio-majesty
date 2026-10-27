@@ -8,14 +8,14 @@ import type { App } from 'aws-cdk-lib';
  *   npx cdk synth -c stage=prod -c region=ap-southeast-3 -c timeZone=Asia/Jakarta
  *
  * The region is the single place to change where everything is deployed; the
- * time zone is the exec's clock (daily run, displayed times, "today"). `account`
+ * time zone is the dashboard's clock (daily runs, displayed times, "today"). `account`
  * pins the AWS account: a command run with another account's credentials stops
  * instead of deploying there.
  */
 export interface AppConfig {
   stage: string;
   region: string;
-  /** IANA time zone of the exec (daily-run times, displayed times). Market data follows each asset's exchange clock. */
+  /** IANA time zone of the dashboard (daily-run times, displayed times). Market data follows each asset's exchange clock. */
   timeZone: string;
   account: string | undefined;
   embeddingModel: string;

@@ -17,7 +17,7 @@ export function TelegramSection() {
   const [pending, setPending] = useState<TelegramLinkStartResponse | null>(null);
   const tg = settings.data?.telegram;
 
-  // Poll until the exec presses Start in Telegram (max ~3 minutes).
+  // Poll until the user presses Start in Telegram (max ~3 minutes).
   useEffect(() => {
     if (!pending) return;
     let attempts = 0;

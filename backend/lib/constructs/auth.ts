@@ -11,7 +11,7 @@ export interface AuthProps {
 }
 
 /**
- * Cognito user pool for the exec (and any colleagues you invite). No public
+ * Cognito user pool for the dashboard's users (whoever you invite). No public
  * sign-up: create users with `aws cognito-idp admin-create-user` (see README),
  * or let them sign in with Google when googleClientId is set. Either way, only
  * members of the ACCESS_GROUP group can use the dashboard (the API checks it).

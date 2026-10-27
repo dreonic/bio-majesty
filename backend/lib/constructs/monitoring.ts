@@ -18,7 +18,7 @@ export interface MonitoringProps {
 }
 
 /**
- * Operational alarms (for whoever maintains the stack; the exec gets run
+ * Operational alarms (for whoever maintains the stack; the accounts get run
  * failures on Telegram). Set `alarmEmail` in cdk.json to receive them.
  */
 export class MonitoringConstruct extends Construct {

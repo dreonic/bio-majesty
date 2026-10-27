@@ -81,7 +81,7 @@ export class PipelineConstruct extends Construct {
     const every15Minutes = scheduler.ScheduleExpression.cron({ minute: '0/15', timeZone: TimeZone.of(config.timeZone) });
     const readAccounts = (fn: lambda.IFunction) => props.userPool.grant(fn, 'cognito-idp:ListUsersInGroup');
 
-    // Each account picks its daily-run time in Settings (quarter hours on the exec's clock):
+    // Each account picks its daily-run time in Settings (quarter hours on the dashboard's clock):
     // every 15 minutes the dispatcher starts the runs that are due.
     this.dispatchFn = functions.create('NewsDispatch', {
       entry: 'dispatch.ts',

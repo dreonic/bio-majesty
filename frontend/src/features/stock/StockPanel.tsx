@@ -104,7 +104,7 @@ function AssetView({
   const up = (q?.change ?? 0) >= 0;
   const price = (n: number) => formatPrice(n, asset.decimals);
   const source = STOCK_SOURCE_INFO[asset.source];
-  // Name sources in the asset menu only when the list mixes them (e.g. PRDA from Yahoo and from EODHD).
+  // Name sources in the asset menu only when the list mixes them (e.g. AAPL from Yahoo and from EODHD).
   const manySources = new Set(assets.map((a) => a.source)).size > 1;
 
   return (

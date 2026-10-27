@@ -2,7 +2,7 @@ import { effectiveTags, type Article, type Feedback, type FinalTags } from '@bio
 
 /**
  * Turn a review decision into a labelled training example: what the AI
- * suggested, what the exec decided, and which fields differ.
+ * suggested, what the reviewer decided, and which fields differ.
  */
 export function buildFeedback(
   article: Article,
