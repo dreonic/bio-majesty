@@ -130,25 +130,26 @@ describe('chat over one account', () => {
   it("frames answers with the account's profile and sentiment basis", () => {
     const profile = { subject: 'Acme Labs', context: 'A laboratory chain.', sentimentAsset: prda.id };
     const text = chatInstructions({ profile, asset: prda }, [], [prda]);
-    expect(text).toContain('You support an executive who follows Acme Labs.\n\nA laboratory chain.');
+    expect(text).toContain('You support a reader who follows Acme Labs.\n\nA laboratory chain.');
     expect(text).toContain('likely effect on the PRDA (PT Prodia Widyahusada Tbk) share price');
   });
 
   it('falls back to the categories when a new account has no subject yet', () => {
     const text = chatInstructions({ profile: DEFAULT_PROFILE, asset: null }, [], []);
-    expect(text).toContain('You support an executive who follows the topics of their news categories.');
-    expect(text).toContain('likely effect on the outlook of what each article is about');
+    expect(text).toContain('You support a reader who follows the topics of their news categories.');
+    expect(text).toContain('likely effect on the topic each article is about');
   });
 });
 
 describe('sentiment rubric', () => {
-  it("judges against the profile's asset, or the subject's business outlook without one", () => {
+  it("judges against the profile's asset, or the subject itself without one", () => {
     const profile = { ...DEFAULT_SETTINGS.profile, subject: 'Acme Labs' };
-    expect(sentimentRubric(profile, { id: 'yahoo:BTC-USD', name: 'Bitcoin USD', type: 'CRYPTOCURRENCY' })).toContain(
-      'relative to the BTC-USD (Bitcoin USD) price — how an investor',
-    );
-    const outlook = sentimentRubric(profile, null);
-    expect(outlook).toContain("relative to Acme Labs's business outlook — how a well-informed executive");
-    expect(outlook).toContain('likely to help the business');
+    const price = sentimentRubric(profile, { id: 'yahoo:BTC-USD', name: 'Bitcoin USD', type: 'CRYPTOCURRENCY' });
+    expect(price).toContain('relative to the BTC-USD (Bitcoin USD) price — how an investor');
+    expect(price).toContain('positive: likely to support the price');
+    const subject = sentimentRubric(profile, null);
+    expect(subject).toContain('relative to Acme Labs — how a well-informed reader');
+    expect(subject).toContain('positive: good news for Acme Labs');
+    expect(sentimentRubric(DEFAULT_SETTINGS.profile, null)).toContain('negative: bad news for the topic each article is about');
   });
 });

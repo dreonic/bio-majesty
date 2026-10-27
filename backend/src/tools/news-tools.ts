@@ -20,7 +20,7 @@ const DateInput = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).describe(`YYYY-MM-DD (
 const TradingDateInput = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).describe("YYYY-MM-DD (the asset's trading date)");
 
 export const searchNewsInput = z.object({
-  query: z.string().min(2).describe('What to look for, in English or Indonesian'),
+  query: z.string().min(2).describe('What to look for, in any language'),
   from: DateInput.optional(),
   to: DateInput.optional(),
   categoryIds: z.array(z.string()).optional().describe('Restrict to these category ids'),
@@ -44,7 +44,7 @@ export const getArticleInput = z.object({ id: z.string().describe('Article id fr
  * runs: saved chats replay earlier calls, and those must stay valid after an asset is removed.
  */
 export const assetPricesInput = z.object({
-  asset: z.string().describe('ID of a tracked asset, e.g. yahoo:PRDA.JK'),
+  asset: z.string().describe('ID of a tracked asset, e.g. yahoo:AAPL'),
   from: TradingDateInput,
   to: TradingDateInput.optional(),
 });

@@ -18,7 +18,7 @@ export const ClassificationSchema = z.object({
   relevance: z.number().describe('0 to 1: how relevant the article is to the subject'),
   categoryIds: z.array(z.string()).describe('Ids of matching categories (may be empty)'),
   sentiment: z.enum(SENTIMENTS),
-  rationale: z.string().describe('One or two sentences explaining the sentiment call for an executive'),
+  rationale: z.string().describe('One or two sentences explaining the sentiment call for the reader'),
   confidence: z.number().describe('0 to 1: confidence in the sentiment call'),
   summary: z.string().describe('Two or three sentence English summary of the article'),
   publishedDate: z.string().nullable().describe('Publication date found in the article (YYYY-MM-DD), or null'),
@@ -56,13 +56,13 @@ ${sentimentRubric(ctx.profile, ctx.asset)}
 
 ${categoriesBlock(categories)}
 
-You tag one news article for the executive's review queue. Suggest the matching categories, judge the sentiment for ${sentimentBasis(ctx.profile, ctx.asset)}, explain the call briefly, and summarise the article in English. If only a headline and snippet are available, work from those and lower your confidence accordingly.
+You tag one news article for the reader's review queue. Suggest the matching categories, judge the sentiment for ${sentimentBasis(ctx.profile, ctx.asset)}, explain the call briefly, and summarise the article in English. If only a headline and snippet are available, work from those and lower your confidence accordingly.
 ${examples.length ? `\n${feedbackExamplesBlock(examples, categories)}\n` : ''}
 ${UNTRUSTED_NOTE}`;
 }
 
 /**
- * The exec's recent corrections, used as in-context examples when
+ * The reviewer's recent corrections, used as in-context examples when
  * Settings > Daily run > "Use past corrections" is on.
  */
 export function feedbackExamplesBlock(examples: Feedback[], categories: Category[]): string {
@@ -72,16 +72,16 @@ export function feedbackExamplesBlock(examples: Feedback[], categories: Category
     const head = `${i + 1}. "${f.title.slice(0, 200)}" (${f.sourceName ?? 'unknown source'}, ${f.publishedAt.slice(0, 10)})`;
     if (f.decision === 'rejected' || !f.exec) {
       const was = f.ai ? ` (it had been suggested as ${f.ai.sentiment}; categories: ${cats(f.ai.categoryIds)})` : '';
-      return `${head}\n   The executive skipped this article as not useful${was}.`;
+      return `${head}\n   The reviewer skipped this article as not useful${was}.`;
     }
     const parts = [head];
     if (f.ai) parts.push(`   Suggested: ${f.ai.sentiment}; categories: ${cats(f.ai.categoryIds)}`);
-    parts.push(`   Executive decided: ${f.exec.sentiment}; categories: ${cats(f.exec.categoryIds)}`);
-    if (f.changed.includes('rationale')) parts.push(`   Executive's reasoning: ${f.exec.rationale.slice(0, 400)}`);
-    if (f.changed.includes('summary')) parts.push(`   Executive's preferred summary: ${f.exec.summary.slice(0, 500)}`);
+    parts.push(`   Reviewer decided: ${f.exec.sentiment}; categories: ${cats(f.exec.categoryIds)}`);
+    if (f.changed.includes('rationale')) parts.push(`   Reviewer's reasoning: ${f.exec.rationale.slice(0, 400)}`);
+    if (f.changed.includes('summary')) parts.push(`   Reviewer's preferred summary: ${f.exec.summary.slice(0, 500)}`);
     return parts.join('\n');
   });
-  return `Recent corrections by the executive (learn their judgement on relevance, sentiment and summaries; follow these when similar cases come up):\n${lines.join('\n')}`;
+  return `Recent corrections by the reviewer (learn their judgement on relevance, sentiment and summaries; follow these when similar cases come up):\n${lines.join('\n')}`;
 }
 
 export function classificationPrompt(article: ArticleForClassification, categories: Category[]): string {

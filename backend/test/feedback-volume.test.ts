@@ -97,8 +97,8 @@ describe('training feedback', () => {
     ];
     const block = feedbackExamplesBlock(examples, categories);
     expect(block).toContain('Suggested: positive; categories: Corporate');
-    expect(block).toContain('Executive decided: neutral; categories: Corporate, Regulation');
-    expect(block).toContain("Executive's reasoning: Too small to matter.");
+    expect(block).toContain('Reviewer decided: neutral; categories: Corporate, Regulation');
+    expect(block).toContain("Reviewer's reasoning: Too small to matter.");
     expect(block).toContain('skipped this article as not useful');
   });
 });

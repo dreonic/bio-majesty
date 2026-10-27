@@ -22,7 +22,7 @@ const OutputSchema = z.object({
 function instructions(profile: Profile): string {
   return `${profileContext(profile)}
 
-You help configure a news monitor. Given a category name and optional description, propose Google News search queries that will find relevant articles with good precision. Prefer specific entity names and the phrasing local business media use (Indonesian for Indonesian subjects); include English variants only where English coverage is plausible. Avoid queries so broad that they would return mostly unrelated news (a bare company name may also match unrelated businesses, such as the look-alikes listed above).`;
+You help configure a news monitor. Given a category name and optional description, propose Google News search queries that will find relevant articles with good precision. Prefer specific entity names and the phrasing local media use (in the local language for local subjects); include English variants only where English coverage is plausible. Avoid queries so broad that they would return mostly unrelated news (a bare company name may also match unrelated businesses, such as the look-alikes listed above).`;
 }
 
 export async function suggestQueries(

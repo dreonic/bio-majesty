@@ -7,18 +7,23 @@ import type { UsageCollector } from '../usage';
 
 const OutputSchema = z.object({
   title: z.string().describe('Short headline for the digest, e.g. "3 new items: Q3 results lead"'),
-  summary: z.string().describe('Two to four sentences an executive can read in 15 seconds'),
+  summary: z.string().describe('Two to four sentences a busy reader can read in 15 seconds'),
   highlights: z
     .array(z.object({ articleId: z.string(), why: z.string().describe('One short sentence on why it matters') }))
     .describe('Up to 5 most important items, most important first'),
 });
 
+/** What the digest leads with: the sentiment asset's price and/or the subject. */
+function lead({ profile, asset }: ProfileContext): string {
+  if (!asset) return profile.subject || 'the reader';
+  const price = sentimentBasis(profile, asset);
+  return profile.subject ? `${price} or ${profile.subject}` : price;
+}
+
 function instructions(ctx: ProfileContext): string {
-  const { subject } = ctx.profile;
-  const lead = ctx.asset && subject ? `${sentimentBasis(ctx.profile, ctx.asset)} or the business of ${subject}` : sentimentBasis(ctx.profile, ctx.asset);
   return `${profileContext(ctx.profile)}
 
-Write a brief digest of newly found news items for the executive, who will review them in the dashboard. Lead with what could matter most for ${lead}. Be factual and concise; do not invent details beyond the item summaries.`;
+Write a brief digest of newly found news items for the reader, who will review them in the dashboard. Lead with what could matter most for ${lead(ctx)}. Be factual and concise; do not invent details beyond the item summaries.`;
 }
 
 export function digestCounts(articles: Article[]): Digest['counts'] {

@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 /**
  * Sentiment of a news item, judged as the account's profile says (the price of one of its
- * assets, or the subject's business outlook): positive / negative = likely to help / hurt,
+ * assets, or the subject itself): positive / negative = likely to help / hurt,
  * neutral = no meaningful effect expected, undecided = mixed or unclear.
  */
 export const SENTIMENTS = ['positive', 'negative', 'neutral', 'undecided'] as const;

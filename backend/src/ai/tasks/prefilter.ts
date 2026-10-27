@@ -35,7 +35,7 @@ const BATCH_SIZE = 50;
 
 function instructions(categories: Category[], exclude: string[], profile: Profile): string {
   const about = profile.subject
-    ? `${profile.subject}, its businesses, or a topic covered by one of the categories below (for example regulation or competitors affecting ${profile.subject})`
+    ? `${profile.subject} (or entities related to it), or a topic covered by one of the categories below (for example regulation or competitors affecting ${profile.subject})`
     : 'a topic covered by one of the categories below';
   return `${profileContext(profile)}
 
