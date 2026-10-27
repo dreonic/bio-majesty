@@ -96,21 +96,24 @@ function truncate(s: string, max: number): string {
 }
 
 const SENTIMENT_ICON = { positive: '🟢', negative: '🔴', neutral: '⚪', undecided: '🟡' } as const;
+// The dashboard's wording (SENTIMENT_META in the frontend).
+const SENTIMENT_LABEL = { positive: 'Positive', negative: 'Negative', neutral: 'Neutral', undecided: 'Undecided' } as const;
 
 export function chatTitle(chat: TelegramChat): string {
   return chat.title ?? ([chat.first_name, chat.last_name].filter(Boolean).join(' ') || chat.username || String(chat.id));
 }
 
+/** Title, summary, overall sentiment and counts; the highlights stay in the dashboard. */
 export function formatDigestMessage(digest: Digest): string {
   const c = digest.counts;
+  const o = digest.overall;
   const lines = [
     `<b>${escapeHtml(digest.title)}</b>`,
     '',
     escapeHtml(digest.summary),
     '',
-    ...digest.highlights.map((h) => `${SENTIMENT_ICON[h.sentiment]} <b>${escapeHtml(h.title)}</b>\n    ${escapeHtml(h.why)}`),
-    '',
-    `${c.total} to review · ${c.positive} positive · ${c.negative} negative · ${c.neutral} neutral · ${c.undecided} undecided`,
+    ...(o ? [`Overall: ${SENTIMENT_ICON[o.sentiment]} <b>${SENTIMENT_LABEL[o.sentiment]}</b> — ${escapeHtml(o.reason)}`] : []),
+    `📰 ${c.total} new item${c.total === 1 ? '' : 's'} to review (${c.positive} positive · ${c.negative} negative · ${c.neutral} neutral · ${c.undecided} undecided)`,
   ];
   return lines.join('\n');
 }

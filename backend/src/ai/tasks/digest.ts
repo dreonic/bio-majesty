@@ -1,5 +1,5 @@
 import type { Article, Category, Digest, TaskModelSettings } from '@bio-majesty/shared';
-import { effectiveTags } from '@bio-majesty/shared';
+import { effectiveTags, SentimentSchema } from '@bio-majesty/shared';
 import { z } from 'zod';
 import { profileContext, sentimentBasis, type ProfileContext } from '../prompts';
 import { runStructured } from '../run-task';
@@ -11,6 +11,12 @@ const OutputSchema = z.object({
   highlights: z
     .array(z.object({ articleId: z.string(), why: z.string().describe('One short sentence on why it matters') }))
     .describe('Up to 5 most important items, most important first'),
+  overall: z
+    .object({
+      sentiment: SentimentSchema.describe('The sentiment of the items taken together'),
+      reason: z.string().describe('One short sentence on what decides it'),
+    })
+    .describe('Overall sentiment of the whole run'),
 });
 
 /** What the digest leads with: the sentiment asset's price and/or the subject. */
@@ -23,7 +29,9 @@ function lead({ profile, asset }: ProfileContext): string {
 function instructions(ctx: ProfileContext): string {
   return `${profileContext(ctx.profile)}
 
-Write a brief digest of newly found news items for the reader, who will review them in the dashboard. Lead with what could matter most for ${lead(ctx)}. Be factual and concise; do not invent details beyond the item summaries.`;
+Write a brief digest of newly found news items for the reader, who will review them in the dashboard. Lead with what could matter most for ${lead(ctx)}. Be factual and concise; do not invent details beyond the item summaries.
+
+Also judge the overall sentiment of the items taken together, toward ${sentimentBasis(ctx.profile, ctx.asset)} (the same basis as each item's sentiment). Weigh the items by importance, not by count: one major story can outweigh several minor ones. "positive" or "negative": the likely net effect; "neutral": nothing here is likely to matter either way; "undecided": mixed, or the direction is unclear.`;
 }
 
 export function digestCounts(articles: Article[]): Digest['counts'] {
@@ -39,7 +47,7 @@ export async function writeDigest(
   settings: TaskModelSettings,
   ctx: ProfileContext,
   usage?: UsageCollector,
-): Promise<{ title: string; summary: string; highlights: Digest['highlights'] }> {
+): Promise<Pick<Digest, 'title' | 'summary' | 'highlights' | 'overall'>> {
   const names = new Map(categories.map((c) => [c.id, c.name]));
   const sorted = [...articles].sort((a, b) => (b.suggestion?.relevance ?? 0) - (a.suggestion?.relevance ?? 0));
   const listing = sorted
@@ -75,5 +83,10 @@ export async function writeDigest(
       const a = byId.get(h.articleId)!;
       return { articleId: a.id, title: a.title, sentiment: effectiveTags(a).sentiment, why: h.why.trim() };
     });
-  return { title: output.title.trim(), summary: output.summary.trim(), highlights };
+  return {
+    title: output.title.trim(),
+    summary: output.summary.trim(),
+    highlights,
+    overall: { sentiment: output.overall.sentiment, reason: output.overall.reason.trim() },
+  };
 }

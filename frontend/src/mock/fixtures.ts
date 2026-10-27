@@ -130,6 +130,7 @@ export const digest: Digest = {
     .filter((a) => a.status === 'PENDING')
     .slice(0, 3)
     .map((a) => ({ articleId: a.id, title: a.title, sentiment: a.suggestion!.sentiment, why: 'Sample highlight explaining why this matters.' })),
+  overall: { sentiment: 'positive', reason: 'The expansion and the payments partnership outweigh the surcharge risk.' },
   counts: { total: 6, positive: 2, negative: 2, neutral: 2, undecided: 0 },
   createdAt: iso(2 * 3600_000),
 };

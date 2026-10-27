@@ -16,6 +16,8 @@ export const DigestSchema = z.object({
   title: z.string(),
   summary: z.string(),
   highlights: z.array(DigestHighlightSchema),
+  /** The run's sentiment as a whole, judged by the digest model; null when it failed and a plain summary was used. */
+  overall: z.object({ sentiment: SentimentSchema, reason: z.string() }).nullable(),
   counts: z.object({
     total: z.number(),
     positive: z.number(),

@@ -25,10 +25,16 @@ export function DigestBanner({ onReview }: { onReview: () => void }) {
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
             <h2 className="font-semibold text-ink">{digest.title}</h2>
+            {digest.overall && (
+              <span className="inline-flex items-center gap-1.5 text-xs text-ink-2" title={digest.overall.reason}>
+                Overall <SentimentBadge sentiment={digest.overall.sentiment} />
+              </span>
+            )}
             <span className="text-xs text-ink-2">
               {formatDateTime(digest.createdAt)} · {c.positive} positive · {c.negative} negative · {c.neutral} neutral · {c.undecided} undecided
             </span>
           </div>
+          {expanded && digest.overall && <p className="mt-1 text-sm text-ink-2">Overall: {digest.overall.reason}</p>}
           <p className={expanded ? 'mt-1 text-sm text-ink' : 'mt-1 line-clamp-1 text-sm text-ink'}>{digest.summary}</p>
           {expanded && digest.highlights.length > 0 && (
             <ul className="mt-2 space-y-1.5">

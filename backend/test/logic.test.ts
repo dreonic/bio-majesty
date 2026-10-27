@@ -235,21 +235,32 @@ describe('trading sessions', () => {
 });
 
 describe('telegram formatting', () => {
-  it('escapes HTML and summarizes counts', () => {
+  const digest: Digest = {
+    id: '2026-10-14',
+    runId: 'r',
+    runType: 'daily',
+    title: '2 new <items>',
+    summary: 'Summary',
+    highlights: [{ articleId: 'a', title: 'Laba naik', sentiment: 'positive', why: 'Good' }],
+    overall: { sentiment: 'positive', reason: 'Results <beat> the forecast' },
+    counts: { total: 2, positive: 1, negative: 0, neutral: 0, undecided: 1 },
+    createdAt: '2026-10-14T00:00:00Z',
+  };
+
+  it('shows the summary, overall sentiment and counts, without the highlights', () => {
     expect(escapeHtml('<b>&')).toBe('&lt;b&gt;&amp;');
-    const digest: Digest = {
-      id: '2026-10-14',
-      runId: 'r',
-      runType: 'daily',
-      title: '2 new <items>',
-      summary: 'Summary',
-      highlights: [{ articleId: 'a', title: 'Laba naik', sentiment: 'positive', why: 'Good' }],
-      counts: { total: 2, positive: 1, negative: 0, neutral: 0, undecided: 1 },
-      createdAt: '2026-10-14T00:00:00Z',
-    };
     const text = formatDigestMessage(digest);
     expect(text).toContain('<b>2 new &lt;items&gt;</b>');
-    expect(text).toContain('2 to review · 1 positive · 0 negative · 0 neutral · 1 undecided');
+    expect(text).toContain('Summary');
+    expect(text).toContain('Overall: 🟢 <b>Positive</b> — Results &lt;beat&gt; the forecast');
+    expect(text).toContain('📰 2 new items to review (1 positive · 0 negative · 0 neutral · 1 undecided)');
+    expect(text).not.toContain('Laba naik');
+  });
+
+  it('leaves out the overall line when the digest model failed', () => {
+    const text = formatDigestMessage({ ...digest, overall: null, counts: { ...digest.counts, total: 1 } });
+    expect(text).not.toContain('Overall');
+    expect(text).toContain('📰 1 new item to review');
   });
 });
 

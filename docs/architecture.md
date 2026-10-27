@@ -34,7 +34,7 @@ Both state machines share the same steps (`backend/src/handlers/pipeline.ts`, lo
 3. **collect** — merge duplicates across queries/providers (URL, Google News id, headline + outlet) and drop anything the account already knows (its alias items in DynamoDB).
 4. **prefilter** — the LLM screens headlines in batches of 50 against the account's profile; obvious noise is stored as `FILTERED` (restorable for 30 days), the rest becomes one S3 item per candidate.
 5. **enrich** (Distributed Map, concurrency 4) — decode Google News links, fetch + extract the article (Readability, SSRF-guarded), tag it with the LLM (sentiment per the account's profile, optionally with its recent corrections as examples), store it as `PENDING`.
-6. **digest** — LLM summary of what the run found → DynamoDB → the account's Telegram chat.
+6. **digest** — LLM summary and overall sentiment of what the run found → DynamoDB → the account's Telegram chat (summary, overall sentiment, item counts and a button to the review queue).
 7. **finish** — aggregate token usage, mark the run succeeded; for backfills, activate the category. Any failure → **fail** step: mark the run failed and alert on Telegram.
 
 **Dedupe keys and deletes:** an article's alias items (URL, Google News id, headline + outlet) keep later runs from adding it again, and the article records their ids (`aliasIds`). Deleting from the recycle bin (`REJECTED`) deletes the article and its alias items, so a later run or backfill can find it again. Deleting from *Filtered by AI* is a soft delete (`deletedAt`, GSI1 keys removed): hidden from the list and counts, alias items kept, so later runs keep filtering it out.

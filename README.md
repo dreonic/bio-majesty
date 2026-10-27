@@ -6,7 +6,7 @@ Collects, tags and summarises the news on whatever each account follows: a compa
 - **News** — an AI pipeline searches Google News (each query in the country and language edition it picks) and GDELT daily, and historically when you add a category. It tags each article with categories and a sentiment (*positive / negative / neutral / undecided*) toward what the account's **profile** names (the subject itself, or the price of one of its assets) and queues it for review. The reviewer saves, edits or skips each item; saved news is searchable by keyword, category, sentiment and time window.
 - **Chat** — an assistant that answers questions over the account's saved news (with source links) and the prices of its assets.
 - **Stock** — price and volume of the account's assets (stocks, ETFs, indices, currencies, crypto, futures), picked with the ticker dropdown in the resizable, collapsible right panel, and alerts for unusual trading volume.
-- **Telegram** — a digest after every run, plus alerts for failed runs and unusual volume, to each account's own chat.
+- **Telegram** — a digest after every run (summary, overall sentiment, number of new items and a button to the review queue), plus alerts for failed runs and unusual volume, to each account's own chat.
 
 ## Repository layout
 

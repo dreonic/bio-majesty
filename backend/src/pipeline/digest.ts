@@ -32,7 +32,7 @@ export async function digestRun(state: PipelineState): Promise<PipelineState> {
 
   const usage = new UsageCollector();
   const counts = digestCounts(articles);
-  let content: Pick<Digest, 'title' | 'summary' | 'highlights'>;
+  let content: Pick<Digest, 'title' | 'summary' | 'highlights' | 'overall'>;
   try {
     content = await writeDigest(
       articles,
@@ -48,6 +48,7 @@ export async function digestRun(state: PipelineState): Promise<PipelineState> {
       title: `${counts.total} new item${counts.total === 1 ? '' : 's'} to review`,
       summary: `${counts.positive} positive, ${counts.negative} negative and ${counts.undecided} undecided.`,
       highlights: [],
+      overall: null,
     };
   }
   await recordRunUsage(state.runId, usage.toEntries());
@@ -59,6 +60,7 @@ export async function digestRun(state: PipelineState): Promise<PipelineState> {
     title: state.runType === 'backfill' && category ? `Backfill · ${category.name}: ${content.title}` : content.title,
     summary: content.summary,
     highlights: content.highlights,
+    overall: content.overall,
     counts,
     createdAt: new Date().toISOString(),
   };
