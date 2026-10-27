@@ -18,15 +18,36 @@ function gdeltStamp(d: Date): string {
   return d.toISOString().replace(/[-:T]/g, '').slice(0, 14);
 }
 
-/** Convert a Google-style query into GDELT syntax (drops unsupported operators). */
+/** Google operators GDELT has no equivalent for; dropped with their value (and a leading minus). */
+const UNSUPPORTED_OPERATOR = /^-?(when|after|before|intitle|inurl|site):/i;
+
+/**
+ * Convert a Google-style query into GDELT syntax. GDELT wants OR'd terms in
+ * parentheses and accepts parentheses only there, so a bare OR list is wrapped
+ * and groups left without an OR (e.g. after dropping site: terms) are unwrapped.
+ */
 export function toGdeltQuery(q: string, exclude: string[] = []): string | null {
-  let query = q
-    .replace(/\b(when|after|before|intitle|inurl|site):\S+/gi, '')
-    .replace(/\s+/g, ' ')
-    .trim();
-  if (!query) return null;
-  // GDELT requires OR'd terms to be wrapped in parentheses.
-  if (/\sOR\s/.test(query) && !/^\(.*\)$/.test(query)) query = `(${query})`;
+  // Parentheses, "phrases" and words; an operator keeps its value whole (intitle:"a b").
+  const tokens = (q.match(/[()]|-?"[^"]*"?|[^\s()"]+(?:"[^"]*"?)?/g) ?? []).filter((t) => !UNSUPPORTED_OPERATOR.test(t));
+  const out: string[] = []; // a closed group becomes one token, so '(' only marks open groups
+  for (const t of tokens) {
+    if (t === 'OR' && (!out.length || out.at(-1) === '(' || out.at(-1) === 'OR')) continue;
+    if (t !== ')') {
+      out.push(t);
+      continue;
+    }
+    const open = out.lastIndexOf('(');
+    if (open < 0) continue;
+    const inner = out.splice(open).slice(1);
+    if (inner.at(-1) === 'OR') inner.pop();
+    if (inner.includes('OR')) out.push(`(${inner.join(' ')})`);
+    else out.push(...inner);
+  }
+  const terms = out.filter((t) => t !== '(');
+  while (terms.at(-1) === 'OR') terms.pop();
+  if (!terms.length) return null;
+  let query = terms.join(' ');
+  if (terms.includes('OR') && !terms.some((t) => t.startsWith('('))) query = `(${query})`;
   for (const term of exclude) {
     const t = term.trim();
     if (t) query += /\s/.test(t) ? ` -"${t}"` : ` -${t}`;
@@ -64,7 +85,9 @@ export function parseGdeltResponse(
   meta: { query: string; lang: Lang; categoryId: string },
 ): RawCandidate[] {
   const trimmed = body.trim();
-  if (!trimmed.startsWith('{')) return []; // GDELT returns plain-text errors / empty bodies
+  if (!trimmed) return [];
+  // GDELT answers a query it can't parse with a plain-text message (and HTTP 200).
+  if (!trimmed.startsWith('{')) throw new Error(`GDELT rejected the query: ${trimmed.slice(0, 200)}`);
   let data: { articles?: GdeltArticle[] };
   try {
     data = JSON.parse(trimmed) as { articles?: GdeltArticle[] };

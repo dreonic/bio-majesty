@@ -118,6 +118,23 @@ describe('GDELT', () => {
     expect(toGdeltQuery('ab')).toBeNull();
   });
 
+  it('keeps parentheses only around OR lists', () => {
+    expect(toGdeltQuery('prodia OR PRDA')).toBe('(prodia OR PRDA)');
+    expect(toGdeltQuery('prodia (laba OR dividen)')).toBe('prodia (laba OR dividen)');
+    expect(toGdeltQuery('(prodia OR PRDA) (laba OR dividen) -bni')).toBe('(prodia OR PRDA) (laba OR dividen) -bni');
+    expect(toGdeltQuery('"Prodia OR x"')).toBe('"Prodia OR x"');
+    expect(toGdeltQuery('(prodia)')).toBe('prodia');
+  });
+
+  it('drops unsupported operators without leaving broken syntax behind', () => {
+    expect(toGdeltQuery('prodia -site:example.com')).toBe('prodia');
+    expect(toGdeltQuery('(site:instagram.com OR site:x.com) prodia')).toBe('prodia');
+    expect(toGdeltQuery('(prodia OR site:x.com/prodia) saham')).toBe('prodia saham');
+    expect(toGdeltQuery('intitle:"Prodia Widyahusada" OR PRDA')).toBe('PRDA');
+    expect(toGdeltQuery('prodia OR when:7d')).toBe('prodia');
+    expect(toGdeltQuery('intitle:prodia intitle:saham')).toBeNull();
+  });
+
   it('clamps the start date to the ~3 month horizon', () => {
     const url = new URL(buildGdeltUrl('prodia', new Date('2020-01-01T00:00:00Z'), new Date()));
     const start = url.searchParams.get('startdatetime')!;
@@ -126,7 +143,7 @@ describe('GDELT', () => {
     expect(ageDays).toBeLessThanOrEqual(GDELT_MAX_LOOKBACK_DAYS + 1);
   });
 
-  it('parses articles and ignores plain-text error bodies', () => {
+  it('parses articles and throws on plain-text error bodies', () => {
     const body = JSON.stringify({
       articles: [
         { url: 'https://www.bisnis.com/a?utm_source=x', title: 'Prodia ekspansi', seendate: '20261013T081500Z', domain: 'bisnis.com', language: 'Indonesian' },
@@ -136,7 +153,9 @@ describe('GDELT', () => {
     const items = parseGdeltResponse(body, { query: 'prodia', lang: 'en', categoryId: 'c' });
     expect(items).toHaveLength(1);
     expect(items[0]).toMatchObject({ url: 'https://www.bisnis.com/a', lang: 'id', publishedAt: '2026-10-13T08:15:00.000Z', sourceDomain: 'bisnis.com' });
-    expect(parseGdeltResponse('Please limit requests to one every 5 seconds', { query: 'q', lang: 'id', categoryId: 'c' })).toEqual([]);
+    const meta = { query: 'q', lang: 'id', categoryId: 'c' } as const;
+    expect(() => parseGdeltResponse("Parentheses may only be used around OR'd statements.", meta)).toThrow(/Parentheses may only/);
+    expect(parseGdeltResponse('', meta)).toEqual([]);
   });
 });
 
