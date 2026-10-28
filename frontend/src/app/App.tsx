@@ -11,6 +11,7 @@ import { Dashboard } from './Dashboard';
 import { Shell } from './Shell';
 
 const SettingsPage = lazy(() => import('../features/settings/SettingsPage').then((m) => ({ default: m.SettingsPage })));
+const AdminPage = lazy(() => import('../features/admin/AdminPage').then((m) => ({ default: m.AdminPage })));
 
 export function App({ config, demo = false }: { config: RuntimeConfig; demo?: boolean }) {
   const Auth = demo ? DemoAuth : AuthRoot;
@@ -41,6 +42,14 @@ export function App({ config, demo = false }: { config: RuntimeConfig; demo?: bo
                     element={
                       <Suspense fallback={<Spinner className="m-8" />}>
                         <SettingsPage />
+                      </Suspense>
+                    }
+                  />
+                  <Route
+                    path="admin"
+                    element={
+                      <Suspense fallback={<Spinner className="m-8" />}>
+                        <AdminPage />
                       </Suspense>
                     }
                   />

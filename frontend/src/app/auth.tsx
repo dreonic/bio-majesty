@@ -1,4 +1,4 @@
-import { ACCESS_GROUP, hasAccess } from '@bio-majesty/shared';
+import { hasAccess, isAdmin } from '@bio-majesty/shared';
 import { WebStorageStateStore } from 'oidc-client-ts';
 import { useEffect, useState, type ReactNode } from 'react';
 import { AuthProvider, useAuth } from 'react-oidc-context';
@@ -90,7 +90,11 @@ function AuthGate({ config, children }: { config: RuntimeConfig; children: React
   }
 
   return (
-    <SessionContext.Provider value={{ email: auth.user?.profile.email ?? null, signOut, demo: false }}>{children}</SessionContext.Provider>
+    <SessionContext.Provider
+      value={{ email: auth.user?.profile.email ?? null, signOut, demo: false, admin: isAdmin(auth.user?.profile['cognito:groups']) }}
+    >
+      {children}
+    </SessionContext.Provider>
   );
 }
 
@@ -114,8 +118,8 @@ function NoAccess({ email, checkAgain, signOut }: { email: string | null; checkA
         <img src="/favicon.svg" alt="" className="mx-auto size-10" />
         <h1 className="mt-4 text-lg font-semibold text-ink">No access yet</h1>
         <p className="mt-2 text-sm text-ink-2">
-          You're signed in{email ? ` as ${email}` : ''}, but this account hasn't been given access to the dashboard. Ask an admin to add it to the{' '}
-          <span className="font-medium text-ink">{ACCESS_GROUP}</span> group, then check again.
+          You're signed in{email ? ` as ${email}` : ''}, but this account hasn't been given access to the dashboard. Ask an admin to give it access,
+          then check again.
         </p>
         {stillNo && !checking && <p className="mt-3 text-xs text-ink-2">Still no access.</p>}
         <Button variant="primary" className="mt-6 w-full" onClick={recheck} loading={checking}>
@@ -133,6 +137,8 @@ function NoAccess({ email, checkAgain, signOut }: { email: string | null; checkA
 export function DemoAuth({ config, children }: { config: RuntimeConfig; children: ReactNode }) {
   configureApi({ baseUrl: config.apiUrl, getToken: () => 'demo-token', onUnauthorized: () => undefined });
   return (
-    <SessionContext.Provider value={{ email: 'demo@example.com', signOut: () => window.location.reload(), demo: true }}>{children}</SessionContext.Provider>
+    <SessionContext.Provider value={{ email: 'demo@example.com', signOut: () => window.location.reload(), demo: true, admin: true }}>
+      {children}
+    </SessionContext.Provider>
   );
 }

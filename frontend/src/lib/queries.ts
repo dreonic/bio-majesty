@@ -1,4 +1,6 @@
 import type {
+  AdminUser,
+  AdminUsersResponse,
   Article,
   ArticleDetail,
   ArticleStatus,
@@ -31,6 +33,7 @@ import type {
   TelegramLinkStartResponse,
   TelegramLinkVerifyResponse,
   TestModelResponse,
+  UpdateUserRequest,
   VolumeAnomaly,
 } from '@bio-majesty/shared';
 import {
@@ -61,6 +64,7 @@ export const qk = {
   feedbackStats: ['feedback-stats'] as const,
   conversations: ['conversations'] as const,
   conversation: (id: string) => ['conversation', id] as const,
+  adminUsers: ['admin-users'] as const,
 };
 
 export interface NewsFilters {
@@ -441,5 +445,44 @@ export function useDeleteConversation() {
   return useMutation({
     mutationFn: (id: string) => api<void>(`chat/conversations/${encodeURIComponent(id)}`, { method: 'DELETE' }),
     onSettled: () => client.invalidateQueries({ queryKey: qk.conversations }),
+  });
+}
+
+export function useAdminUsers() {
+  return useQuery({ queryKey: qk.adminUsers, queryFn: () => api<AdminUsersResponse>('admin/users') });
+}
+
+export function useInviteUser() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (email: string) => api<AdminUser>('admin/users', { method: 'POST', body: { email } }),
+    onSettled: () => client.invalidateQueries({ queryKey: qk.adminUsers }),
+  });
+}
+
+export function useResendInvite() {
+  return useMutation({
+    mutationFn: (username: string) => api<void>(`admin/users/${encodeURIComponent(username)}/invite`, { method: 'POST' }),
+  });
+}
+
+export function useUpdateUser() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ username, change }: { username: string; change: UpdateUserRequest }) =>
+      api<AdminUser>(`admin/users/${encodeURIComponent(username)}`, { method: 'PATCH', body: change }),
+    onSuccess: (user) =>
+      client.setQueryData<AdminUsersResponse>(qk.adminUsers, (old) => old && { ...old, users: old.users.map((u) => (u.username === user.username ? user : u)) }),
+    onSettled: () => client.invalidateQueries({ queryKey: qk.adminUsers }),
+  });
+}
+
+/** The data is deleted in the background; the user disappears from the list once that is done. */
+export function useDeleteUser() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (username: string) => api<{ deleting: boolean }>(`admin/users/${encodeURIComponent(username)}`, { method: 'DELETE' }),
+    onSuccess: (_res, username) =>
+      client.setQueryData<AdminUsersResponse>(qk.adminUsers, (old) => old && { ...old, users: old.users.filter((u) => u.username !== username) }),
   });
 }

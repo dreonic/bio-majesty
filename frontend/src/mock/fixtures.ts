@@ -2,6 +2,7 @@ import {
   DEFAULT_SETTINGS,
   LANGUAGE_MODELS,
   parseAssetId,
+  type AdminUser,
   type Article,
   type Candle,
   type Category,
@@ -271,3 +272,26 @@ export const runs: Run[] = [
 ];
 
 export const conversations: Conversation[] = [];
+
+/** Users on the Admin page; `demo-admin` is the signed-in demo user. */
+const user = (username: string, email: string, extra: Partial<AdminUser>, daysAgo: number): AdminUser => ({
+  username,
+  sub: `sub-${username}`,
+  email,
+  name: null,
+  provider: username.startsWith('google_') ? 'google' : 'email',
+  status: username.startsWith('google_') ? 'EXTERNAL_PROVIDER' : 'CONFIRMED',
+  enabled: true,
+  access: true,
+  admin: false,
+  createdAt: iso(daysAgo * DAY),
+  ...extra,
+});
+
+export const adminUsers: AdminUser[] = [
+  user('demo-admin', 'demo@example.com', { name: 'Demo Admin', admin: true }, 40),
+  user('google_104', 'analyst@example.com', { name: 'Avery Analyst' }, 21),
+  user('invited-1', 'new.colleague@example.com', { status: 'FORCE_CHANGE_PASSWORD' }, 2),
+  user('google_207', 'someone@gmail.example', { name: 'Sam Someone', access: false }, 1),
+  user('former-1', 'former@example.com', { enabled: false, access: false }, 90),
+];

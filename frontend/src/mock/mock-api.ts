@@ -48,6 +48,7 @@ const state = {
   conversations: [...fx.conversations],
   chats: new Map<string, unknown[]>(),
   decisions: [] as { changed: boolean }[],
+  users: [...fx.adminUsers],
 };
 
 const json = (body: unknown, status = 200) =>
@@ -401,6 +402,27 @@ async function route(method: string, url: URL, body: unknown): Promise<Response>
     return json(null, 204);
   }
   if (path === 'telegram/test') return json({ sent: true });
+
+  if (path === 'admin/users' && method === 'GET') return json({ users: state.users, me: 'demo-admin' });
+  if (path === 'admin/users' && method === 'POST') {
+    const email = String((body as { email?: string }).email ?? '').trim().toLowerCase();
+    if (state.users.some((u) => u.email === email)) return json({ error: 'conflict', message: `${email} already has a user` }, 409);
+    const user = { ...fx.adminUsers[2]!, username: `invited-${Date.now()}`, email, createdAt: new Date().toISOString() };
+    state.users = [...state.users, user];
+    return json(user, 201);
+  }
+  if (seg[0] === 'admin' && seg[1] === 'users' && seg[2]) {
+    const user = state.users.find((u) => u.username === decodeURIComponent(seg[2]!));
+    if (!user) return json({ error: 'not_found', message: 'No such user' }, 404);
+    if (seg[3] === 'invite') return json(null, 204);
+    if (method === 'DELETE') {
+      state.users = state.users.filter((u) => u !== user);
+      return json({ deleting: true }, 202);
+    }
+    const change = body as Partial<Pick<typeof user, 'access' | 'admin' | 'enabled'>>;
+    Object.assign(user, change, change.access === false ? { admin: false } : {});
+    return json(user);
+  }
 
   if (path === 'chat' && method === 'POST') return chatStream(body as Parameters<typeof chatStream>[0]);
   if (path === 'chat/conversations') return json({ items: state.conversations });

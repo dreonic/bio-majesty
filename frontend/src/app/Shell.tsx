@@ -1,4 +1,4 @@
-import { LayoutDashboard, LogOut, Settings } from 'lucide-react';
+import { LayoutDashboard, LogOut, Settings, Users } from 'lucide-react';
 import { NavLink, Outlet } from 'react-router';
 import { Badge } from '../components/ui';
 import { cn } from '../lib/cn';
@@ -6,7 +6,7 @@ import { useSession } from './session';
 import type { RuntimeConfig } from './config';
 
 export function Shell({ config }: { config: RuntimeConfig }) {
-  const { email, signOut, demo } = useSession();
+  const { email, signOut, demo, admin } = useSession();
 
   const navClass = ({ isActive }: { isActive: boolean }) =>
     cn(
@@ -33,6 +33,11 @@ export function Shell({ config }: { config: RuntimeConfig }) {
           <NavLink to="/settings" className={navClass}>
             <Settings className="size-4" aria-hidden /> Settings
           </NavLink>
+          {admin && (
+            <NavLink to="/admin" className={navClass}>
+              <Users className="size-4" aria-hidden /> Admin
+            </NavLink>
+          )}
         </nav>
         <div className="ml-auto flex items-center gap-3">
           {email && <span className="hidden text-sm text-ink-2 sm:inline">{email}</span>}
