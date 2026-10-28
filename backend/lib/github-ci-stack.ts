@@ -17,14 +17,20 @@ export interface GitHubCiStackProps extends StackProps {
   subjectPrefix: string;
   /** Only workflows running on this branch may deploy. */
   branch: string;
+  /**
+   * GitHub environments whose jobs may also deploy. A job that names an environment gets a
+   * `sub` with the environment instead of the branch, so the environment's own rules (required
+   * reviewers, deployment branches limited to `branch`) are what guard it.
+   */
+  environments?: string[];
   /** CDK bootstrap qualifier of the target account/region. */
   bootstrapQualifier?: string;
 }
 
 /**
  * Lets GitHub Actions deploy without stored AWS keys: GitHub's OIDC identity
- * provider plus a role that only workflows on `branch` of `repository` can
- * assume. The role itself can only assume the CDK bootstrap roles, so a CI
+ * provider plus a role that only workflows on `branch` of `repository` (or its
+ * jobs in one of `environments`) can assume. The role itself can only assume the CDK bootstrap roles, so a CI
  * deploy goes through CloudFormation exactly like a local `cdk deploy`.
  *
  * Deployed once per account from a developer machine (npm run deploy:github-ci -w backend),
@@ -48,7 +54,10 @@ export class GitHubCiStack extends Stack {
       assumedBy: new iam.WebIdentityPrincipal(provider.oidcProviderArn, {
         StringEquals: {
           [`${issuer}:aud`]: 'sts.amazonaws.com',
-          [`${issuer}:sub`]: `${props.subjectPrefix}:ref:refs/heads/${props.branch}`,
+          [`${issuer}:sub`]: [
+            `${props.subjectPrefix}:ref:refs/heads/${props.branch}`,
+            ...(props.environments ?? []).map((environment) => `${props.subjectPrefix}:environment:${environment}`),
+          ],
         },
       }),
     });

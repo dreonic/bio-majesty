@@ -9,6 +9,7 @@ coverage/
 
 # CDK
 backend/cdk.out/
+backend/cdk.out.prod/
 backend/cdk.context.json
 
 # Frontend local runtime config (generated per stage by CDK in deployed envs)

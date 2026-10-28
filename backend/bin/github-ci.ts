@@ -6,7 +6,8 @@ import { GitHubCiStack } from '../lib/github-ci-stack';
 // Separate CDK app for the GitHub Actions deploy role (one per account/region):
 //   npm run deploy:github-ci -w backend
 // Override with -c githubRepository=owner/name -c githubSubjectPrefix=repo:owner@id/name@id
-// -c githubBranch=main (subject prefix: see GitHubCiStackProps.subjectPrefix).
+// -c githubBranch=main -c githubEnvironments=production (comma-separated; subject prefix: see
+// GitHubCiStackProps.subjectPrefix).
 const app = new App();
 const config = loadConfig(app);
 
@@ -16,6 +17,8 @@ new GitHubCiStack(app, 'BioMajesty-GitHubCi', {
   repository: String(app.node.tryGetContext('githubRepository') ?? 'dreonic/bio-majesty'),
   subjectPrefix: String(app.node.tryGetContext('githubSubjectPrefix') ?? 'repo:dreonic@106462413/bio-majesty@1418969105'),
   branch: String(app.node.tryGetContext('githubBranch') ?? 'main'),
+  // The prod deploy job runs in this environment (required reviewer, main only).
+  environments: String(app.node.tryGetContext('githubEnvironments') ?? 'production').split(',').filter(Boolean),
 });
 
 Validations.of(app).addPlugins(new AwsSolutionsChecks(app, { verbose: true }));

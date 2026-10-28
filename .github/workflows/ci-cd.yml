@@ -1,7 +1,10 @@
-# Pull requests: typecheck, test, build and synthesize (with cdk-nag).
+# Pull requests: typecheck, test, build and synthesize both stages (with cdk-nag).
 # Pushes to main: the same checks, then deploy the dev stage to AWS with the
-# exact app that was synthesized. AWS access is through GitHub OIDC: no keys are
-# stored in GitHub. The role comes from backend/lib/github-ci-stack.ts.
+# exact app that was synthesized.
+# Run workflow (main) with target prod: the same checks, the prod diff in the run
+# summary, then the prod deploy once a reviewer approves the `production` environment.
+# AWS access is through GitHub OIDC: no keys are stored in GitHub. The role comes
+# from backend/lib/github-ci-stack.ts.
 name: CI/CD
 
 on:
@@ -13,9 +16,19 @@ on:
       - '**.md'
       - 'docs/**'
   workflow_dispatch:
+    inputs:
+      target:
+        description: Stage to deploy (prod waits for approval after its diff)
+        type: choice
+        options: [dev, prod]
+        default: dev
 
 permissions:
   contents: read
+
+env:
+  AWS_REGION: ap-southeast-1
+  AWS_DEPLOY_ROLE_ARN: arn:aws:iam::297580066575:role/bio-majesty-github-deploy
 
 # One run per branch at a time; a new push to a pull request cancels its older run,
 # while deploys on main queue instead of being cut off halfway.
@@ -41,26 +54,27 @@ jobs:
         run: npm run build
       - name: Synthesize with cdk-nag security checks
         run: npm run synth
-      - name: Keep the synthesized app for the deploy job
+      - name: Synthesize the prod stage
+        run: npm run synth:prod -w backend -- --output cdk.out.prod
+      - name: Keep the synthesized apps for the deploy jobs
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
         uses: actions/upload-artifact@v7
         with:
           name: cdk-out
-          path: backend/cdk.out
+          path: |
+            backend/cdk.out
+            backend/cdk.out.prod
           retention-days: 1
 
   deploy:
     name: Deploy (dev)
     needs: check
-    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || inputs.target == 'dev')
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
       contents: read
       id-token: write
-    env:
-      AWS_REGION: ap-southeast-1
-      AWS_DEPLOY_ROLE_ARN: arn:aws:iam::297580066575:role/bio-majesty-github-deploy
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -72,7 +86,7 @@ jobs:
       - uses: actions/download-artifact@v8
         with:
           name: cdk-out
-          path: backend/cdk.out
+          path: backend
       - uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ env.AWS_DEPLOY_ROLE_ARN }}
@@ -86,4 +100,83 @@ jobs:
           url=$(jq -r '[.[] | .DashboardUrl | select(.)] | first' cdk-outputs.json)
           curl -fsS --retry 3 -o /dev/null "$url/"
           curl -fsS --retry 3 "$url/config.json" | jq -e '.apiUrl' > /dev/null
+          echo "Deployed ${GITHUB_SHA::7} to $url" >> "$GITHUB_STEP_SUMMARY"
+
+  diff-prod:
+    name: Diff (prod)
+    needs: check
+    if: github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch' && inputs.target == 'prod'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: Install the CDK CLI
+        run: npm ci
+      - uses: actions/download-artifact@v8
+        with:
+          name: cdk-out
+          path: backend
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ env.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      # Compares templates only (no change set), so this job changes nothing in AWS.
+      - name: Diff against the deployed prod stack
+        working-directory: backend
+        run: |
+          npx cdk diff --app cdk.out.prod --all --no-change-set --no-color 2>&1 | tee diff.txt
+          {
+            echo "### Prod changes in ${GITHUB_SHA::7}"
+            echo "Approve the \`production\` deployment to apply them."
+            echo '```diff'
+            cat diff.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  deploy-prod:
+    name: Deploy (prod)
+    needs: diff-prod
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    # Waits for a required reviewer; deployment branches are limited to main in the environment settings.
+    environment:
+      name: production
+      url: ${{ steps.check.outputs.url }}
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: Install the CDK CLI
+        run: npm ci
+      - uses: actions/download-artifact@v8
+        with:
+          name: cdk-out
+          path: backend
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ env.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - name: Deploy
+        working-directory: backend
+        run: npx cdk deploy --app cdk.out.prod --all --require-approval never --outputs-file cdk-outputs.json
+      - name: Check the dashboard is up
+        id: check
+        working-directory: backend
+        run: |
+          url=$(jq -r '[.[] | .DashboardUrl | select(.)] | first' cdk-outputs.json)
+          curl -fsS --retry 3 -o /dev/null "$url/"
+          curl -fsS --retry 3 "$url/config.json" | jq -e '.apiUrl' > /dev/null
+          echo "url=$url" >> "$GITHUB_OUTPUT"
           echo "Deployed ${GITHUB_SHA::7} to $url" >> "$GITHUB_STEP_SUMMARY"

@@ -9,11 +9,12 @@ const template = Template.fromStack(
     repository: 'acme/dashboard',
     subjectPrefix: 'repo:acme@11/dashboard@22',
     branch: 'main',
+    environments: ['production'],
   }),
 );
 
 describe('GitHubCiStack', () => {
-  it('lets only workflows on the main branch of the repository assume the deploy role', () => {
+  it('lets only workflows on the main branch of the repository, or its production jobs, assume the deploy role', () => {
     template.hasResourceProperties('AWS::IAM::Role', {
       RoleName: 'bio-majesty-github-deploy',
       AssumeRolePolicyDocument: {
@@ -24,7 +25,10 @@ describe('GitHubCiStack', () => {
             Condition: {
               StringEquals: {
                 'token.actions.githubusercontent.com:aud': 'sts.amazonaws.com',
-                'token.actions.githubusercontent.com:sub': 'repo:acme@11/dashboard@22:ref:refs/heads/main',
+                'token.actions.githubusercontent.com:sub': [
+                  'repo:acme@11/dashboard@22:ref:refs/heads/main',
+                  'repo:acme@11/dashboard@22:environment:production',
+                ],
               },
             },
           },
