@@ -113,7 +113,7 @@ export function getUser(event: Pick<APIGatewayProxyEvent, 'requestContext'>): Au
 export function requireAccess(event: Pick<APIGatewayProxyEvent, 'requestContext'>): void {
   const claims = (event.requestContext?.authorizer?.claims ?? {}) as Record<string, unknown>;
   if (!hasAccess(claims['cognito:groups'])) {
-    throw forbidden(`This account has no access to the dashboard yet. An admin can add it to the ${ACCESS_GROUP} group in Cognito.`);
+    throw forbidden(`This account has no access to the dashboard yet. An admin can give it access on the Admin page (the ${ACCESS_GROUP} group).`);
   }
 }
 

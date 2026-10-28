@@ -12,3 +12,4 @@ export * from './telegram';
 export * from './feedback';
 export * from './time';
 export * from './auth';
+export * from './admin';

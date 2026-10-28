@@ -71,4 +71,8 @@ export const env = {
   get stockIngestFunction() {
     return required('STOCK_INGEST_FUNCTION');
   },
+  /** Deletes an account's data, then its user (started by a delete on the Admin page). */
+  get accountDeleteFunction() {
+    return required('ACCOUNT_DELETE_FUNCTION');
+  },
 };

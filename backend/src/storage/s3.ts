@@ -74,4 +74,6 @@ export const s3Keys = {
   relevant: (runId: string) => `runs/${runId}/relevant.json`,
   relevantItem: (runId: string, candidateId: string) => `runs/${runId}/items/${candidateId}.json`,
   chat: (sub: string, id: string) => `chats/${sub}/${id}.json`,
+  /** Every prefix holding one account's objects (deleted with the account). */
+  accountPrefixes: (sub: string) => [`users/${sub}/`, `chats/${sub}/`],
 };
