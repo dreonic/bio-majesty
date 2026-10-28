@@ -19,9 +19,9 @@ export function SettingsPage() {
           </p>
         </div>
         <ProfileSection />
-        <CategoriesSection />
         <AssetsSection />
         <ModelsSection />
+        <CategoriesSection />
         <ScheduleSection />
         <TelegramSection />
         <SourcesSection />
