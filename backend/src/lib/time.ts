@@ -1,3 +1,4 @@
+import type { BackfillPeriod } from '@bio-majesty/shared';
 import { dateInZone, midnightInZone } from '@bio-majesty/shared';
 import { env } from './env';
 
@@ -28,6 +29,20 @@ export function addMonths(date: Date, months: number): Date {
   const d = new Date(date.getTime());
   d.setUTCMonth(d.getUTCMonth() + months);
   return d;
+}
+
+/** The moment a backfill period reaches back to from `now` (calendar months and years). */
+export function periodStart(now: Date, period: BackfillPeriod): Date {
+  switch (period.unit) {
+    case 'days':
+      return addDays(now, -period.amount);
+    case 'weeks':
+      return addDays(now, -7 * period.amount);
+    case 'months':
+      return addMonths(now, -period.amount);
+    case 'years':
+      return addMonths(now, -12 * period.amount);
+  }
 }
 
 export function toEpochSeconds(date: Date | string): number {

@@ -123,6 +123,24 @@ export async function aggregateRunUsage(sub: string, runId: string): Promise<Usa
   return usage;
 }
 
+/** Mark a run that is still running as cancelled (failed); a run that has finished meanwhile stays as it is. */
+export async function cancelRun(sub: string, id: string): Promise<void> {
+  try {
+    await ddb().send(
+      new UpdateCommand({
+        TableName: table(),
+        Key: keys.run(sub, id),
+        UpdateExpression: 'SET #status = :failed, finishedAt = :f, #error = :e',
+        ConditionExpression: '#status = :running',
+        ExpressionAttributeNames: { '#status': 'status', '#error': 'error' },
+        ExpressionAttributeValues: { ':failed': 'failed', ':running': 'running', ':f': new Date().toISOString(), ':e': 'Cancelled' },
+      }),
+    );
+  } catch (err) {
+    if ((err as Error).name !== 'ConditionalCheckFailedException') throw err;
+  }
+}
+
 export async function finishRun(sub: string, id: string, status: 'succeeded' | 'failed', error: string | null = null): Promise<void> {
   await ddb().send(
     new UpdateCommand({

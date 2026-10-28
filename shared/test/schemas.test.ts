@@ -3,7 +3,9 @@ import {
   CATEGORY_COLORS,
   claimGroups,
   hasAccess,
+  BackfillPeriodSchema,
   CategoryInputSchema,
+  formatBackfillPeriod,
   DEFAULT_EDITION,
   DEFAULT_SETTINGS,
   EDITION_IDS,
@@ -97,7 +99,15 @@ describe('asset symbols and IDs', () => {
 describe('categories', () => {
   it('fills defaults for a minimal category', () => {
     const c = CategoryInputSchema.parse({ name: 'Acme Digital' });
-    expect(c).toMatchObject({ description: '', backfillMonths: 6, search: { enabled: true, queries: [], sources: { googleNews: true, gdelt: true } } });
+    expect(c).toMatchObject({ description: '', backfillPeriod: { amount: 6, unit: 'months' }, search: { enabled: true, queries: [], sources: { googleNews: true, gdelt: true } } });
+  });
+
+  it('takes a backfill period in days, weeks, months or years, up to about 3 years', () => {
+    const ok = (amount: number, unit: string) => BackfillPeriodSchema.safeParse({ amount, unit }).success;
+    expect([ok(10, 'days'), ok(1095, 'days'), ok(156, 'weeks'), ok(36, 'months'), ok(3, 'years')]).toEqual([true, true, true, true, true]);
+    expect([ok(1096, 'days'), ok(37, 'months'), ok(4, 'years'), ok(0, 'days'), ok(1.5, 'weeks'), ok(2, 'decades')]).toEqual([false, false, false, false, false, false]);
+    expect(CategoryInputSchema.parse({ name: 'Acme', backfillPeriod: null }).backfillPeriod).toBeNull();
+    expect([formatBackfillPeriod({ amount: 1, unit: 'weeks' }), formatBackfillPeriod({ amount: 6, unit: 'months' })]).toEqual(['1 week', '6 months']);
   });
 
   it('assigns the 8 validated colors in order, then a neutral overflow', () => {

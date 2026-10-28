@@ -15,9 +15,28 @@ export const CategorySourcesSchema = z.object({
 });
 export type CategorySources = z.infer<typeof CategorySourcesSchema>;
 
-export const BACKFILL_STATUSES = ['none', 'pending', 'running', 'done', 'failed'] as const;
+export const BACKFILL_STATUSES = ['none', 'pending', 'running', 'done', 'failed', 'cancelled'] as const;
 export const BackfillStatusSchema = z.enum(BACKFILL_STATUSES);
 export type BackfillStatus = z.infer<typeof BackfillStatusSchema>;
+
+export const BACKFILL_UNITS = ['days', 'weeks', 'months', 'years'] as const;
+export type BackfillUnit = (typeof BACKFILL_UNITS)[number];
+
+/** Longest backfill in each unit: about three years (cost grows with the number of search windows). */
+export const BACKFILL_MAX: Record<BackfillUnit, number> = { days: 1095, weeks: 156, months: 36, years: 3 };
+
+/** How far back a backfill searches, e.g. 6 months or 10 days. */
+export const BackfillPeriodSchema = z
+  .object({ amount: z.number().int().min(1), unit: z.enum(BACKFILL_UNITS) })
+  .refine((p) => p.amount <= BACKFILL_MAX[p.unit], { message: 'A backfill can go back at most 3 years' });
+export type BackfillPeriod = z.infer<typeof BackfillPeriodSchema>;
+
+export const DEFAULT_BACKFILL_PERIOD: BackfillPeriod = { amount: 6, unit: 'months' };
+
+/** "6 months", "1 week". */
+export function formatBackfillPeriod(p: BackfillPeriod): string {
+  return `${p.amount} ${p.amount === 1 ? p.unit.slice(0, -1) : p.unit}`;
+}
 
 export const CategorySchema = z.object({
   id: IdSchema,
@@ -34,7 +53,8 @@ export const CategorySchema = z.object({
     sources: CategorySourcesSchema,
   }),
   backfill: z.object({
-    months: z.number().int().min(0).max(36),
+    /** The latest backfill's period; null until one is started. */
+    period: BackfillPeriodSchema.nullable(),
     status: BackfillStatusSchema,
     runId: z.string().nullable(),
     startedAt: IsoDateTime.nullable(),
@@ -60,8 +80,8 @@ export const CategoryInputSchema = z.object({
       sources: CategorySourcesSchema.default({ googleNews: true, gdelt: true }),
     })
     .default({ enabled: true, queries: [], exclude: [], sources: { googleNews: true, gdelt: true } }),
-  /** Months to search back when the category is created. 0 = no backfill. */
-  backfillMonths: z.number().int().min(0).max(36).default(6),
+  /** How far back to search when the category is created; null = no backfill. */
+  backfillPeriod: BackfillPeriodSchema.nullable().default(DEFAULT_BACKFILL_PERIOD),
 });
 export type CategoryInput = z.input<typeof CategoryInputSchema>;
 
@@ -82,9 +102,8 @@ export const CategoryUpdateSchema = z.object({
 });
 export type CategoryUpdate = z.infer<typeof CategoryUpdateSchema>;
 
-export const BackfillRequestSchema = z.object({
-  months: z.number().int().min(1).max(36),
-});
+export const BackfillRequestSchema = z.object({ period: BackfillPeriodSchema });
+export type BackfillRequest = z.infer<typeof BackfillRequestSchema>;
 
 export const SuggestQueriesRequestSchema = z.object({
   name: z.string().trim().min(1).max(80),

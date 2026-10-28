@@ -1,5 +1,6 @@
 import type {
   AdminUser,
+  BackfillRequest,
   AdminUsersResponse,
   Article,
   ArticleDetail,
@@ -244,11 +245,23 @@ export function useDeleteCategory() {
   });
 }
 
+/** Stops the category's backfill; items already tagged stay in the review queue. */
+export function useCancelBackfill() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api<Category>(`categories/${encodeURIComponent(id)}/backfill/cancel`, { method: 'POST' }),
+    onSettled: () => {
+      void client.invalidateQueries({ queryKey: qk.categories });
+      void client.invalidateQueries({ queryKey: qk.runs });
+    },
+  });
+}
+
 export function useBackfill() {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, months }: { id: string; months: number }) =>
-      api<Category>(`categories/${encodeURIComponent(id)}/backfill`, { method: 'POST', body: { months } }),
+    mutationFn: ({ id, period }: { id: string } & BackfillRequest) =>
+      api<Category>(`categories/${encodeURIComponent(id)}/backfill`, { method: 'POST', body: { period } }),
     onSettled: () => {
       void client.invalidateQueries({ queryKey: qk.categories });
       void client.invalidateQueries({ queryKey: qk.runs });

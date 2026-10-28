@@ -1,6 +1,6 @@
-import type { Category, Settings } from '@bio-majesty/shared';
+import type { BackfillPeriod, Category, Settings } from '@bio-majesty/shared';
 import { randomId, timeId } from '../lib/ids';
-import { addDays, addMonths } from '../lib/time';
+import { addDays, periodStart } from '../lib/time';
 import { getCategory, listCategories, updateCategory } from '../repo/categories';
 import { createRun, lastSuccessfulDailyRun } from '../repo/runs';
 import { getSettings } from '../repo/settings';
@@ -56,11 +56,11 @@ export function buildDailyTasks(categories: Category[], settings: Settings, from
   return tasks;
 }
 
-export function buildBackfillTasks(category: Category, settings: Settings, months: number, now = new Date()): SearchTask[] {
+export function buildBackfillTasks(category: Category, settings: Settings, period: BackfillPeriod, now = new Date()): SearchTask[] {
   const sources = searchable(category, settings);
   if (!sources) return [];
-  const from = addMonths(now, -months);
-  const windows = planWindows(from, now, backfillWindowDays(months));
+  const from = periodStart(now, period);
+  const windows = planWindows(from, now, backfillWindowDays((now.getTime() - from.getTime()) / 86_400_000));
   const tasks: SearchTask[] = [];
   const entries = category.search.queries.map((q) => ({ q: q.q, edition: q.edition, categoryId: category.id, exclude: category.search.exclude }));
   if (sources.googleNews) {
@@ -97,23 +97,23 @@ export async function startDaily(sub: string, trigger: 'schedule' | 'manual'): P
   return { sub, runId, runType: 'daily', categoryId: null, tasks };
 }
 
-export async function startBackfill(sub: string, categoryId: string, months: number): Promise<PipelineState> {
+export async function startBackfill(sub: string, categoryId: string, period: BackfillPeriod): Promise<PipelineState> {
   const [category, settings] = await Promise.all([getCategory(sub, categoryId), getSettings(sub)]);
   if (!category) throw new Error(`Category ${categoryId} not found`);
   const runId = timeId();
   const now = new Date();
-  const tasks = buildBackfillTasks(category, settings, months, now);
+  const tasks = buildBackfillTasks(category, settings, period, now);
   await createRun(sub, {
     id: runId,
     type: 'backfill',
     categoryId,
-    window: { from: addMonths(now, -months).toISOString(), to: now.toISOString() },
+    window: { from: periodStart(now, period).toISOString(), to: now.toISOString() },
     startedAt: now.toISOString(),
     trigger: 'category',
   });
   await updateCategory(sub, categoryId, (c) => ({
     ...c,
-    backfill: { ...c.backfill, months, status: 'running', runId, startedAt: now.toISOString(), completedAt: null, error: null },
+    backfill: { ...c.backfill, period, status: 'running', runId, startedAt: now.toISOString(), completedAt: null, error: null },
   }));
   return { sub, runId, runType: 'backfill', categoryId, tasks };
 }

@@ -1,13 +1,15 @@
 import { InvokeCommand, LambdaClient } from '@aws-sdk/client-lambda';
-import { SFNClient, StartExecutionCommand } from '@aws-sdk/client-sfn';
+import { ListExecutionsCommand, SFNClient, StartExecutionCommand, StopExecutionCommand } from '@aws-sdk/client-sfn';
+import type { BackfillPeriod } from '@bio-majesty/shared';
 import { env } from './env';
 
 let sfn: SFNClient | undefined;
 let lambda: LambdaClient | undefined;
 
+const stepFunctions = () => (sfn ??= new SFNClient({}));
+
 export async function startExecution(stateMachineArn: string, input: unknown, name?: string): Promise<string> {
-  sfn ??= new SFNClient({});
-  const res = await sfn.send(new StartExecutionCommand({ stateMachineArn, input: JSON.stringify(input), name }));
+  const res = await stepFunctions().send(new StartExecutionCommand({ stateMachineArn, input: JSON.stringify(input), name }));
   return res.executionArn ?? '';
 }
 
@@ -16,8 +18,30 @@ export function startDailyRun(sub: string, trigger: 'manual' | 'schedule', name?
   return startExecution(env.dailyStateMachineArn, { mode: 'daily', trigger, sub }, name);
 }
 
-export function startBackfillRun(sub: string, categoryId: string, months: number) {
-  return startExecution(env.backfillStateMachineArn, { mode: 'backfill', categoryId, months, sub });
+/** Backfill executions are named after their category, so a cancel can find them (names are unique per state machine). */
+const backfillName = (sub: string, categoryId: string) => `${sub}-${categoryId}-`;
+
+export function startBackfillRun(sub: string, categoryId: string, period: BackfillPeriod) {
+  return startExecution(env.backfillStateMachineArn, { mode: 'backfill', categoryId, period, sub }, `${backfillName(sub, categoryId)}${Date.now()}`);
+}
+
+/** Stop the category's running backfills (a stopped run skips the pipeline's failure step). Returns how many. */
+export async function stopBackfillRuns(sub: string, categoryId: string): Promise<number> {
+  const prefix = backfillName(sub, categoryId);
+  let stopped = 0;
+  let token: string | undefined;
+  do {
+    const res = await stepFunctions().send(
+      new ListExecutionsCommand({ stateMachineArn: env.backfillStateMachineArn, statusFilter: 'RUNNING', maxResults: 100, nextToken: token }),
+    );
+    for (const execution of res.executions ?? []) {
+      if (!execution.name?.startsWith(prefix)) continue;
+      await stepFunctions().send(new StopExecutionCommand({ executionArn: execution.executionArn, error: 'Cancelled', cause: 'Cancelled from the dashboard' }));
+      stopped++;
+    }
+    token = res.nextToken;
+  } while (token);
+  return stopped;
 }
 
 export async function invokeAsync(functionName: string, payload: unknown): Promise<void> {

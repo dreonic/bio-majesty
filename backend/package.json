@@ -20,7 +20,8 @@
     "try:classify": "tsx scripts/try-classify.ts",
     "export:feedback": "tsx scripts/export-feedback.ts",
     "migrate:editions": "tsx scripts/migrate-editions.ts",
-    "migrate:digest-overall": "tsx scripts/migrate-digest-overall.ts"
+    "migrate:digest-overall": "tsx scripts/migrate-digest-overall.ts",
+    "migrate:backfill-period": "tsx scripts/migrate-backfill-period.ts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^4.0.79",

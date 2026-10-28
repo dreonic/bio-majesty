@@ -4,28 +4,32 @@ import {
   categoryColorFor,
   CategoryUpdateSchema,
   SuggestQueriesRequestSchema,
+  type BackfillPeriod,
   type Category,
 } from '@bio-majesty/shared';
 import { suggestQueries } from '../../ai/tasks/suggest-queries';
-import { startBackfillRun } from '../../lib/aws';
+import { startBackfillRun, stopBackfillRuns } from '../../lib/aws';
 import { badRequest, conflict, json, noContent, notFound, parseBody, pathParam } from '../../lib/http';
 import { randomId } from '../../lib/ids';
 import { errorMessage } from '../../lib/logger';
 import { createRouter } from '../../lib/router';
 import { deleteCategory, getCategory, listCategories, putCategory, updateCategory } from '../../repo/categories';
+import { cancelRun } from '../../repo/runs';
 import { getSettings } from '../../repo/settings';
 
 function canBackfill(c: Category): boolean {
   return c.search.enabled && c.search.queries.length > 0;
 }
 
-async function launchBackfill(sub: string, category: Category, months: number): Promise<Category> {
+const inProgress = (c: Category) => c.backfill.status === 'pending' || c.backfill.status === 'running';
+
+async function launchBackfill(sub: string, category: Category, period: BackfillPeriod): Promise<Category> {
   const pending = await updateCategory(sub, category.id, (c) => ({
     ...c,
-    backfill: { ...c.backfill, months, status: 'pending', error: null },
+    backfill: { ...c.backfill, period, status: 'pending', error: null },
   }));
   try {
-    await startBackfillRun(sub, category.id, months);
+    await startBackfillRun(sub, category.id, period);
   } catch (err) {
     await updateCategory(sub, category.id, (c) => ({
       ...c,
@@ -35,6 +39,12 @@ async function launchBackfill(sub: string, category: Category, months: number): 
     throw err;
   }
   return pending ?? category;
+}
+
+/** Stop the category's backfill and mark its run cancelled. Also clears a status left behind by a run that is gone. */
+async function stopBackfill(sub: string, category: Category): Promise<void> {
+  await stopBackfillRuns(sub, category.id);
+  if (category.backfill.status === 'running' && category.backfill.runId) await cancelRun(sub, category.backfill.runId);
 }
 
 export const handler = createRouter({
@@ -53,14 +63,14 @@ export const handler = createRouter({
       description: input.description,
       color: input.color ?? categoryColorFor(existing.length),
       search: input.search,
-      backfill: { months: input.backfillMonths, status: 'none', runId: null, startedAt: null, completedAt: null, error: null },
+      backfill: { period: null, status: 'none', runId: null, startedAt: null, completedAt: null, error: null },
       // Without a backfill the category joins the daily run immediately.
-      active: input.backfillMonths === 0 || !input.search.enabled || input.search.queries.length === 0,
+      active: !input.backfillPeriod || !input.search.enabled || input.search.queries.length === 0,
       createdAt: now,
       updatedAt: now,
     };
     await putCategory(user.sub, category);
-    const saved = !category.active && canBackfill(category) ? await launchBackfill(user.sub, category, input.backfillMonths) : category;
+    const saved = !category.active && input.backfillPeriod && canBackfill(category) ? await launchBackfill(user.sub, category, input.backfillPeriod) : category;
     return json(201, saved);
   },
 
@@ -80,20 +90,35 @@ export const handler = createRouter({
 
   'DELETE /categories/{id}': async (event, user) => {
     const id = pathParam(event, 'id');
-    if (!(await getCategory(user.sub, id))) throw notFound('Category not found');
+    const category = await getCategory(user.sub, id);
+    if (!category) throw notFound('Category not found');
+    // Otherwise the backfill would keep searching and tagging for a category that is gone.
+    if (inProgress(category)) await stopBackfill(user.sub, category);
     await deleteCategory(user.sub, id);
     return noContent();
   },
 
   'POST /categories/{id}/backfill': async (event, user) => {
-    const { months } = parseBody(event, BackfillRequestSchema);
+    const { period } = parseBody(event, BackfillRequestSchema);
     const category = await getCategory(user.sub, pathParam(event, 'id'));
     if (!category) throw notFound('Category not found');
     if (!canBackfill(category)) throw badRequest('Add at least one search query before running a backfill');
-    if (category.backfill.status === 'running' || category.backfill.status === 'pending') {
-      throw conflict('A backfill is already in progress for this category');
-    }
-    return json(202, await launchBackfill(user.sub, category, months));
+    if (inProgress(category)) throw conflict('A backfill is already in progress for this category');
+    return json(202, await launchBackfill(user.sub, category, period));
+  },
+
+  'POST /categories/{id}/backfill/cancel': async (event, user) => {
+    const category = await getCategory(user.sub, pathParam(event, 'id'));
+    if (!category) throw notFound('Category not found');
+    if (!inProgress(category)) throw badRequest('This category has no backfill in progress');
+    await stopBackfill(user.sub, category);
+    // Like a finished backfill, the category then joins the daily run. Items already tagged stay in the review queue.
+    const updated = await updateCategory(user.sub, category.id, (c) => ({
+      ...c,
+      active: true,
+      backfill: { ...c.backfill, status: 'cancelled', completedAt: new Date().toISOString(), error: null },
+    }));
+    return json(200, updated ?? category);
   },
 
   'POST /categories/suggest-queries': async (event, user) => {

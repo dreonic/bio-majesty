@@ -13,6 +13,7 @@ import {
   stockCsv,
   symbolProblem,
   type Article,
+  type BackfillPeriod,
   type BulkReviewRequest,
   type Category,
   type DeleteNewsRequest,
@@ -273,7 +274,7 @@ async function route(method: string, url: URL, body: unknown): Promise<Response>
 
   if (path === 'categories' && method === 'GET') return json({ items: [...state.categories].sort((a, b) => a.name.localeCompare(b.name)) });
   if (path === 'categories' && method === 'POST') {
-    const input = body as { name: string; description: string; search: Category['search']; backfillMonths: number };
+    const input = body as { name: string; description: string; search: Category['search']; backfillPeriod: BackfillPeriod | null };
     const now = new Date().toISOString();
     const category: Category = {
       id: `c-${Date.now()}`,
@@ -281,7 +282,7 @@ async function route(method: string, url: URL, body: unknown): Promise<Response>
       description: input.description,
       color: CATEGORY_COLORS[state.categories.length] ?? '#898781',
       search: input.search,
-      backfill: { months: input.backfillMonths, status: input.backfillMonths ? 'done' : 'none', runId: null, startedAt: now, completedAt: now, error: null },
+      backfill: { period: input.backfillPeriod, status: input.backfillPeriod ? 'done' : 'none', runId: null, startedAt: now, completedAt: now, error: null },
       active: true,
       createdAt: now,
       updatedAt: now,
@@ -314,7 +315,18 @@ async function route(method: string, url: URL, body: unknown): Promise<Response>
       state.categories[idx] = { ...state.categories[idx]!, ...patch, search: { ...state.categories[idx]!.search, ...(patch.search ?? {}) } };
       return json(state.categories[idx]);
     }
-    if (method === 'POST' && seg[2] === 'backfill') return json(state.categories[idx], 202);
+    if (method === 'POST' && seg[2] === 'backfill' && seg[3] === 'cancel') {
+      const cancelled: Category = { ...state.categories[idx]!, backfill: { ...state.categories[idx]!.backfill, status: 'cancelled', completedAt: new Date().toISOString() } };
+      state.categories[idx] = cancelled;
+      return json(cancelled);
+    }
+    if (method === 'POST' && seg[2] === 'backfill') {
+      const period = (body as { period: BackfillPeriod }).period;
+      // Shown as running until the page is reloaded, so Cancel backfill can be tried.
+      const running: Category = { ...state.categories[idx]!, backfill: { ...state.categories[idx]!.backfill, period, status: 'running', startedAt: new Date().toISOString() } };
+      state.categories[idx] = running;
+      return json(running, 202);
+    }
   }
 
   if (path === 'settings' && method === 'GET') return json(state.settings);

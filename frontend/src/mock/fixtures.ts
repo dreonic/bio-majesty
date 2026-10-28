@@ -48,7 +48,7 @@ export const categories: Category[] = [
     exclude: i === 0 ? ['acme.example', 'cartoon'] : [],
     sources: { googleNews: true, gdelt: true },
   },
-  backfill: { months: 6, status: 'done' as const, runId: 'r-1', startedAt: iso(20 * DAY), completedAt: iso(20 * DAY - 3600_000), error: null },
+  backfill: { period: { amount: 6, unit: 'months' as const }, status: 'done' as const, runId: 'r-1', startedAt: iso(20 * DAY), completedAt: iso(20 * DAY - 3600_000), error: null },
   active: true,
   createdAt: iso(21 * DAY),
   updatedAt: iso(21 * DAY),

@@ -1,3 +1,4 @@
+import type { BackfillPeriod } from '@bio-majesty/shared';
 import type { Context } from 'aws-lambda';
 import { collectCandidates } from '../pipeline/collect';
 import { digestRun } from '../pipeline/digest';
@@ -20,12 +21,12 @@ export async function start(event: {
   trigger?: 'schedule' | 'manual';
   sub?: string;
   categoryId?: string;
-  months?: number;
+  period?: BackfillPeriod;
 }): Promise<PipelineState> {
   if (!event.sub) throw new Error('A run needs the account (sub) it belongs to');
   if (event.mode === 'backfill') {
-    if (!event.categoryId || !event.months) throw new Error('Backfill requires categoryId and months');
-    return startBackfill(event.sub, event.categoryId, event.months);
+    if (!event.categoryId || !event.period) throw new Error('Backfill requires categoryId and period');
+    return startBackfill(event.sub, event.categoryId, event.period);
   }
   return startDaily(event.sub, event.trigger ?? 'schedule');
 }

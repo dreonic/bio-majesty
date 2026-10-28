@@ -94,6 +94,9 @@ export class ApiConstruct extends Construct {
       environment: { BACKFILL_STATE_MACHINE_ARN: pipeline.backfillMachine.stateMachineArn },
     });
     pipeline.backfillMachine.grantStartExecution(categories);
+    // Cancelling (or deleting) a category stops its running backfill.
+    pipeline.backfillMachine.grant(categories, 'states:ListExecutions');
+    pipeline.backfillMachine.grantExecution(categories, 'states:StopExecution');
 
     // Run times live in each account's settings (read by the dispatcher): no schedule to update here.
     const settings = make('Settings', 'api/settings.ts', {

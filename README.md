@@ -95,6 +95,13 @@ Run it without `--dry-run` right before pushing the version with editions, and a
 
 ### One-off: overall sentiment for existing digests
 
+Categories store their backfill as a period (`{amount, unit}`) instead of whole months. `migrate:backfill-period` gives stored categories theirs (6 months → `{6, months}`, 0 → none) and keeps the old `months`, so run it right before pushing that version and again right after its deploy; `--cleanup --yes` removes `months` once all is well:
+
+```bash
+AWS_PROFILE=biomajesty AWS_REGION=ap-southeast-1 npm run migrate:backfill-period -w backend -- \
+  --function <StockIngestFunction> --dry-run      # then without --dry-run; later --cleanup --yes
+```
+
 Digests now carry the run's overall sentiment (`overall`, null when the digest model failed). `migrate:digest-overall` gives the digests stored before it `overall: null`:
 
 ```bash
@@ -158,7 +165,7 @@ A stage can serve the dashboard on its own domain (`domainName`, e.g. `news.exam
 
    Digests, run failures and volume alerts then go to that chat or topic. Give each stage its own bot: the stages poll the bot for link codes, and two stages sharing one token would take each other's updates.
 4. **Profile** — **Settings → Profile**: who or what the news is about (blank for a new account; left empty, the AI follows the topics of the categories) and what sentiment is judged against.
-5. **Categories** — **Settings → Add category**. Start from a template (named after the profile's subject: the subject itself, regulation and policy, competitors, industry and market, people and leadership) or your own name and description. *Suggest with AI* drafts the queries, each with the Google News edition (country and language) to search. Each new category runs a backfill and joins the daily run when it finishes.
+5. **Categories** — **Settings → Add category**. Start from a template (named after the profile's subject: the subject itself, regulation and policy, competitors, industry and market, people and leadership) or your own name and description. *Suggest with AI* drafts the queries, each with the Google News edition (country and language) to search. A new category can first search the past (a backfill: a number of days, weeks, months or years, up to about 3 years; default 6 months) and joins the daily run when it finishes. **Backfill** runs another one later; *Cancel backfill* stops a running one (items already tagged stay in the Review tab), and deleting a category stops its backfill too.
 6. **Assets** — **Settings → Assets → Add** (up to 10): type a name to search, or a symbol in the source's own format, and check the match shown under the box. Yahoo Finance is always offered; EODHD joins it in the source list once `EODHD_API_KEY` is in the API keys parameter. The history loads in the background; **Resync** reloads it.
 
 ### Local development against a deployed stack

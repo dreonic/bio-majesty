@@ -22,9 +22,9 @@ export function planWindows(from: Date, to: Date, days: number): DateWindow[] {
   return windows;
 }
 
-/** Window size for a backfill: longer periods use wider windows to cap request counts. */
-export function backfillWindowDays(months: number): number {
-  if (months <= 3) return 7;
-  if (months <= 12) return 14;
+/** Window size for a backfill of `days` days: longer periods use wider windows to cap request counts. */
+export function backfillWindowDays(days: number): number {
+  if (days <= 92) return 7;
+  if (days <= 366) return 14;
   return 30;
 }

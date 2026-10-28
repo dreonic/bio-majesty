@@ -1,13 +1,13 @@
-import type { Category } from '@bio-majesty/shared';
-import { History, Pencil, Plus, Trash2 } from 'lucide-react';
+import { DEFAULT_BACKFILL_PERIOD, formatBackfillPeriod, type Category } from '@bio-majesty/shared';
+import { CircleStop, History, Pencil, Plus, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { Modal } from '../../components/overlays';
 import { useToast } from '../../components/toast';
-import { Badge, Button, Card, EmptyState, Field, SectionTitle, Select, Spinner } from '../../components/ui';
+import { Badge, Button, Card, EmptyState, Field, SectionTitle, Spinner } from '../../components/ui';
 import { formatDateTime } from '../../lib/format';
-import { useBackfill, useCategories, useDeleteCategory } from '../../lib/queries';
+import { useBackfill, useCancelBackfill, useCategories, useDeleteCategory } from '../../lib/queries';
 import { CategoryDialog } from './CategoryDialog';
-import { BACKFILL_OPTIONS } from './constants';
+import { BackfillPeriodInput, toDraft, toPeriod } from './BackfillPeriodInput';
 
 
 
@@ -16,6 +16,7 @@ export function CategoriesSection() {
   const [editing, setEditing] = useState<Category | 'new' | null>(null);
   const [backfillFor, setBackfillFor] = useState<Category | null>(null);
   const remove = useDeleteCategory();
+  const cancel = useCancelBackfill();
   const toast = useToast();
 
   return (
@@ -52,9 +53,25 @@ export function CategoriesSection() {
                 {c.backfill.error && <p className="mt-1 text-xs text-critical">Backfill error: {c.backfill.error}</p>}
               </div>
               <div className="flex items-center gap-1">
-                <Button size="sm" variant="ghost" icon={<History className="size-4" />} disabled={!c.search.enabled || c.backfill.status === 'running' || c.backfill.status === 'pending'} onClick={() => setBackfillFor(c)}>
-                  Backfill
-                </Button>
+                {c.backfill.status === 'running' || c.backfill.status === 'pending' ? (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    icon={<CircleStop className="size-4" />}
+                    loading={cancel.isPending && cancel.variables === c.id}
+                    onClick={() => {
+                      if (window.confirm(`Stop the backfill of "${c.name}"? Items already tagged stay in the Review tab.`)) {
+                        cancel.mutate(c.id, { onSuccess: () => toast.success('Backfill cancelled'), onError: toast.error });
+                      }
+                    }}
+                  >
+                    Cancel backfill
+                  </Button>
+                ) : (
+                  <Button size="sm" variant="ghost" icon={<History className="size-4" />} disabled={!c.search.enabled} onClick={() => setBackfillFor(c)}>
+                    Backfill
+                  </Button>
+                )}
                 <Button size="sm" variant="ghost" icon={<Pencil className="size-4" />} onClick={() => setEditing(c)}>
                   Edit
                 </Button>
@@ -64,7 +81,8 @@ export function CategoriesSection() {
                   icon={<Trash2 className="size-4" />}
                   aria-label={`Delete ${c.name}`}
                   onClick={() => {
-                    if (window.confirm(`Delete "${c.name}"? Saved articles keep their other tags.`)) {
+                    const running = c.backfill.status === 'running' || c.backfill.status === 'pending';
+                    if (window.confirm(`Delete "${c.name}"? Saved articles keep their other tags.${running ? ' Its running backfill is stopped.' : ''}`)) {
                       remove.mutate(c.id, { onSuccess: () => toast.success('Category deleted'), onError: toast.error });
                     }
                   }}
@@ -87,17 +105,21 @@ function StatusBadges({ category: c }: { category: Category }) {
       {c.active ? <Badge>In daily run</Badge> : <Badge className="text-muted">Not in daily run</Badge>}
       {(b.status === 'running' || b.status === 'pending') && (
         <Badge className="border-accent/30 bg-accent-wash text-ink">
-          <Spinner className="size-3" /> Backfilling {b.months} mo
+          <Spinner className="size-3" /> Backfilling {b.period ? formatBackfillPeriod(b.period) : ''}
         </Badge>
       )}
-      {b.status === 'done' && b.completedAt && <Badge title={formatDateTime(b.completedAt)}>Backfilled {b.months} mo</Badge>}
+      {b.status === 'done' && b.completedAt && (
+        <Badge title={formatDateTime(b.completedAt)}>Backfilled {b.period ? formatBackfillPeriod(b.period) : ''}</Badge>
+      )}
       {b.status === 'failed' && <Badge className="border-critical/30 bg-critical-wash text-ink">Backfill failed</Badge>}
+      {b.status === 'cancelled' && b.completedAt && <Badge title={formatDateTime(b.completedAt)}>Backfill cancelled</Badge>}
     </>
   );
 }
 
 function BackfillDialog({ category, onClose }: { category: Category; onClose: () => void }) {
-  const [months, setMonths] = useState(category.backfill.months || 6);
+  const [period, setPeriod] = useState(toDraft(category.backfill.period ?? DEFAULT_BACKFILL_PERIOD));
+  const valid = toPeriod(period);
   const backfill = useBackfill();
   const toast = useToast();
   return (
@@ -113,9 +135,11 @@ function BackfillDialog({ category, onClose }: { category: Category; onClose: ()
           <Button
             variant="primary"
             loading={backfill.isPending}
+            disabled={!valid}
             onClick={() =>
+              valid &&
               backfill.mutate(
-                { id: category.id, months },
+                { id: category.id, period: valid },
                 {
                   onSuccess: () => {
                     toast.success('Backfill started');
@@ -131,14 +155,8 @@ function BackfillDialog({ category, onClose }: { category: Category; onClose: ()
         </>
       }
     >
-      <Field label="Period" hint="Longer periods take longer and use more AI tokens. Google News returns at most ~100 results per query and window.">
-        <Select value={months} onChange={(e) => setMonths(Number(e.target.value))} className="w-full">
-          {BACKFILL_OPTIONS.map((m) => (
-            <option key={m} value={m}>
-              Last {m} month{m === 1 ? '' : 's'}
-            </option>
-          ))}
-        </Select>
+      <Field label="How far back" hint="Longer periods take longer and use more AI tokens. Google News returns at most ~100 results per query and window.">
+        <BackfillPeriodInput value={period} onChange={setPeriod} />
       </Field>
     </Modal>
   );

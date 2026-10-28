@@ -171,8 +171,9 @@ describe('backfill windows', () => {
   });
 
   it('widens windows for long periods', () => {
-    expect(backfillWindowDays(1)).toBe(7);
-    expect(backfillWindowDays(6)).toBe(14);
-    expect(backfillWindowDays(24)).toBe(30);
+    expect(backfillWindowDays(10)).toBe(7);
+    expect(backfillWindowDays(92)).toBe(7);
+    expect(backfillWindowDays(183)).toBe(14);
+    expect(backfillWindowDays(730)).toBe(30);
   });
 });

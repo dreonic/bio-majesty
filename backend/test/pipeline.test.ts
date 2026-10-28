@@ -19,7 +19,7 @@ function category(overrides: Partial<Category> = {}): Category {
       exclude: ['acme.example'],
       sources: { googleNews: true, gdelt: true },
     },
-    backfill: { months: 0, status: 'none', runId: null, startedAt: null, completedAt: null, error: null },
+    backfill: { period: null, status: 'none', runId: null, startedAt: null, completedAt: null, error: null },
     active: true,
     createdAt: '2026-01-01T00:00:00Z',
     updatedAt: '2026-01-01T00:00:00Z',
@@ -75,7 +75,7 @@ describe('task planning', () => {
     expect(tasks.filter((t) => t.provider === 'gnews').map((t) => t.queries[0]!.edition)).toEqual(['US:en', 'GB:en', 'SG:en', 'US:en']);
     // Once per category: GDELT results are credited to the category that searched them.
     expect(tasks.find((t) => t.provider === 'gdelt')!.queries.map((q) => `${q.categoryId}:${q.q}`)).toEqual(['cat1:acme', 'cat2:acme']);
-    const backfill = buildBackfillTasks(editions, DEFAULT_SETTINGS, 1, new Date('2026-10-14T00:00:00Z'));
+    const backfill = buildBackfillTasks(editions, DEFAULT_SETTINGS, { amount: 1, unit: 'months' }, new Date('2026-10-14T00:00:00Z'));
     expect(backfill.filter((t) => t.provider === 'gdelt').every((t) => t.queries.length === 1)).toBe(true);
   });
 
@@ -88,11 +88,23 @@ describe('task planning', () => {
 
   it('plans backfill windows for every query', () => {
     const now = new Date('2026-10-14T00:00:00Z');
-    const tasks = buildBackfillTasks(category(), DEFAULT_SETTINGS, 3, now);
+    const tasks = buildBackfillTasks(category(), DEFAULT_SETTINGS, { amount: 3, unit: 'months' }, now);
     const gnews = tasks.filter((t) => t.provider === 'gnews');
     expect(gnews.length % 2).toBe(0); // 2 queries per window
     expect(gnews.every((t) => t.mode === 'range')).toBe(true);
     expect(tasks.some((t) => t.provider === 'gdelt')).toBe(true);
+  });
+
+  it('reaches back by the period in days, weeks, months or years', () => {
+    const now = new Date('2026-10-14T00:00:00Z');
+    const oldest = (amount: number, unit: 'days' | 'weeks' | 'months' | 'years') => {
+      const gnews = buildBackfillTasks(category(), DEFAULT_SETTINGS, { amount, unit }, now).filter((t) => t.provider === 'gnews');
+      return { from: gnews.map((t) => t.from).sort()[0], windows: gnews.length / 2 };
+    };
+    expect(oldest(10, 'days')).toEqual({ from: '2026-10-04T00:00:00.000Z', windows: 2 }); // 7-day windows
+    expect(oldest(2, 'weeks')).toEqual({ from: '2026-09-30T00:00:00.000Z', windows: 2 });
+    expect(oldest(1, 'years').from).toBe('2025-10-14T00:00:00.000Z');
+    expect(oldest(1, 'years').windows).toBe(27); // 14-day windows up to a year
   });
 });
 

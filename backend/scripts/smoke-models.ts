@@ -23,7 +23,7 @@ const categories: Category[] = [
     description: 'Corporate news about PT Acme Laboratorium Tbk (ACME), a fictional laboratory chain.',
     color: '#2a78d6',
     search: { enabled: false, queries: [], exclude: [], sources: { googleNews: false, gdelt: false } },
-    backfill: { months: 0, status: 'none', runId: null, startedAt: null, completedAt: null, error: null },
+    backfill: { period: null, status: 'none', runId: null, startedAt: null, completedAt: null, error: null },
     active: true,
     createdAt: '',
     updatedAt: '',

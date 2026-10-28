@@ -1,11 +1,11 @@
-import { DEFAULT_EDITION, EDITION_IDS, EDITIONS, type Category, type Edition, type SearchQuery } from '@bio-majesty/shared';
+import { DEFAULT_BACKFILL_PERIOD, DEFAULT_EDITION, EDITION_IDS, EDITIONS, type Category, type Edition, type SearchQuery } from '@bio-majesty/shared';
 import { Plus, Sparkles, Trash2 } from 'lucide-react';
 import { Fragment, useState, type ReactNode } from 'react';
 import { Modal } from '../../components/overlays';
 import { useToast } from '../../components/toast';
 import { Button, Field, Input, Select, Switch, Textarea } from '../../components/ui';
 import { useCreateCategory, useSettings, useSuggestQueries, useUpdateCategory } from '../../lib/queries';
-import { BACKFILL_OPTIONS } from './constants';
+import { BackfillPeriodInput, toDraft, toPeriod } from './BackfillPeriodInput';
 
 /** Generic starting points, named after the profile's subject when it has one (editable before saving). */
 function categoryTemplates(subject: string): { name: string; description: string }[] {
@@ -42,7 +42,9 @@ export function CategoryDialog({ category, existingCount, onClose }: { category:
   const [exclude, setExclude] = useState((category?.search.exclude ?? []).join(', '));
   const [googleNews, setGoogleNews] = useState(category?.search.sources.googleNews ?? true);
   const [gdelt, setGdelt] = useState(category?.search.sources.gdelt ?? true);
-  const [months, setMonths] = useState(6);
+  const [backfillOn, setBackfillOn] = useState(true);
+  const [period, setPeriod] = useState(toDraft(DEFAULT_BACKFILL_PERIOD));
+  const backfillPeriod = enabled && backfillOn ? toPeriod(period) : null;
   const create = useCreateCategory();
   const update = useUpdateCategory();
   const suggest = useSuggestQueries();
@@ -70,8 +72,8 @@ export function CategoryDialog({ category, existingCount, onClose }: { category:
       exclude: exclude.split(',').map((e) => e.trim()).filter(Boolean),
       sources: { googleNews, gdelt },
     };
-    const opts = { onSuccess: () => { toast.success(isNew ? (enabled && months ? 'Category added — backfill started' : 'Category added') : 'Category updated'); onClose(); }, onError: toast.error };
-    if (isNew) create.mutate({ name: name.trim(), description: description.trim(), search, backfillMonths: enabled ? months : 0 }, opts);
+    const opts = { onSuccess: () => { toast.success(isNew ? (backfillPeriod ? 'Category added — backfill started' : 'Category added') : 'Category updated'); onClose(); }, onError: toast.error };
+    if (isNew) create.mutate({ name: name.trim(), description: description.trim(), search, backfillPeriod }, opts);
     else update.mutate({ id: category.id, name: name.trim(), description: description.trim(), search }, opts);
   };
 
@@ -85,7 +87,7 @@ export function CategoryDialog({ category, existingCount, onClose }: { category:
       footer={
         <>
           <Button onClick={onClose}>Cancel</Button>
-          <Button variant="primary" onClick={save} loading={create.isPending || update.isPending} disabled={!name.trim() || (enabled && !queries.some((q) => q.q.trim().length >= 2))}>
+          <Button variant="primary" onClick={save} loading={create.isPending || update.isPending} disabled={!name.trim() || (enabled && !queries.some((q) => q.q.trim().length >= 2)) || (isNew && enabled && backfillOn && !backfillPeriod)}>
             {isNew ? 'Add category' : 'Save'}
           </Button>
         </>
@@ -179,16 +181,16 @@ export function CategoryDialog({ category, existingCount, onClose }: { category:
               <Switch checked={gdelt} onChange={setGdelt} label="GDELT" />
             </div>
             {isNew && (
-              <Field label="Initial backfill" hint="Searches the past now; the category joins the daily run when it finishes.">
-                <Select value={months} onChange={(e) => setMonths(Number(e.target.value))} className="w-full">
-                  <option value={0}>No backfill — start with the daily run</option>
-                  {BACKFILL_OPTIONS.map((m) => (
-                    <option key={m} value={m}>
-                      Last {m} month{m === 1 ? '' : 's'}
-                    </option>
-                  ))}
-                </Select>
-              </Field>
+              <div className="space-y-2">
+                <Switch checked={backfillOn} onChange={setBackfillOn} label="Search the past first (backfill)" />
+                {backfillOn ? (
+                  <Field label="How far back" hint="The category joins the daily run when the backfill finishes. Longer periods take longer and use more AI tokens.">
+                    <BackfillPeriodInput value={period} onChange={setPeriod} />
+                  </Field>
+                ) : (
+                  <p className="text-xs text-ink-2">The category starts with the next daily run.</p>
+                )}
+              </div>
             )}
           </>
         )}
