@@ -2,7 +2,7 @@ import { TelegramLinkVerifyRequestSchema, type TelegramLinkStartResponse } from 
 import { badRequest, json, noContent, parseBody } from '../../lib/http';
 import { randomId } from '../../lib/ids';
 import { createRouter } from '../../lib/router';
-import { chatTitle, getBotUsername, getUpdates, isTelegramConfigured, sendMessage, type TelegramUpdate } from '../../notify/telegram';
+import { getBotUsername, getUpdates, isTelegramConfigured, messageDestination, sendMessage, type TelegramUpdate } from '../../notify/telegram';
 import {
   getLinkCode,
   getTelegramLink,
@@ -11,6 +11,7 @@ import {
   putLinkCode,
   putTelegramLink,
   setUpdateOffset,
+  UNLINKED,
 } from '../../repo/telegram';
 
 const LINK_TTL_MS = 10 * 60 * 1000;
@@ -21,11 +22,15 @@ async function requireConfigured(): Promise<void> {
   }
 }
 
-/** "/start <code>" messages in a batch of updates. */
-export function startCodes(updates: TelegramUpdate[]): { code: string; update: TelegramUpdate }[] {
+/**
+ * "/start <code>" messages in a batch of updates: from a private chat, or "/start@<bot> <code>" from a
+ * group or one of its topics (commands for other bots are skipped).
+ */
+export function startCodes(updates: TelegramUpdate[], botUsername: string): { code: string; update: TelegramUpdate }[] {
   return updates.flatMap((update) => {
-    const m = /^\/start\s+(\S+)$/.exec(update.message?.text?.trim() ?? '');
-    return m && update.message ? [{ code: m[1]!, update }] : [];
+    const m = /^\/start(?:@(\w+))?\s+(\S+)$/.exec(update.message?.text?.trim() ?? '');
+    if (!m || !update.message || (m[1] && m[1].toLowerCase() !== botUsername.toLowerCase())) return [];
+    return [{ code: m[2]!, update }];
   });
 }
 
@@ -34,14 +39,14 @@ export function startCodes(updates: TelegramUpdate[]): { code: string; update: T
  * update offset, so a message read here is never returned to another account's check.
  */
 async function linkStarted(updates: TelegramUpdate[]): Promise<void> {
-  for (const { code, update } of startCodes(updates)) {
+  for (const { code, update } of startCodes(updates, await getBotUsername())) {
     const link = await getLinkCode(code);
     if (!link || link.linkedChatTitle) continue;
-    const chat = update.message!.chat;
-    const title = chatTitle(chat);
-    await putTelegramLink(link.sub, { chatId: chat.id, chatTitle: title, linkedAt: new Date().toISOString() });
+    const message = update.message!;
+    const { topicId, title } = messageDestination(message);
+    await putTelegramLink(link.sub, { chatId: message.chat.id, topicId, chatTitle: title, linkedAt: new Date().toISOString() });
     await markLinkCodeUsed(code, title);
-    await sendMessage(chat.id, '✅ Connected. You will receive news digests and alerts here.');
+    await sendMessage(message.chat.id, '✅ Connected. You will receive news digests and alerts here.', { topicId });
   }
 }
 
@@ -50,9 +55,11 @@ export const handler = createRouter({
     await requireConfigured();
     const code = randomId(24);
     await putLinkCode(code, user.sub);
+    const bot = await getBotUsername();
     const body: TelegramLinkStartResponse = {
       code,
-      deepLink: `https://t.me/${await getBotUsername()}?start=${code}`,
+      deepLink: `https://t.me/${bot}?start=${code}`,
+      groupCommand: `/start@${bot} ${code}`,
       expiresAt: new Date(Date.now() + LINK_TTL_MS).toISOString(),
     };
     return json(200, body);
@@ -76,7 +83,7 @@ export const handler = createRouter({
   },
 
   'DELETE /telegram/link': async (_event, user) => {
-    await putTelegramLink(user.sub, { chatId: null, chatTitle: null, linkedAt: null });
+    await putTelegramLink(user.sub, { ...UNLINKED });
     return noContent();
   },
 
@@ -84,7 +91,7 @@ export const handler = createRouter({
     await requireConfigured();
     const link = await getTelegramLink(user.sub);
     if (!link.chatId) throw badRequest('Telegram is not linked yet');
-    await sendMessage(link.chatId, '🔔 Test message from your news dashboard.');
+    await sendMessage(link.chatId, '🔔 Test message from your news dashboard.', { topicId: link.topicId });
     return json(200, { sent: true });
   },
 });

@@ -1,5 +1,5 @@
 import type { TelegramLinkStartResponse } from '@bio-majesty/shared';
-import { CheckCircle2, ExternalLink, Send } from 'lucide-react';
+import { CheckCircle2, Copy, ExternalLink, Send } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useToast } from '../../components/toast';
 import { Button, Card, SectionTitle, Spinner, Switch } from '../../components/ui';
@@ -17,13 +17,11 @@ export function TelegramSection() {
   const [pending, setPending] = useState<TelegramLinkStartResponse | null>(null);
   const tg = settings.data?.telegram;
 
-  // Poll until the user presses Start in Telegram (max ~3 minutes).
+  // Poll until the /start message reaches the bot, for as long as the code is valid (10 minutes).
   useEffect(() => {
     if (!pending) return;
-    let attempts = 0;
     const timer = setInterval(() => {
-      attempts++;
-      if (attempts > 60) {
+      if (Date.now() > Date.parse(pending.expiresAt)) {
         clearInterval(timer);
         setPending(null);
         toast.error('Linking timed out. Try again.');
@@ -44,7 +42,10 @@ export function TelegramSection() {
 
   return (
     <Card>
-      <SectionTitle title="Telegram notifications" description="Get the digest after each run (with a link to the review queue) and alerts when a run fails." />
+      <SectionTitle
+        title="Telegram notifications"
+        description="Get the digest after each run (with a link to the review queue) and alerts when a run fails, in a private chat, a group, or one topic of a group."
+      />
       <div className="space-y-4 px-5 py-4">
         {!settings.data ? (
           <Spinner />
@@ -67,17 +68,38 @@ export function TelegramSection() {
             </Button>
           </div>
         ) : pending ? (
-          <div className="space-y-2 rounded-md bg-accent-wash px-4 py-3 text-sm text-ink">
-            <p>
-              1. Open{' '}
-              <a href={pending.deepLink} target="_blank" rel="noreferrer noopener" className="inline-flex items-center gap-1 font-medium text-accent-strong underline">
-                the bot in Telegram <ExternalLink className="size-3.5" aria-hidden />
-              </a>{' '}
-              on the phone or computer where you want notifications.
-            </p>
-            <p>2. Press <span className="font-medium">Start</span>. This page connects automatically.</p>
+          <div className="space-y-3 rounded-md bg-accent-wash px-4 py-3 text-sm text-ink">
+            <div>
+              <p className="font-medium">Private chat</p>
+              <p className="mt-0.5">
+                Open{' '}
+                <a href={pending.deepLink} target="_blank" rel="noreferrer noopener" className="inline-flex items-center gap-1 font-medium text-accent-strong underline">
+                  the bot in Telegram <ExternalLink className="size-3.5" aria-hidden />
+                </a>{' '}
+                and press <span className="font-medium">Start</span>.
+              </p>
+            </div>
+            <div>
+              <p className="font-medium">Group or topic</p>
+              <p className="mt-0.5">Add the bot to the group, then send this message in the group, or in the topic that should get your notifications:</p>
+              <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                <code className="rounded bg-raised px-2 py-1 text-xs break-all">{pending.groupCommand}</code>
+                <Button
+                  size="sm"
+                  icon={<Copy className="size-4" />}
+                  onClick={() =>
+                    void navigator.clipboard.writeText(pending.groupCommand).then(
+                      () => toast.success('Copied'),
+                      () => toast.error('Copy failed: select the text instead'),
+                    )
+                  }
+                >
+                  Copy
+                </Button>
+              </div>
+            </div>
             <p className="flex items-center gap-2 text-ink-2">
-              <Spinner className="size-4" /> Waiting for Telegram…
+              <Spinner className="size-4" /> Waiting for Telegram… This page connects automatically (the code works for 10 minutes).
             </p>
           </div>
         ) : (

@@ -3,8 +3,9 @@ import { getSecret } from '../lib/secrets';
 
 /**
  * Minimal Telegram Bot API client. Linking uses getUpdates (no public webhook):
- * a user opens t.me/<bot>?start=<code>, presses Start, and the dashboard
- * polls /telegram/link/verify until the /start message is seen.
+ * a user opens t.me/<bot>?start=<code> and presses Start, or sends
+ * /start@<bot> <code> in a group or one of its topics, and the dashboard polls
+ * /telegram/link/verify until that message is seen.
  */
 const API = 'https://api.telegram.org';
 
@@ -29,9 +30,19 @@ export interface TelegramChat {
   last_name?: string;
 }
 
+export interface TelegramMessage {
+  chat: TelegramChat;
+  text?: string;
+  /** Topic of a forum supergroup the message was sent in. */
+  message_thread_id?: number;
+  is_topic_message?: boolean;
+  /** In a topic, messages reply to the topic's creation message, which carries its name. */
+  reply_to_message?: { forum_topic_created?: { name: string } };
+}
+
 export interface TelegramUpdate {
   update_id: number;
-  message?: { chat: TelegramChat; text?: string };
+  message?: TelegramMessage;
 }
 
 async function token(): Promise<string> {
@@ -70,6 +81,8 @@ export function getUpdates(offset: number): Promise<TelegramUpdate[]> {
 export interface SendOptions {
   buttonText?: string;
   buttonUrl?: string;
+  /** Post in this topic of a forum supergroup. */
+  topicId?: number | null;
 }
 
 export async function sendMessage(chatId: number, html: string, opts: SendOptions = {}): Promise<void> {
@@ -80,6 +93,7 @@ export async function sendMessage(chatId: number, html: string, opts: SendOption
       : {};
   await call('sendMessage', {
     chat_id: chatId,
+    ...(opts.topicId ? { message_thread_id: opts.topicId } : {}),
     text: truncate(html, 4000),
     parse_mode: 'HTML',
     link_preview_options: { is_disabled: true },
@@ -101,6 +115,13 @@ const SENTIMENT_LABEL = { positive: 'Positive', negative: 'Negative', neutral: '
 
 export function chatTitle(chat: TelegramChat): string {
   return chat.title ?? ([chat.first_name, chat.last_name].filter(Boolean).join(' ') || chat.username || String(chat.id));
+}
+
+/** Where a message was sent: the chat, plus its topic in a forum supergroup ("Group › Topic"). */
+export function messageDestination(message: TelegramMessage): { topicId: number | null; title: string } {
+  const topicId = message.is_topic_message && message.message_thread_id ? message.message_thread_id : null;
+  const topicName = topicId ? (message.reply_to_message?.forum_topic_created?.name ?? 'topic') : null;
+  return { topicId, title: topicName ? `${chatTitle(message.chat)} › ${topicName}` : chatTitle(message.chat) };
 }
 
 /** Title, summary, overall sentiment and counts; the highlights stay in the dashboard. */

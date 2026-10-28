@@ -391,7 +391,12 @@ async function route(method: string, url: URL, body: unknown): Promise<Response>
   }
 
   if (path === 'telegram/link' && method === 'POST') {
-    return json({ code: 'demo', deepLink: 'https://t.me/', expiresAt: new Date(Date.now() + 600_000).toISOString() });
+    return json({
+      code: 'demo',
+      deepLink: 'https://t.me/',
+      groupCommand: '/start@demo_bot demo',
+      expiresAt: new Date(Date.now() + 600_000).toISOString(),
+    });
   }
   if (path === 'telegram/link/verify') {
     state.settings.telegram = { configured: true, linked: true, chatTitle: 'Demo chat', linkedAt: new Date().toISOString() };

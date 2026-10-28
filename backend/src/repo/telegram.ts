@@ -2,20 +2,24 @@ import { GetCommand, PutCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import { ddb, table, ttlInDays } from './client';
 import { keys } from './keys';
 
-/** The Telegram chat an account's digests and alerts go to. */
+/** The Telegram chat (and, in a forum supergroup, the topic) an account's digests and alerts go to. */
 export interface TelegramLink {
   chatId: number | null;
+  /** Topic (message_thread_id) inside a forum supergroup; null for a private chat, a plain group or the General topic. */
+  topicId: number | null;
+  /** "Chat" or "Group › Topic". */
   chatTitle: string | null;
   linkedAt: string | null;
 }
 
-const UNLINKED: TelegramLink = { chatId: null, chatTitle: null, linkedAt: null };
+export const UNLINKED: TelegramLink = { chatId: null, topicId: null, chatTitle: null, linkedAt: null };
 
 export async function getTelegramLink(sub: string): Promise<TelegramLink> {
   const res = await ddb().send(new GetCommand({ TableName: table(), Key: keys.telegram(sub) }));
   if (!res.Item) return { ...UNLINKED };
   return {
     chatId: (res.Item.chatId as number | null) ?? null,
+    topicId: (res.Item.topicId as number | null) ?? null,
     chatTitle: (res.Item.chatTitle as string | null) ?? null,
     linkedAt: (res.Item.linkedAt as string | null) ?? null,
   };

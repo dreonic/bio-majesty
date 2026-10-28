@@ -8,15 +8,16 @@ process.env.TABLE_NAME = 'test-table';
 process.env.DATA_BUCKET = 'test-bucket';
 
 // --- Telegram: one bot, many accounts -------------------------------------------------
-const links = new Map<string, { chatId: number | null; chatTitle: string | null }>();
+const links = new Map<string, { chatId: number | null; topicId: number | null; chatTitle: string | null }>();
 const codes = new Map<string, { sub: string; linkedChatTitle: string | null }>();
 let offset = 0;
-let pendingUpdates: { update_id: number; message?: { chat: { id: number; type: string; title?: string }; text?: string } }[] = [];
-const sent: number[] = [];
+let pendingUpdates: import('../src/notify/telegram').TelegramUpdate[] = [];
+const sent: { chatId: number; topicId: number | null }[] = [];
 
 vi.mock('../src/repo/telegram', () => ({
-  getTelegramLink: async (sub: string) => ({ chatId: null, chatTitle: null, linkedAt: null, ...links.get(sub) }),
-  putTelegramLink: async (sub: string, link: { chatId: number | null; chatTitle: string | null }) => void links.set(sub, link),
+  UNLINKED: { chatId: null, topicId: null, chatTitle: null, linkedAt: null },
+  getTelegramLink: async (sub: string) => ({ chatId: null, topicId: null, chatTitle: null, linkedAt: null, ...links.get(sub) }),
+  putTelegramLink: async (sub: string, link: { chatId: number | null; topicId: number | null; chatTitle: string | null }) => void links.set(sub, link),
   getUpdateOffset: async () => offset,
   setUpdateOffset: async (o: number) => void (offset = o),
   putLinkCode: async (code: string, sub: string) => void codes.set(code, { sub, linkedChatTitle: null }),
@@ -31,8 +32,9 @@ vi.mock('../src/storage/s3', () => ({
 vi.mock('../src/notify/telegram', async (original) => ({
   ...(await original<typeof import('../src/notify/telegram')>()),
   isTelegramConfigured: async () => true,
+  getBotUsername: async () => 'news_bot',
   getUpdates: async (from: number) => pendingUpdates.filter((u) => u.update_id >= from),
-  sendMessage: async (chatId: number) => void sent.push(chatId),
+  sendMessage: async (chatId: number, _html: string, opts: { topicId?: number | null } = {}) => void sent.push({ chatId, topicId: opts.topicId ?? null }),
 }));
 
 const telegram = (await import('../src/handlers/api/telegram')).handler;
@@ -71,7 +73,33 @@ describe('Telegram linking with several accounts', () => {
     expect(offset).toBe(9); // both messages are consumed by this one check...
     expect(links.get('u2')).toMatchObject({ chatId: 202 }); // ...and the colleague is linked too
     expect(await verify('u2', 'code-u2-xxxxxxxx')).toEqual({ linked: true, chatTitle: 'Colleague' });
-    expect(sent.sort()).toEqual([101, 202]);
+    expect(sent.map((s) => s.chatId).sort()).toEqual([101, 202]);
+  });
+
+  it('links a topic of a forum supergroup, and replies there', async () => {
+    pendingUpdates = [
+      // Meant for another bot in the same group: ignored.
+      { update_id: 7, message: { chat: { id: -100, type: 'supergroup', title: 'Execs' }, text: '/start@other_bot code-u1-xxxxxxxx' } },
+      {
+        update_id: 8,
+        message: {
+          chat: { id: -100, type: 'supergroup', title: 'Execs' },
+          text: '/start@News_Bot code-u1-xxxxxxxx',
+          message_thread_id: 42,
+          is_topic_message: true,
+          reply_to_message: { forum_topic_created: { name: 'Acme' } },
+        },
+      },
+      // A plain group (or the General topic): no topic.
+      { update_id: 9, message: { chat: { id: -200, type: 'group', title: 'Team' }, text: '/start@news_bot code-u2-xxxxxxxx' } },
+    ];
+    expect(await verify('u1', 'code-u1-xxxxxxxx')).toEqual({ linked: true, chatTitle: 'Execs › Acme' });
+    expect(links.get('u1')).toMatchObject({ chatId: -100, topicId: 42 });
+    expect(links.get('u2')).toMatchObject({ chatId: -200, topicId: null, chatTitle: 'Team' });
+    expect(sent).toEqual([
+      { chatId: -100, topicId: 42 },
+      { chatId: -200, topicId: null },
+    ]);
   });
 
   it("refuses another account's link code", async () => {

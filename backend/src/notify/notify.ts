@@ -13,7 +13,7 @@ export async function notifyAccount(sub: string, html: string, opts: SendOptions
     const link = await getTelegramLink(sub);
     if (!link.chatId) return false;
     const buttonUrl = opts.buttonUrl ?? `${env.dashboardUrl.replace(/\/$/, '')}${opts.path ?? '/'}`;
-    await sendMessage(link.chatId, html, { buttonText: opts.buttonText, buttonUrl });
+    await sendMessage(link.chatId, html, { buttonText: opts.buttonText, buttonUrl, topicId: link.topicId });
     return true;
   } catch (err) {
     logger.error('Telegram notification failed', { error: errorMessage(err) });
