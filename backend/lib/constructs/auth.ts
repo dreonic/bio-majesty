@@ -1,5 +1,6 @@
-import { ACCESS_GROUP } from '@bio-majesty/shared';
+import { ACCESS_GROUP, ADMIN_GROUP } from '@bio-majesty/shared';
 import { Aws, CfnDynamicReference, CfnDynamicReferenceService, Duration, RemovalPolicy, SecretValue } from 'aws-cdk-lib';
+import * as acm from 'aws-cdk-lib/aws-certificatemanager';
 import * as cognito from 'aws-cdk-lib/aws-cognito';
 import { Construct } from 'constructs';
 import { googleClientSecretParameterName, type AppConfig } from '../config';
@@ -20,13 +21,15 @@ export class AuthConstruct extends Construct {
   readonly userPool: cognito.UserPool;
   readonly client: cognito.UserPoolClient;
   readonly domain: cognito.UserPoolDomain;
+  /** Login page on the stage's own domain (authDomainName), when set. */
+  readonly customDomain: cognito.UserPoolDomain | undefined;
 
   constructor(scope: Construct, id: string, props: AuthProps) {
     super(scope, id);
     const { config, origins } = props;
 
     this.userPool = new cognito.UserPool(this, 'Users', {
-      userPoolName: `bio-majesty-${config.stage}`,
+      userPoolName: `${config.resourcePrefix}-${config.stage}`,
       selfSignUpEnabled: false,
       signInAliases: { email: true },
       autoVerify: { email: true },
@@ -51,6 +54,10 @@ export class AuthConstruct extends Construct {
       groupName: ACCESS_GROUP,
       description: 'People allowed to use the dashboard. Signing in alone is not enough: add each user here (Google users appear after their first sign-in).',
     });
+    this.userPool.addGroup('Admins', {
+      groupName: ADMIN_GROUP,
+      description: 'People who manage users on the Admin page (they also need dashboard-users).',
+    });
 
     const google = config.googleClientId
       ? new cognito.UserPoolIdentityProviderGoogle(this, 'Google', {
@@ -58,7 +65,7 @@ export class AuthConstruct extends Construct {
           clientId: config.googleClientId,
           // Read by CloudFormation when it creates or changes the identity provider ({{resolve:ssm:...}}).
           clientSecretValue: SecretValue.cfnDynamicReference(
-            new CfnDynamicReference(CfnDynamicReferenceService.SSM, googleClientSecretParameterName(config.stage)),
+            new CfnDynamicReference(CfnDynamicReferenceService.SSM, googleClientSecretParameterName(config)),
           ),
           scopes: ['openid', 'email', 'profile'],
           attributeMapping: {
@@ -92,9 +99,22 @@ export class AuthConstruct extends Construct {
     if (google) this.client.node.addDependency(google);
 
     this.domain = this.userPool.addDomain('Domain', {
-      cognitoDomain: { domainPrefix: `bio-majesty-${config.stage}-${Aws.ACCOUNT_ID}` },
+      cognitoDomain: { domainPrefix: `${config.resourcePrefix}-${config.stage}-${Aws.ACCOUNT_ID}` },
       managedLoginVersion: cognito.ManagedLoginVersion.NEWER_MANAGED_LOGIN,
     });
+
+    // A pool can have a prefix domain and a custom domain at once; the dashboard sends people to the
+    // custom one. Cognito checks that the parent domain resolves (an A record, or a CNAME to one).
+    this.customDomain =
+      config.authDomainName && config.certificateArn
+        ? this.userPool.addDomain('CustomDomain', {
+            customDomain: {
+              domainName: config.authDomainName,
+              certificate: acm.Certificate.fromCertificateArn(this, 'Certificate', config.certificateArn),
+            },
+            managedLoginVersion: cognito.ManagedLoginVersion.NEWER_MANAGED_LOGIN,
+          })
+        : undefined;
 
     // Managed login needs a branding style; use Cognito's default look.
     new cognito.CfnManagedLoginBranding(this, 'Branding', {
@@ -104,8 +124,8 @@ export class AuthConstruct extends Construct {
     });
   }
 
-  /** Hosted login base URL, e.g. https://<prefix>.auth.<region>.amazoncognito.com */
+  /** Hosted login base URL: https://<authDomainName>, or https://<prefix>.auth.<region>.amazoncognito.com */
   get domainUrl(): string {
-    return this.domain.baseUrl();
+    return (this.customDomain ?? this.domain).baseUrl();
   }
 }

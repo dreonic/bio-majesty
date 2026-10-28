@@ -19,7 +19,7 @@ export class DashboardStack extends Stack {
   constructor(scope: Construct, id: string, props: DashboardStackProps) {
     super(scope, id, props);
     const { config } = props;
-    Tags.of(this).add('project', 'bio-majesty');
+    Tags.of(this).add('project', config.resourcePrefix);
     Tags.of(this).add('stage', config.stage);
 
     const data = new DataConstruct(this, 'Data', config);
@@ -67,7 +67,7 @@ export class DashboardStack extends Stack {
       },
     });
 
-    new MonitoringConstruct(this, 'Monitoring', {
+    const monitoring = new MonitoringConstruct(this, 'Monitoring', {
       config,
       stateMachines: [pipeline.dailyMachine, pipeline.backfillMachine],
       dispatcher: pipeline.dispatchFn,
@@ -81,14 +81,30 @@ export class DashboardStack extends Stack {
     new CfnOutput(this, 'UserPoolId', { value: auth.userPool.userPoolId });
     new CfnOutput(this, 'UserPoolClientId', { value: auth.client.userPoolClientId });
     new CfnOutput(this, 'CognitoDomain', { value: auth.domainUrl });
+    if (config.domainName) {
+      new CfnOutput(this, 'DashboardDnsTarget', {
+        value: web.distribution.distributionDomainName,
+        description: `Point ${config.domainName} here (CNAME, or an alias A/AAAA record)`,
+      });
+    }
+    if (auth.customDomain) {
+      new CfnOutput(this, 'LoginDnsTarget', {
+        value: auth.customDomain.cloudFrontEndpoint,
+        description: `Point ${config.authDomainName} here (CNAME, or an alias A/AAAA record)`,
+      });
+    }
     new CfnOutput(this, 'ApiKeysParameter', { value: data.apiKeys.parameterName, description: 'SSM SecureString to create with the API keys and the Telegram bot token (see README)' });
     new CfnOutput(this, 'StockIngestFunction', { value: pipeline.stockIngestFn.functionName });
     new CfnOutput(this, 'DailyStateMachineArn', { value: pipeline.dailyMachine.stateMachineArn });
+    new CfnOutput(this, 'AlarmTopicArn', {
+      value: monitoring.topic.topicArn,
+      description: 'SNS topic of the alarms: subscribe addresses here (or set alarmEmail) to receive them',
+    });
 
     applyNagSuppressions(this, {
       table: data.table,
       buckets: [data.dataBucket, web.bucket],
-      invokedFunctions: [...pipeline.pipelineFunctions, pipeline.stockIngestFn, pipeline.dispatchFn],
+      invokedFunctions: [...pipeline.pipelineFunctions, pipeline.stockIngestFn, pipeline.dispatchFn, api.accountDeleteFn],
       stateMachines: [pipeline.dailyMachine, pipeline.backfillMachine],
     });
   }

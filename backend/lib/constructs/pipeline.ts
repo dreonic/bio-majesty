@@ -93,7 +93,7 @@ export class PipelineConstruct extends Construct {
     readAccounts(this.dispatchFn);
     this.dailyMachine.grantStartExecution(this.dispatchFn);
     new scheduler.Schedule(this, 'NewsDispatchSchedule', {
-      scheduleName: `bio-majesty-${config.stage}-news-dispatch`,
+      scheduleName: `${config.resourcePrefix}-${config.stage}-news-dispatch`,
       description: "Starts the accounts' daily news runs (each account's time is in its Settings)",
       schedule: every15Minutes,
       target: new schedulerTargets.LambdaInvoke(this.dispatchFn, { role: this.schedulerRole, retryAttempts: 0 }),
@@ -110,7 +110,7 @@ export class PipelineConstruct extends Construct {
     data.apiKeys.grantRead(this.stockIngestFn);
     readAccounts(this.stockIngestFn);
     new scheduler.Schedule(this, 'StockRefreshSchedule', {
-      scheduleName: `bio-majesty-${config.stage}-stock-refresh`,
+      scheduleName: `${config.resourcePrefix}-${config.stage}-stock-refresh`,
       description: 'Market-data refresh every 15 minutes (each asset follows its own trading session)',
       schedule: every15Minutes,
       target: new schedulerTargets.LambdaInvoke(this.stockIngestFn, {

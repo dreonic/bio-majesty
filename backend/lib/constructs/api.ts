@@ -24,6 +24,8 @@ export class ApiConstruct extends Construct {
   readonly api: apigateway.RestApi;
   readonly url: string;
   readonly functions: lambda.IFunction[] = [];
+  /** Deletes an account's data and user, invoked asynchronously by the admin API. */
+  readonly accountDeleteFn: lambda.IFunction;
 
   constructor(scope: Construct, id: string, props: ApiProps) {
     super(scope, id);
@@ -31,7 +33,7 @@ export class ApiConstruct extends Construct {
 
     const accessLogs = new logs.LogGroup(this, 'AccessLogs', { retention: logs.RetentionDays.ONE_MONTH });
     this.api = new apigateway.RestApi(this, 'Api', {
-      restApiName: `bio-majesty-${config.stage}`,
+      restApiName: `${config.resourcePrefix}-${config.stage}`,
       description: 'News Accumulator API',
       endpointConfiguration: { types: [apigateway.EndpointType.REGIONAL] },
       // gzip JSON responses of 1 KB or more for browsers that accept it (e.g. MAX history,
@@ -118,6 +120,37 @@ export class ApiConstruct extends Construct {
       }),
     );
 
+    // User management for the admins group. Deleting a user hands the data to a worker that isn't
+    // bound by the API's 29 seconds.
+    const accountDelete = functions.create('AccountDelete', {
+      entry: 'account-delete.ts',
+      description: "Delete an account's data, then its user",
+      timeout: Duration.minutes(15),
+    });
+    data.table.grantReadWriteData(accountDelete);
+    data.dataBucket.grantRead(accountDelete);
+    data.dataBucket.grantDelete(accountDelete, 'users/*');
+    data.dataBucket.grantDelete(accountDelete, 'chats/*');
+    props.userPool.grant(accountDelete, 'cognito-idp:AdminDeleteUser');
+    this.functions.push(accountDelete);
+    this.accountDeleteFn = accountDelete;
+
+    const admin = make('Admin', 'api/admin.ts', { environment: { ACCOUNT_DELETE_FUNCTION: accountDelete.functionName } });
+    props.userPool.grant(
+      admin,
+      'cognito-idp:ListUsers',
+      'cognito-idp:ListUsersInGroup',
+      'cognito-idp:AdminGetUser',
+      'cognito-idp:AdminListGroupsForUser',
+      'cognito-idp:AdminCreateUser',
+      'cognito-idp:AdminAddUserToGroup',
+      'cognito-idp:AdminRemoveUserFromGroup',
+      'cognito-idp:AdminEnableUser',
+      'cognito-idp:AdminDisableUser',
+      'cognito-idp:AdminUserGlobalSignOut',
+    );
+    accountDelete.grantInvoke(admin);
+
     const integrate = (fn: lambda.IFunction) => new apigateway.LambdaIntegration(fn, { scopePermissionToMethod: false });
     const route = (path: string, methods: Record<string, lambda.IFunction>) => {
       const resource = this.api.root.resourceForPath(path);
@@ -153,6 +186,10 @@ export class ApiConstruct extends Construct {
     route('/telegram/link', { POST: telegram, DELETE: telegram });
     route('/telegram/link/verify', { POST: telegram });
     route('/telegram/test', { POST: telegram });
+
+    route('/admin/users', { GET: admin, POST: admin });
+    route('/admin/users/{username}', { PATCH: admin, DELETE: admin });
+    route('/admin/users/{username}/invite', { POST: admin });
 
     route('/chat/conversations', { GET: chatHistory });
     route('/chat/conversations/{id}', { GET: chatHistory, DELETE: chatHistory });

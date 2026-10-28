@@ -52,7 +52,7 @@ export class DataConstruct extends Construct {
 
     // Vector store for the chat agent (S3 Vectors). The index is tied to the
     // embedding model + dimensions; changing either creates a new index.
-    this.vectorBucketName = `bio-majesty-${config.stage}-vectors-${account}`;
+    this.vectorBucketName = `${config.resourcePrefix}-${config.stage}-vectors-${account}`;
     const vectorBucket = new s3vectors.CfnVectorBucket(this, 'VectorBucket', {
       vectorBucketName: this.vectorBucketName,
     });
@@ -75,7 +75,7 @@ export class DataConstruct extends Construct {
     // Created by hand (see README): CloudFormation can't create SecureStrings. Its AWS managed key's
     // policy lets anyone allowed to read the parameter decrypt it through SSM, so no KMS grant is needed.
     this.apiKeys = ssm.StringParameter.fromSecureStringParameterAttributes(this, 'ApiKeys', {
-      parameterName: apiKeysParameterName(config.stage),
+      parameterName: apiKeysParameterName(config),
     });
   }
 }

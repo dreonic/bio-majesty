@@ -41,7 +41,7 @@ describe('DashboardStack', () => {
       ProviderType: 'Google',
       ProviderDetails: Match.objectLike({
         client_id: '1234-abc.apps.googleusercontent.com',
-        client_secret: '{{resolve:ssm:/bio-majesty/test/google-client-secret}}',
+        client_secret: '{{resolve:ssm:/news-accumulator/test/google-client-secret}}',
         authorize_scopes: 'openid email profile',
       }),
       AttributeMapping: { email: 'email', email_verified: 'email_verified', name: 'name' },
@@ -53,10 +53,10 @@ describe('DashboardStack', () => {
   it('reads the API keys from the SSM parameter, with no Secrets Manager secret', () => {
     template.resourceCountIs('AWS::SecretsManager::Secret', 0);
     const fns = Object.values(template.findResources('AWS::Lambda::Function'));
-    const withKeys = fns.filter((f) => f.Properties.Environment?.Variables?.API_KEYS_PARAMETER === '/bio-majesty/test/api-keys');
+    const withKeys = fns.filter((f) => f.Properties.Environment?.Variables?.API_KEYS_PARAMETER === '/news-accumulator/test/api-keys');
     expect(withKeys.length).toBeGreaterThan(5);
     const grants = Object.values(template.findResources('AWS::IAM::Policy')).filter((p) =>
-      JSON.stringify(p.Properties.PolicyDocument).includes(':parameter/bio-majesty/test/api-keys'),
+      JSON.stringify(p.Properties.PolicyDocument).includes(':parameter/news-accumulator/test/api-keys'),
     );
     expect(grants.length).toBeGreaterThan(5);
   });
@@ -121,10 +121,10 @@ describe('DashboardStack', () => {
 
   it("checks every 15 minutes on the exec's clock for due daily runs and market data", () => {
     expect(schedules(template)).toEqual({
-      'bio-majesty-test-news-dispatch': { expression: 'cron(0/15 * * * ? *)', timeZone: 'Asia/Singapore' },
-      'bio-majesty-test-stock-refresh': { expression: 'cron(0/15 * * * ? *)', timeZone: 'Asia/Singapore' },
+      'news-accumulator-test-news-dispatch': { expression: 'cron(0/15 * * * ? *)', timeZone: 'Asia/Singapore' },
+      'news-accumulator-test-stock-refresh': { expression: 'cron(0/15 * * * ? *)', timeZone: 'Asia/Singapore' },
     });
-    expect(schedules(synth({ timeZone: 'Asia/Tokyo' }))['bio-majesty-test-news-dispatch']?.timeZone).toBe('Asia/Tokyo');
+    expect(schedules(synth({ timeZone: 'Asia/Tokyo' }))['news-accumulator-test-news-dispatch']?.timeZone).toBe('Asia/Tokyo');
   }, 60_000);
 
   it('tells every function that starts a state machine which one it is', () => {
@@ -139,14 +139,26 @@ describe('DashboardStack', () => {
     }
   });
 
-  it('lets only the background jobs list the accounts (the dashboard-users group)', () => {
-    const policies = Object.values(template.findResources('AWS::IAM::Policy')).filter((p) =>
-      JSON.stringify(p.Properties.PolicyDocument).includes('cognito-idp:ListUsersInGroup'),
-    );
-    expect(policies.map((p) => (p.Properties.PolicyName as string).replace(/[A-F0-9]{8}$/, '')).sort()).toEqual([
+  const withAction = (action: string) =>
+    Object.values(template.findResources('AWS::IAM::Policy'))
+      .filter((p) => JSON.stringify(p.Properties.PolicyDocument).includes(`"${action}"`))
+      .map((p) => (p.Properties.PolicyName as string).replace(/[A-F0-9]{8}$/, ''))
+      .sort();
+
+  it('lets only the background jobs and the admin API list the accounts (the dashboard-users group)', () => {
+    expect(withAction('cognito-idp:ListUsersInGroup')).toEqual([
+      'ApiAdminServiceRoleDefaultPolicy',
       'NewsDispatchServiceRoleDefaultPolicy',
       'StockIngestServiceRoleDefaultPolicy',
     ]);
+  });
+
+  it('lets only the admin API manage users, and only the account-delete worker delete them', () => {
+    for (const action of ['cognito-idp:AdminCreateUser', 'cognito-idp:AdminAddUserToGroup', 'cognito-idp:AdminDisableUser']) {
+      expect(withAction(action), action).toEqual(['ApiAdminServiceRoleDefaultPolicy']);
+    }
+    expect(withAction('cognito-idp:AdminDeleteUser')).toEqual(['AccountDeleteServiceRoleDefaultPolicy']);
+    template.hasResourceProperties('AWS::Cognito::UserPoolGroup', { GroupName: 'admins' });
   });
 
   it('passes the time zone to the functions', () => {
@@ -158,6 +170,53 @@ describe('DashboardStack', () => {
   it('pins the AWS account from cdk.json and rejects a malformed one', () => {
     expect(loadConfig(new App({ context: { account: '297580066575' } })).account).toBe('297580066575');
     expect(() => loadConfig(new App({ context: { account: 'acme' } }))).toThrow(/Invalid account/);
+  });
+
+  it("reads a stage's settings from its stages block, under top-level keys and -c flags", () => {
+    const stages = {
+      dev: { stackName: 'BioMajesty-dev', resourcePrefix: 'bio-majesty', alarmEmail: 'dev@example.com' },
+      prod: { stackName: 'news-accumulator', resourcePrefix: 'news-accumulator' },
+    };
+    const dev = loadConfig(new App({ context: { stage: 'dev', stages } }));
+    expect([dev.stackName, dev.resourcePrefix, dev.alarmEmail, dev.retainData]).toEqual(['BioMajesty-dev', 'bio-majesty', 'dev@example.com', false]);
+    const prod = loadConfig(new App({ context: { stage: 'prod', stages } }));
+    expect([prod.stackName, prod.resourcePrefix, prod.alarmEmail, prod.retainData, prod.localDevOrigin]).toEqual([
+      'news-accumulator',
+      'news-accumulator',
+      null,
+      true,
+      null,
+    ]);
+    expect(loadConfig(new App({ context: { stage: 'prod', stages, alarmEmail: 'ops@example.com' } })).alarmEmail).toBe('ops@example.com');
+    expect(loadConfig(new App({ context: { stage: 'qa' } })).stackName).toBe('news-accumulator-qa');
+  });
+
+  it('serves the dashboard and the login page on custom domains', () => {
+    const certificateArn = 'arn:aws:acm:us-east-1:123456789012:certificate/0f1e2d3c-aaaa-bbbb-cccc-123456789abc';
+    const t = synth({ domainName: 'news.example.com', authDomainName: 'login.news.example.com', certificateArn });
+    t.hasResourceProperties('AWS::CloudFront::Distribution', {
+      DistributionConfig: Match.objectLike({ Aliases: ['news.example.com'], ViewerCertificate: Match.objectLike({ AcmCertificateArn: certificateArn }) }),
+    });
+    t.hasResourceProperties('AWS::Cognito::UserPoolDomain', {
+      Domain: 'login.news.example.com',
+      CustomDomainConfig: { CertificateArn: certificateArn },
+      ManagedLoginVersion: 2,
+    });
+    t.hasResourceProperties('AWS::Cognito::UserPoolClient', {
+      CallbackURLs: ['https://news.example.com/auth/callback', 'http://localhost:5173/auth/callback'],
+    });
+    // The dashboard sends people to the custom login domain, not the prefix one.
+    expect(JSON.stringify(t.findOutputs('CognitoDomain'))).toMatch(/"AuthUsersCustomDomain[0-9A-F]{8}"/);
+    t.hasOutput('DashboardDnsTarget', {});
+    t.hasOutput('LoginDnsTarget', {});
+    expect(Object.keys(template.findOutputs('*'))).not.toContain('LoginDnsTarget');
+  }, 60_000);
+
+  it('rejects custom domains without a us-east-1 certificate', () => {
+    expect(() => loadConfig(new App({ context: { domainName: 'news.example.com' } }))).toThrow(/need certificateArn/);
+    const elsewhere = 'arn:aws:acm:ap-southeast-1:123456789012:certificate/0f1e2d3c-aaaa-bbbb-cccc-123456789abc';
+    expect(() => loadConfig(new App({ context: { domainName: 'news.example.com', certificateArn: elsewhere } }))).toThrow(/us-east-1/);
+    expect(() => loadConfig(new App({ context: { authDomainName: 'https://login.example.com' } }))).toThrow(/Invalid domain name/);
   });
 
   it('rejects an invalid time zone', () => {

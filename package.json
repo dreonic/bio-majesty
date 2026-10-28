@@ -15,6 +15,7 @@
     "test": "npm run test --workspaces --if-present",
     "build": "npm run build -w frontend",
     "synth": "npm run synth -w backend",
-    "deploy": "npm run build && npm run deploy -w backend"
+    "deploy": "npm run build && npm run deploy -w backend",
+    "deploy:prod": "npm run build && npm run deploy:prod -w backend"
   }
 }

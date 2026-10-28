@@ -6,7 +6,7 @@ import { DashboardStack } from '../lib/dashboard-stack';
 const app = new App();
 const config = loadConfig(app);
 
-new DashboardStack(app, `BioMajesty-${config.stage}`, {
+new DashboardStack(app, config.stackName, {
   config,
   env: { account: config.account, region: config.region },
   description: `News Accumulator (${config.stage}): news curation, chat over saved news, price panel`,

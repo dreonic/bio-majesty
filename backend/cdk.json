@@ -21,10 +21,23 @@
     "timeZone": "Asia/Singapore",
     "embeddingModel": "google:gemini-embedding-2",
     "embeddingDimensions": 768,
-    "alarmEmail": "",
-    "customDomainName": "",
-    "customDomainCertificateArn": "",
-    "googleClientId": "91947026960-fl2jp2643nt1edah9ib215c0plqon7ns.apps.googleusercontent.com",
+    "stages": {
+      "dev": {
+        "stackName": "BioMajesty-dev",
+        "resourcePrefix": "bio-majesty",
+        "googleClientId": "91947026960-fl2jp2643nt1edah9ib215c0plqon7ns.apps.googleusercontent.com",
+        "alarmEmail": ""
+      },
+      "prod": {
+        "stackName": "news-accumulator",
+        "resourcePrefix": "news-accumulator",
+        "domainName": "news.bio-majesty.com",
+        "authDomainName": "",
+        "certificateArn": "arn:aws:acm:us-east-1:297580066575:certificate/53fd69a1-a35f-4289-8328-6837bfb59924",
+        "googleClientId": "91947026960-fl2jp2643nt1edah9ib215c0plqon7ns.apps.googleusercontent.com",
+        "alarmEmail": ""
+      }
+    },
     "@aws-cdk-containers/ecs-service-extensions:enableDefaultLogDriver": true,
     "@aws-cdk/aws-apigateway:authorizerChangeDeploymentLogicalId": true,
     "@aws-cdk/aws-apigateway:disableCloudWatchRole": true,

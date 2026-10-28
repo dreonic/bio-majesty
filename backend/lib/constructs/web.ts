@@ -39,16 +39,16 @@ export class WebConstruct extends Construct {
     });
 
     const customDomain =
-      config.customDomainName && config.customDomainCertificateArn
+      config.domainName && config.certificateArn
         ? {
-            domainNames: [config.customDomainName],
-            certificate: acm.Certificate.fromCertificateArn(this, 'Certificate', config.customDomainCertificateArn),
+            domainNames: [config.domainName],
+            certificate: acm.Certificate.fromCertificateArn(this, 'Certificate', config.certificateArn),
             minimumProtocolVersion: cloudfront.SecurityPolicyProtocol.TLS_V1_2_2021,
           }
         : {};
 
     this.distribution = new cloudfront.Distribution(this, 'Distribution', {
-      comment: `bio-majesty ${config.stage} dashboard`,
+      comment: `${config.resourcePrefix} ${config.stage} dashboard`,
       defaultRootObject: 'index.html',
       defaultBehavior: {
         origin: origins.S3BucketOrigin.withOriginAccessControl(this.bucket),
@@ -69,7 +69,7 @@ export class WebConstruct extends Construct {
       ...customDomain,
     });
 
-    this.url = `https://${config.customDomainName ?? this.distribution.distributionDomainName}`;
+    this.url = `https://${config.domainName ?? this.distribution.distributionDomainName}`;
   }
 
   /** Upload the built SPA plus a generated /config.json. */

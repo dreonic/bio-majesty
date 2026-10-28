@@ -26,7 +26,7 @@ export class MonitoringConstruct extends Construct {
 
   constructor(scope: Construct, id: string, props: MonitoringProps) {
     super(scope, id);
-    this.topic = new sns.Topic(this, 'Alarms', { displayName: `bio-majesty ${props.config.stage} alarms`, enforceSSL: true });
+    this.topic = new sns.Topic(this, 'Alarms', { displayName: `${props.config.resourcePrefix} ${props.config.stage} alarms`, enforceSSL: true });
     if (props.config.alarmEmail) this.topic.addSubscription(new subscriptions.EmailSubscription(props.config.alarmEmail));
     const action = new actions.SnsAction(this.topic);
 

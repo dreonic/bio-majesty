@@ -51,12 +51,14 @@ export function applyNagSuppressions(stack: Stack, refs: NagRefs): void {
   for (const bucket of refs.buckets) {
     rules[`AwsSolutions-IAM5[Resource::<${logicalId(bucket)}.Arn>/*]`] = grantReason;
     rules[`AwsSolutions-IAM5[Resource::arn:<AWS::Partition>:s3:::<${logicalId(bucket)}>/*]`] = grantReason;
-    // The News API deletes only the accounts' extracted article texts (users/*) when news is deleted.
+    // The News API deletes only the accounts' extracted article texts (users/*) when news is deleted;
+    // deleting an account also removes its chat histories (chats/*).
     rules[`AwsSolutions-IAM5[Resource::<${logicalId(bucket)}.Arn>/users/*]`] = grantReason;
+    rules[`AwsSolutions-IAM5[Resource::<${logicalId(bucket)}.Arn>/chats/*]`] = grantReason;
   }
   for (const fn of refs.invokedFunctions) {
     rules[`AwsSolutions-IAM5[Resource::<${logicalId(fn)}.Arn>:*]`] =
-      'Step Functions LambdaInvoke grants all versions/aliases of the task function.';
+      'Invoke grants (Step Functions tasks, async invokes) cover all versions/aliases of the function.';
   }
 
   // Values that embed the account/region (literal when the CLI resolved an account).
