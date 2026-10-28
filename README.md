@@ -44,6 +44,7 @@ All deployment settings live in `backend/cdk.json` → `context` and can be over
 | `alarmEmail` (per stage) | — | Receives CloudWatch alarm emails (pipeline failures, ingest errors). The repository is public, so to keep addresses out of it, subscribe them to the `AlarmTopicArn` output instead: `aws sns subscribe --topic-arn <AlarmTopicArn> --protocol email --notification-endpoint you@example.com` (each address confirms by email; deploys leave such subscriptions alone) |
 | `domainName` / `authDomainName` / `certificateArn` (per stage) | — | Optional custom domains for the dashboard and for the login page, with one ACM certificate in **us-east-1** covering both (see *Custom domains* below) |
 | `googleClientId` (per stage) | — | Adds **Sign in with Google** to the login page (see *Google sign-in* below). The client secret goes in the SSM parameter `/<resourcePrefix>/<stage>/google-client-secret` |
+| `passwordSignIn` (per stage) | on; **off for dev and prod** | Email-and-password sign-in. Off means Google only (needs `googleClientId`): *Sign in* goes straight to Google, there are no passwords or email invitations, and each person is exactly one account. With both on, a person who used email and Google would get two separate accounts |
 
 Runtime settings (profile, categories, assets, AI model per task, daily run time, data-source toggles, Telegram, volume alerts, "use past corrections") are edited in the dashboard's **Settings** page, separately for each account.
 
@@ -132,8 +133,8 @@ A stage can serve the dashboard on its own domain (`domainName`, e.g. `news.exam
    aws cognito-idp admin-add-user-to-group --user-pool-id <UserPoolId> --username <your username> --group-name admins
    ```
    Then sign out and in again. On the Admin page you can:
-   - **Invite** someone by email: Cognito emails a temporary password (valid 7 days; *Resend* sends a new one), and the user gets access straight away. MFA (authenticator app) can be enabled at first login.
    - **Give access** to people who signed in with Google: signing in is not enough, they appear under *Waiting for access* until an admin lets them in (they then press *Check again*).
+   - **Invite** someone by email, only where `passwordSignIn` is on: Cognito emails a temporary password (valid 7 days; *Resend* sends a new one), and the user gets access straight away. MFA (authenticator app) can be enabled at first login. Where it is off, an email user can't sign in (the Admin page shows *Can't sign in*): delete it and ask the person to sign in with Google.
    - Switch **Access** and **Admin** per user, **Disable** someone (they can't sign in; their data stays), or **Delete** them with all their data (news, categories, assets, settings, chats, Telegram link). Deleting waits if the account's news run is in progress, locks the user out at once, and removes the data in the background (the `AccountDelete` function).
 
    Removing access or disabling someone takes effect when their sign-in renews (within an hour), and stops their daily runs and price refreshes. Admins can't remove their own access or admin role, or disable or delete themselves. The Cognito console (User pools → bio-majesty-dev or news-accumulator-prod) still works for the same things.

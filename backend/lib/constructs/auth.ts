@@ -87,8 +87,9 @@ export class AuthConstruct extends Construct {
         callbackUrls: origins.map((o) => `${o}/auth/callback`),
         logoutUrls: origins.map((o) => `${o}/`),
       },
+      // Without password sign-in, the pool's own users (email and password) can't sign in through this client.
       supportedIdentityProviders: [
-        cognito.UserPoolClientIdentityProvider.COGNITO,
+        ...(config.passwordSignIn ? [cognito.UserPoolClientIdentityProvider.COGNITO] : []),
         ...(google ? [cognito.UserPoolClientIdentityProvider.GOOGLE] : []),
       ],
       idTokenValidity: Duration.hours(1),

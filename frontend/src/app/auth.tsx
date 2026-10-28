@@ -20,6 +20,7 @@ export function AuthRoot({ config, children }: { config: RuntimeConfig; children
       post_logout_redirect_uri={`${origin}/`}
       response_type="code"
       scope="openid email profile"
+      extraQueryParams={config.cognito.identityProvider ? { identity_provider: config.cognito.identityProvider } : undefined}
       automaticSilentRenew
       userStore={new WebStorageStateStore({ store: window.localStorage })}
       onSigninCallback={() => {

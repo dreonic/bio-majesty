@@ -95,6 +95,20 @@ describe('admin API', () => {
     expect((await request('POST', '/admin/users', { body: { email: 'c@example.com' } })).statusCode).toBe(409);
   });
 
+  it('refuses email invitations when sign-in is Google only', async () => {
+    process.env.PASSWORD_SIGN_IN = 'false';
+    try {
+      cognito.on(ListUsersCommand).resolves({ Users: [] });
+      cognito.on(ListUsersInGroupCommand).resolves({ Users: [] });
+      expect((JSON.parse((await request('GET', '/admin/users')).body) as AdminUsersResponse).invites).toBe(false);
+      expect((await request('POST', '/admin/users', { body: { email: 'c@example.com' } })).statusCode).toBe(400);
+      expect((await request('POST', '/admin/users/{username}/invite', { username: 'u1' })).statusCode).toBe(400);
+      expect(cognito.commandCalls(AdminCreateUserCommand)).toHaveLength(0);
+    } finally {
+      delete process.env.PASSWORD_SIGN_IN;
+    }
+  });
+
   it("doesn't let admins remove their own access, admin role or account", async () => {
     givenUser(['dashboard-users', 'admins'], 'admin-sub');
     for (const body of [{ access: false }, { admin: false }, { enabled: false }]) {

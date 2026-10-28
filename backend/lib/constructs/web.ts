@@ -18,7 +18,13 @@ export interface WebRuntimeConfig {
   /** IANA time zone the dashboard shows times in (the deployment's `timeZone`). */
   timeZone: string;
   apiUrl: string;
-  cognito: { authority: string; clientId: string; domain: string };
+  cognito: {
+    authority: string;
+    clientId: string;
+    domain: string;
+    /** The only way to sign in: the dashboard skips Cognito's login page and goes straight to it. */
+    identityProvider?: string;
+  };
 }
 
 /** Static hosting for the React app: private S3 bucket behind CloudFront (OAC). */

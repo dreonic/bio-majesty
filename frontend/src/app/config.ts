@@ -5,7 +5,13 @@ export interface RuntimeConfig {
   /** IANA time zone to show times in (the deployment's); defaults to Asia/Singapore. */
   timeZone?: string;
   apiUrl: string;
-  cognito: { authority: string; clientId: string; domain: string };
+  cognito: {
+    authority: string;
+    clientId: string;
+    domain: string;
+    /** The only way to sign in (e.g. Google): skip Cognito's login page and go straight to it. */
+    identityProvider?: string;
+  };
 }
 
 export async function loadRuntimeConfig(): Promise<RuntimeConfig> {

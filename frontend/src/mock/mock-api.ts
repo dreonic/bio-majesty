@@ -403,7 +403,7 @@ async function route(method: string, url: URL, body: unknown): Promise<Response>
   }
   if (path === 'telegram/test') return json({ sent: true });
 
-  if (path === 'admin/users' && method === 'GET') return json({ users: state.users, me: 'demo-admin' });
+  if (path === 'admin/users' && method === 'GET') return json({ users: state.users, me: 'demo-admin', invites: true });
   if (path === 'admin/users' && method === 'POST') {
     const email = String((body as { email?: string }).email ?? '').trim().toLowerCase();
     if (state.users.some((u) => u.email === email)) return json({ error: 'conflict', message: `${email} already has a user` }, 409);

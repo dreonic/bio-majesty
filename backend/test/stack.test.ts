@@ -212,6 +212,15 @@ describe('DashboardStack', () => {
     expect(Object.keys(template.findOutputs('*'))).not.toContain('LoginDnsTarget');
   }, 60_000);
 
+  it('offers only Google sign-in when password sign-in is off', () => {
+    const googleClientId = '1234-abc.apps.googleusercontent.com';
+    const t = synth({ googleClientId, passwordSignIn: 'false' });
+    t.hasResourceProperties('AWS::Cognito::UserPoolClient', { SupportedIdentityProviders: ['Google'] });
+    t.hasResourceProperties('AWS::Lambda::Function', { Environment: { Variables: Match.objectLike({ PASSWORD_SIGN_IN: 'false' }) } });
+    expect(() => loadConfig(new App({ context: { passwordSignIn: false } }))).toThrow(/needs googleClientId/);
+    expect(loadConfig(new App({ context: { googleClientId, passwordSignIn: false } })).passwordSignIn).toBe(false);
+  }, 60_000);
+
   it('rejects custom domains without a us-east-1 certificate', () => {
     expect(() => loadConfig(new App({ context: { domainName: 'news.example.com' } }))).toThrow(/need certificateArn/);
     const elsewhere = 'arn:aws:acm:ap-southeast-1:123456789012:certificate/0f1e2d3c-aaaa-bbbb-cccc-123456789abc';

@@ -19,6 +19,7 @@ export function AdminPage() {
 
   const list = users.data?.users ?? [];
   const me = users.data?.me ?? '';
+  const invites = users.data?.invites ?? false;
   // Signed in (e.g. with Google) but never let in, and not switched off on purpose.
   const waiting = list.filter((u) => !u.access && u.enabled && u.status !== 'FORCE_CHANGE_PASSWORD');
 
@@ -53,15 +54,19 @@ export function AdminPage() {
             <Card>
               <SectionTitle
                 title="Users"
-                description="Invite people by email (they get a temporary password), or let them sign in with Google and give them access above."
+                description={
+                  invites
+                    ? 'Invite people by email (they get a temporary password), or let them sign in with Google and give them access above.'
+                    : 'People sign in with Google, then appear under Waiting for access until you give them access.'
+                }
               />
-              <InviteForm />
+              {invites && <InviteForm />}
               {list.length === 0 ? (
                 <EmptyState title="No users yet" />
               ) : (
                 <ul className="divide-y divide-hairline border-t border-hairline">
                   {list.map((user) => (
-                    <UserRow key={user.username} user={user} self={user.username === me} onDelete={() => setDeleting(user)} />
+                    <UserRow key={user.username} user={user} self={user.username === me} invites={invites} onDelete={() => setDeleting(user)} />
                   ))}
                 </ul>
               )}
@@ -146,18 +151,25 @@ function WaitingRow({ user, onDelete }: { user: AdminUser; onDelete: () => void 
   );
 }
 
-function status(user: AdminUser): { label: string; className?: string; title?: string } {
+function status(user: AdminUser, invites: boolean): { label: string; className?: string; title?: string } {
   if (!user.enabled) return { label: 'Disabled', className: 'border-critical/30 bg-critical-wash text-ink', title: "Can't sign in" };
+  if (user.status === 'FORCE_CHANGE_PASSWORD' && !invites) {
+    return {
+      label: "Can't sign in",
+      className: 'border-warning/40 bg-warning-wash text-ink',
+      title: 'Invited by email, but sign-in is Google only here. Delete this user and ask them to sign in with Google.',
+    };
+  }
   if (user.status === 'FORCE_CHANGE_PASSWORD') return { label: 'Invited', className: 'border-accent/30 bg-accent-wash text-ink', title: "Hasn't signed in yet" };
   if (!user.access) return { label: 'No access' };
   return { label: 'Active', className: 'border-good/30 bg-good-wash text-ink' };
 }
 
-function UserRow({ user, self, onDelete }: { user: AdminUser; self: boolean; onDelete: () => void }) {
+function UserRow({ user, self, invites, onDelete }: { user: AdminUser; self: boolean; invites: boolean; onDelete: () => void }) {
   const update = useUpdateUser();
   const resend = useResendInvite();
   const toast = useToast();
-  const badge = status(user);
+  const badge = status(user, invites);
   const change = (patch: Parameters<typeof update.mutate>[0]['change'], done: string) =>
     update.mutate({ username: user.username, change: patch }, { onSuccess: () => toast.success(done), onError: toast.error });
   const who = user.email ?? user.username;
@@ -182,7 +194,7 @@ function UserRow({ user, self, onDelete }: { user: AdminUser; self: boolean; onD
       />
       {/* Fixed width keeps the switches of every row in one column. */}
       <div className="flex items-center gap-1 sm:w-64 sm:justify-end">
-        {user.status === 'FORCE_CHANGE_PASSWORD' && user.enabled && (
+        {invites && user.status === 'FORCE_CHANGE_PASSWORD' && user.enabled && (
           <Button
             size="sm"
             variant="ghost"

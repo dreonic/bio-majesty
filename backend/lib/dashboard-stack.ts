@@ -64,6 +64,7 @@ export class DashboardStack extends Stack {
         authority: `https://cognito-idp.${this.region}.amazonaws.com/${auth.userPool.userPoolId}`,
         clientId: auth.client.userPoolClientId,
         domain: auth.domainUrl,
+        ...(config.passwordSignIn ? {} : { identityProvider: 'Google' }),
       },
     });
 

@@ -135,7 +135,9 @@ export class ApiConstruct extends Construct {
     this.functions.push(accountDelete);
     this.accountDeleteFn = accountDelete;
 
-    const admin = make('Admin', 'api/admin.ts', { environment: { ACCOUNT_DELETE_FUNCTION: accountDelete.functionName } });
+    const admin = make('Admin', 'api/admin.ts', {
+      environment: { ACCOUNT_DELETE_FUNCTION: accountDelete.functionName, PASSWORD_SIGN_IN: String(config.passwordSignIn) },
+    });
     props.userPool.grant(
       admin,
       'cognito-idp:ListUsers',

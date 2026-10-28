@@ -37,6 +37,8 @@ export interface AppConfig {
   certificateArn: string | null;
   /** Google OAuth client ID: adds "Sign in with Google" (client secret in Parameter Store, see googleClientSecretParameterName). */
   googleClientId: string | null;
+  /** Email-and-password sign-in (and email invitations). Off means Google only. */
+  passwordSignIn: boolean;
   /** Keep data (table, buckets, user pool) when the stack is deleted. */
   retainData: boolean;
   /** Extra origin allowed to call the API and to receive Cognito redirects (local dev). */
@@ -82,6 +84,9 @@ export function loadConfig(app: App): AppConfig {
     throw new Error(`Invalid googleClientId "${googleClientId}" (expected ...apps.googleusercontent.com)`);
   }
 
+  const passwordSignIn = setting('passwordSignIn') !== 'false';
+  if (!passwordSignIn && !googleClientId) throw new Error('passwordSignIn=false needs googleClientId (Google would be the only way to sign in)');
+
   const domainName = setting('domainName').toLowerCase() || null;
   const authDomainName = setting('authDomainName').toLowerCase() || null;
   for (const name of [domainName, authDomainName]) {
@@ -110,6 +115,7 @@ export function loadConfig(app: App): AppConfig {
     authDomainName,
     certificateArn: domainName || authDomainName ? certificateArn : null,
     googleClientId,
+    passwordSignIn,
     retainData: stage === 'prod' || setting('retainData') === 'true',
     localDevOrigin: stage === 'prod' ? null : setting('localDevOrigin') || 'http://localhost:5173',
   };

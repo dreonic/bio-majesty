@@ -25,6 +25,8 @@ export interface AdminUsersResponse {
   users: AdminUser[];
   /** The signed-in admin's username (they can't remove, disable or delete themselves). */
   me: string;
+  /** Email invitations are possible (email-and-password sign-in is on); otherwise people sign in with Google. */
+  invites: boolean;
 }
 
 export const InviteUserRequestSchema = z.object({ email: z.string().trim().toLowerCase().pipe(z.email().max(254)) });

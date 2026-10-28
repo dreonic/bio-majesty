@@ -71,6 +71,10 @@ export const env = {
   get stockIngestFunction() {
     return required('STOCK_INGEST_FUNCTION');
   },
+  /** Email-and-password sign-in is on, so admins can invite people by email. */
+  get passwordSignIn() {
+    return optional('PASSWORD_SIGN_IN', 'true') !== 'false';
+  },
   /** Deletes an account's data, then its user (started by a delete on the Admin page). */
   get accountDeleteFunction() {
     return required('ACCOUNT_DELETE_FUNCTION');

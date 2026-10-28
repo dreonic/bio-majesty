@@ -35,6 +35,11 @@ async function target(event: APIGatewayProxyEvent): Promise<AdminUser> {
   return user;
 }
 
+/** An invited user signs in with email and password, which a Google-only deployment doesn't offer. */
+function requireInvites(): void {
+  if (!env.passwordSignIn) throw badRequest('Sign-in is Google only here: ask the person to sign in with Google, then give them access.');
+}
+
 /** An admin can't lock themselves out (and so maybe leave no admin at all). */
 function notSelf(user: AdminUser, me: AuthUser, what: string): void {
   if (user.sub === me.sub) throw forbidden(`You can't ${what} yourself. Ask another admin.`);
@@ -42,16 +47,18 @@ function notSelf(user: AdminUser, me: AuthUser, what: string): void {
 
 export const handler = createRouter({
   'GET /admin/users': adminOnly(async (event) => {
-    const body: AdminUsersResponse = { users: await listUsers(), me: claims(event)['cognito:username'] ?? '' };
+    const body: AdminUsersResponse = { users: await listUsers(), me: claims(event)['cognito:username'] ?? '', invites: env.passwordSignIn };
     return json(200, body);
   }),
 
   'POST /admin/users': adminOnly(async (event) => {
+    requireInvites();
     const { email } = parseBody(event, InviteUserRequestSchema);
     return json(201, await inviteUser(email));
   }),
 
   'POST /admin/users/{username}/invite': adminOnly(async (event) => {
+    requireInvites();
     const user = await target(event);
     if (user.status !== 'FORCE_CHANGE_PASSWORD') throw badRequest('This user has already signed in; there is no invitation to resend.');
     await resendInvite(user.username);
