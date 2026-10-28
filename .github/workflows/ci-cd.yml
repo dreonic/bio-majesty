@@ -1,8 +1,10 @@
 # Pull requests: typecheck, test, build and synthesize both stages (with cdk-nag).
-# Pushes to main: the same checks, then deploy the dev stage to AWS with the
-# exact app that was synthesized.
-# Run workflow (main) with target prod: the same checks, the prod diff in the run
-# summary, then the prod deploy once a reviewer approves the `production` environment.
+# Pushes to main: the same checks, then deploy the dev stage with the exact app that
+# was synthesized, post the prod diff in the run summary, and deploy prod once a
+# reviewer approves the `production` environment (leave it waiting or reject it to
+# keep that commit out of prod).
+# Run workflow (main) redeploys one stage without a new commit: dev, or prod after
+# its diff and the approval.
 # AWS access is through GitHub OIDC: no keys are stored in GitHub. The role comes
 # from backend/lib/github-ci-stack.ts.
 name: CI/CD
@@ -18,7 +20,7 @@ on:
   workflow_dispatch:
     inputs:
       target:
-        description: Stage to deploy (prod waits for approval after its diff)
+        description: Stage to redeploy (prod waits for approval after its diff)
         type: choice
         options: [dev, prod]
         default: dev
@@ -30,11 +32,12 @@ env:
   AWS_REGION: ap-southeast-1
   AWS_DEPLOY_ROLE_ARN: arn:aws:iam::297580066575:role/bio-majesty-github-deploy
 
-# One run per branch at a time; a new push to a pull request cancels its older run,
-# while deploys on main queue instead of being cut off halfway.
+# A new push to a pull request cancels its older run. Runs on main don't wait for each
+# other (a prod deploy can sit waiting for approval); their deploy jobs queue per stage
+# instead, so a deploy is never cut off halfway.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: true
 
 jobs:
   check:
@@ -72,6 +75,10 @@ jobs:
     if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || inputs.target == 'dev')
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    # One dev deploy at a time; a newer one waiting replaces an older one that hasn't started.
+    concurrency:
+      group: deploy-dev
+      cancel-in-progress: false
     permissions:
       contents: read
       id-token: write
@@ -105,7 +112,7 @@ jobs:
   diff-prod:
     name: Diff (prod)
     needs: check
-    if: github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch' && inputs.target == 'prod'
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || inputs.target == 'prod')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -142,9 +149,16 @@ jobs:
 
   deploy-prod:
     name: Deploy (prod)
-    needs: diff-prod
+    # After a push, prod only follows a successful dev deploy.
+    needs: [diff-prod, deploy]
+    if: ${{ !cancelled() && needs.diff-prod.result == 'success' && (needs.deploy.result == 'success' || needs.deploy.result == 'skipped') }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    # One prod deploy at a time: while one waits for approval, the newest later one queues
+    # behind it (approve or reject the older one first).
+    concurrency:
+      group: deploy-prod
+      cancel-in-progress: false
     # Waits for a required reviewer; deployment branches are limited to main in the environment settings.
     environment:
       name: production
