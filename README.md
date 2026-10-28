@@ -30,18 +30,20 @@ Mock mode serves a fictional company (Acme Group), invented headlines, prices (f
 
 ## Configuration
 
-All deployment settings live in `backend/cdk.json` → `context` and can be overridden per command with `-c key=value`:
+All deployment settings live in `backend/cdk.json` → `context` and can be overridden per command with `-c key=value`. Settings that differ per stage sit in that stage's block under `stages` (`stages.dev`, `stages.prod`); a top-level key or `-c` flag of the same name wins over the block.
 
 | Key | Default | Notes |
 |---|---|---|
-| `stage` | `dev` | `prod` retains data (table, buckets, user pool) on stack deletion and disables the localhost callback |
+| `stage` | `dev` | Picks the `stages.<stage>` block. `prod` retains data (table, buckets, user pool) on stack deletion and disables the localhost callback |
+| `stackName` (per stage) | dev `BioMajesty-dev`, prod `news-accumulator` | CloudFormation stack name (default `<resourcePrefix>-<stage>`). Changing it creates a new, empty stack |
+| `resourcePrefix` (per stage) | dev `bio-majesty`, prod `news-accumulator` | Start of the stage's resource names: user pool, Cognito domain prefix, SSM parameters (`/<resourcePrefix>/<stage>/...`), schedules, vector bucket. Dev keeps the old codename because renaming would replace its user pool and data |
 | `region` | `ap-southeast-1` (Singapore) | **The one place to change the region**, e.g. `-c region=ap-southeast-3` for Jakarta (an opt-in region: enable it in the account first). The region must offer S3 Vectors, API Gateway REST response streaming and Cognito managed login (Singapore and Jakarta do) |
 | `account` | `297580066575` (the company account) | The AWS account to deploy to. A command run with another account's credentials (e.g. a personal default profile) stops with an account-mismatch error instead of deploying there. Use the company profile: `--profile biomajesty` or `$env:AWS_PROFILE='biomajesty'` |
 | `timeZone` | `Asia/Singapore` | The dashboard's clock: the daily-run times the accounts pick in Settings, the times the dashboard shows, and what "today" means in chat and news filters. Market data follows each asset's own exchange clock (e.g. Jakarta for IDX, New York for US listings). Changing it moves every account's run time to the same clock time in the new zone |
 | `embeddingModel` / `embeddingDimensions` | `google:gemini-embedding-2` / `768` | Changing either creates a new vector index; saved articles must then be re-indexed |
-| `alarmEmail` | — | Receives CloudWatch alarm emails (pipeline failures, ingest errors) |
-| `customDomainName` / `customDomainCertificateArn` | — | Optional custom domain for the dashboard (ACM certificate in us-east-1) |
-| `googleClientId` | — | Adds **Sign in with Google** to the login page (see *Google sign-in* below). The client secret goes in the SSM parameter `/bio-majesty/<stage>/google-client-secret` |
+| `alarmEmail` (per stage) | — | Receives CloudWatch alarm emails (pipeline failures, ingest errors). The repository is public, so to keep addresses out of it, subscribe them to the `AlarmTopicArn` output instead: `aws sns subscribe --topic-arn <AlarmTopicArn> --protocol email --notification-endpoint you@example.com` (each address confirms by email; deploys leave such subscriptions alone) |
+| `domainName` / `authDomainName` / `certificateArn` (per stage) | — | Optional custom domains for the dashboard and for the login page, with one ACM certificate in **us-east-1** covering both (see *Custom domains* below) |
+| `googleClientId` (per stage) | — | Adds **Sign in with Google** to the login page (see *Google sign-in* below). The client secret goes in the SSM parameter `/<resourcePrefix>/<stage>/google-client-secret` |
 
 Runtime settings (profile, categories, assets, AI model per task, daily run time, data-source toggles, Telegram, volume alerts, "use past corrections") are edited in the dashboard's **Settings** page, separately for each account.
 
@@ -56,20 +58,26 @@ npm run synth                          # local synth + cdk-nag security checks (
 
 npx cdk bootstrap aws://<ACCOUNT>/<REGION>   # once per account/region (run in backend/)
 npm run deploy                          # builds the frontend, then `cdk deploy --all` (dev stage)
-# production: npm run build && (cd backend && npx cdk deploy -c stage=prod)
+npm run deploy:prod                     # the same for the prod stage (stack news-accumulator)
 ```
+
+`npm run diff:prod -w backend` / `npm run synth:prod -w backend` show what a prod deploy would change. Normally prod is deployed from GitHub Actions (below); `deploy:prod` is the fallback from your machine with the company profile.
 
 The stack prints `DashboardUrl`, `ApiUrl`, `UserPoolId`, `UserPoolClientId`, `CognitoDomain`, `ApiKeysParameter` and `StockIngestFunction`.
 
 ### Continuous deployment (GitHub Actions)
 
-[`.github/workflows/ci-cd.yml`](.github/workflows/ci-cd.yml) typechecks, tests, builds and synthesizes (with cdk-nag) every pull request and every push to `main`. A push to `main` then deploys the dev stage with the app that passed those checks, and confirms the dashboard and its `config.json` respond. Changes that only touch Markdown or `docs/` don't redeploy. To redeploy without a change, use **Actions → CI/CD → Run workflow** on `main`.
+[`.github/workflows/ci-cd.yml`](.github/workflows/ci-cd.yml) typechecks, tests, builds and synthesizes (with cdk-nag) every pull request and every push to `main`. A push to `main` then deploys the dev stage with the app that passed those checks, and confirms the dashboard and its `config.json` respond. Changes that only touch Markdown or `docs/` don't redeploy. To redeploy dev without a change, use **Actions → CI/CD → Run workflow** on `main`.
+
+**Prod** is only deployed by hand: **Actions → CI/CD → Run workflow** on `main` with target `prod`. The run repeats the checks, posts the prod diff (`cdk diff` against the deployed stack, no AWS changes) in its summary, then waits. Read the diff and press **Review deployments → Approve** to deploy exactly that synthesized app; reject to stop.
 
 GitHub signs in to AWS through OIDC, so no AWS keys are stored in GitHub. The role `bio-majesty-github-deploy` can only be assumed by workflows on `main` of `dreonic/bio-majesty` (matched by the account and repository IDs GitHub puts in its token, so a renamed or re-created repository doesn't qualify), and it can do nothing except assume the CDK bootstrap roles (the same path a local `cdk deploy` takes). Create it once per account, from your machine with the company profile:
 
 ```bash
 npm run deploy:github-ci -w backend -- --profile biomajesty   # stack BioMajesty-GitHubCi
 ```
+
+The prod deploy job runs in the GitHub environment `production`, and the role also trusts that environment's jobs, so the environment's rules are what guard prod. Create it once under **Settings → Environments → New environment** `production`: tick **Required reviewers** (add yourself; leave *Prevent self-review* off if you approve your own runs) and set **Deployment branches and tags** to *Selected branches* → `main`.
 
 The pipeline deploys what is committed: settings in `backend/cdk.json` (e.g. `googleClientId`) only reach AWS once they're pushed to `main`. Run history and the deployed URL are under the repository's **Actions** tab.
 
@@ -95,11 +103,20 @@ AWS_PROFILE=biomajesty AWS_REGION=ap-southeast-1 npm run migrate:digest-overall 
 
 Run it without `--dry-run` right before pushing that version and again right after its deploy (it only adds the attribute, and is idempotent).
 
+### Custom domains
+
+A stage can serve the dashboard on its own domain (`domainName`, e.g. `news.example.com`) and the Cognito login page on another (`authDomainName`, e.g. `login.news.example.com`). Both are CloudFront distributions, so they need one ACM certificate in **us-east-1** (whatever the stack's region) that covers both names:
+
+1. Request the certificate in ACM in us-east-1 (both names, or a wildcard such as `*.example.com`), add the validation CNAMEs it shows at your DNS provider, and wait until it is *Issued*.
+2. Put `domainName` and `certificateArn` in the stage's block in `backend/cdk.json` and deploy. Point `domainName` at the `DashboardDnsTarget` output (a CNAME, or an alias A/AAAA record on Route 53).
+3. Cognito only accepts a login domain whose parent domain already resolves (for `login.news.example.com`, `news.example.com` must answer), so add `authDomainName` once step 2's record is live, deploy again, and point `authDomainName` at the `LoginDnsTarget` output. The login page then moves there (the prefix domain keeps working), and the dashboard picks it up from its `config.json`.
+4. With Google sign-in on, add `https://<authDomainName>` and `https://<authDomainName>/oauth2/idpresponse` to the Google OAuth client (see *Google sign-in*).
+
 ### After the first deploy
 
 1. **API keys** — all keys live in one encrypted SSM parameter (SecureString, free on the standard tier with the AWS managed key `aws/ssm`), named by the `ApiKeysParameter` stack output. CloudFormation can't create SecureStrings, so create it yourself (leave out the providers you don't use, or keep `REPLACE_ME`):
    ```bash
-   aws ssm put-parameter --name /bio-majesty/dev/api-keys --type SecureString --value '{
+   aws ssm put-parameter --name /bio-majesty/dev/api-keys --type SecureString   # prod: /news-accumulator/prod/api-keys --value '{
      "ANTHROPIC_API_KEY": "...",
      "GOOGLE_GENERATIVE_AI_API_KEY": "...",
      "OPENAI_API_KEY": "REPLACE_ME",
@@ -109,18 +126,17 @@ Run it without `--dry-run` right before pushing that version and again right aft
    }'
    ```
    To change a key later, edit the JSON in the console (Systems Manager → Parameter Store → the parameter → Edit) or run the same command with `--overwrite`; the Lambdas pick it up within 5 minutes. With the defaults you need an Anthropic key (Claude models) and a Google key (Gemini embeddings for chat search). Providers without a key are simply unavailable in Settings.
-2. **Users** — there is no public sign-up. Invite each user:
+2. **Users** — there is no public sign-up. Manage people on the dashboard's **Admin** page, which only members of the Cognito group `admins` see. Make yourself the first admin once, after your first sign-in (Google users are listed in the console as `google_<number>`):
    ```bash
-   aws cognito-idp admin-create-user --user-pool-id <UserPoolId> --username someone@company.com \
-     --user-attributes Name=email,Value=someone@company.com Name=email_verified,Value=true
+   aws cognito-idp admin-add-user-to-group --user-pool-id <UserPoolId> --username <your username> --group-name dashboard-users
+   aws cognito-idp admin-add-user-to-group --user-pool-id <UserPoolId> --username <your username> --group-name admins
    ```
-   Cognito emails a temporary password; MFA (authenticator app) can be enabled at first login.
+   Then sign out and in again. On the Admin page you can:
+   - **Invite** someone by email: Cognito emails a temporary password (valid 7 days; *Resend* sends a new one), and the user gets access straight away. MFA (authenticator app) can be enabled at first login.
+   - **Give access** to people who signed in with Google: signing in is not enough, they appear under *Waiting for access* until an admin lets them in (they then press *Check again*).
+   - Switch **Access** and **Admin** per user, **Disable** someone (they can't sign in; their data stays), or **Delete** them with all their data (news, categories, assets, settings, chats, Telegram link). Deleting waits if the account's news run is in progress, locks the user out at once, and removes the data in the background (the `AccountDelete` function).
 
-   **Access** — signing in is not enough: only members of the `dashboard-users` group can use the dashboard (the API returns 403 to anyone else, and the page shows *No access yet*). Add each user to the group in the **Cognito console** (User pools → bio-majesty-dev → Groups → dashboard-users → Add user to group) or with:
-   ```bash
-   aws cognito-idp admin-add-user-to-group --user-pool-id <UserPoolId> --username someone@company.com --group-name dashboard-users
-   ```
-   Removing someone from the group takes effect when their login token renews (within an hour), and stops their daily runs and price refreshes; *Disable user* in the console also stops them signing in again.
+   Removing access or disabling someone takes effect when their sign-in renews (within an hour), and stops their daily runs and price refreshes. Admins can't remove their own access or admin role, or disable or delete themselves. The Cognito console (User pools → bio-majesty-dev or news-accumulator-prod) still works for the same things.
 
    **Every member is a separate account.** A new account starts blank: no profile subject, categories or assets, so no news runs until it adds a category. Its data stays in its own partition: nobody else can see its news, chats or settings, and its daily run uses only its own categories (so two accounts following the same company each pay for their own AI tagging).
 
@@ -132,9 +148,10 @@ Run it without `--dry-run` right before pushing that version and again right aft
       ```bash
       aws ssm put-parameter --name /bio-majesty/dev/google-client-secret --type String --value '<client secret>'
       ```
+      Create it before deploying: CloudFormation reads it during the deploy and fails if it is missing. Each stage has its own parameter (prod: `/news-accumulator/prod/google-client-secret`).
       It is a plain `String`, not a SecureString: CloudFormation can't pass SecureStrings to Cognito (and Cognito shows the secret to anyone allowed to view the identity provider anyway). CloudFormation reads it only when it creates or changes the Google identity provider, so after changing the secret later, also paste it into the Cognito console (the user pool → Social and external providers → Google → Edit).
-   3. A colleague signs in with Google once (they see *No access yet*), then you add them to `dashboard-users`; they press *Check again*. In the console, Google users are listed as `google_<number>` with their email.
-3. **Telegram** — create a bot with [@BotFather](https://t.me/BotFather), put its token in the API keys parameter (`TELEGRAM_BOT_TOKEN`), then each account uses **Settings → Connect Telegram** and presses *Start* in the chat that should receive its notifications (one bot serves every account).
+   3. A colleague signs in with Google once (they see *No access yet*), then an admin gives them access on the Admin page (*Waiting for access*); they press *Check again*.
+3. **Telegram** — create a bot with [@BotFather](https://t.me/BotFather), put its token in the API keys parameter (`TELEGRAM_BOT_TOKEN`), then each account uses **Settings → Connect Telegram** and presses *Start* in the chat that should receive its notifications (one bot serves every account of a stage). Give each stage its own bot: the stages poll the bot for link codes, and two stages sharing one token would take each other's updates.
 4. **Profile** — **Settings → Profile**: who or what the news is about (blank for a new account; left empty, the AI follows the topics of the categories) and what sentiment is judged against.
 5. **Categories** — **Settings → Add category**. Start from a template (named after the profile's subject: the subject itself, regulation and policy, competitors, industry and market, people and leadership) or your own name and description. *Suggest with AI* drafts the queries, each with the Google News edition (country and language) to search. Each new category runs a backfill and joins the daily run when it finishes.
 6. **Assets** — **Settings → Assets → Add** (up to 10): type a name to search, or a symbol in the source's own format, and check the match shown under the box. Yahoo Finance is always offered; EODHD joins it in the source list once `EODHD_API_KEY` is in the API keys parameter. The history loads in the background; **Resync** reloads it.

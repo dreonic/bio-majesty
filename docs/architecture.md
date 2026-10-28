@@ -83,6 +83,7 @@ Everything an account owns lives in its partition `USER#<sub>`; market data is s
 
 - No public sign-up; Cognito authorizer on every non-preflight method (asserted in `backend/test/stack.test.ts`).
 - Only members of the Cognito group `dashboard-users` can use the API (checked in the router and the chat stream); optional Google sign-in (`googleClientId`) creates users for any Google account, so the group is what grants access.
+- Members of `admins` (who also need `dashboard-users`) manage users on the Admin page: `/admin/users` (`backend/src/handlers/api/admin.ts`, the only function allowed to create users and change groups). Deleting a user locks them out, then the `AccountDelete` function deletes the account's partition and objects (`backend/src/repo/account-data.ts`; the vectors go through the indexer's stream) and finally the Cognito user.
 - Accounts are isolated: every item and object is keyed by the caller's `sub` from the ID token, the chat's vector search always filters on `owner`, and stock routes only serve the caller's own assets.
 - Least-privilege grants per Lambda; private, encrypted buckets behind CloudFront OAC.
 - Article text is treated as untrusted (delimited in prompts, structured output); chat tools are read-only.
