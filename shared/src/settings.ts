@@ -164,7 +164,7 @@ export const SettingsUpdateSchema = z.object({
 });
 export type SettingsUpdate = z.infer<typeof SettingsUpdateSchema>;
 
-const DEFAULT_MODEL = 'anthropic:claude-opus-5-5';
+const DEFAULT_MODEL = 'anthropic:claude-haiku-5-5';
 
 export const DEFAULT_SETTINGS: Settings = {
   models: {

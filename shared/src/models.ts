@@ -44,7 +44,7 @@ export const LANGUAGE_MODELS: readonly CatalogModel[] = [
     label: 'Claude Opus 5.5',
     tier: 'flagship',
     price: '$4 / $20',
-    notes: 'Default. Best judgment on nuanced sentiment.',
+    notes: 'Best judgment on nuanced sentiment.',
   },
   {
     id: 'anthropic:claude-sonnet-5-5',
@@ -59,7 +59,7 @@ export const LANGUAGE_MODELS: readonly CatalogModel[] = [
     label: 'Claude Haiku 5.5',
     tier: 'fast',
     price: '$0.10 / $0.50',
-    notes: 'Cheapest option for bulk tagging.',
+    notes: 'Default. The smallest and cheapest Claude model.',
   },
   {
     id: 'anthropic:claude-fable-5-1',

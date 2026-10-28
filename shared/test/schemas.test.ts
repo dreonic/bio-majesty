@@ -33,7 +33,7 @@ import {
 describe('settings', () => {
   it('ships valid defaults (opus 5.5, context off, volume alerts on, a blank profile and no assets)', () => {
     expect(SettingsSchema.parse(DEFAULT_SETTINGS)).toEqual(DEFAULT_SETTINGS);
-    expect(DEFAULT_SETTINGS.models.tagging.model).toBe('anthropic:claude-opus-5-5');
+    expect(DEFAULT_SETTINGS.models.tagging.model).toBe('anthropic:claude-haiku-5-5');
     expect(DEFAULT_SETTINGS.learning.useFeedbackContext).toBe(false);
     expect(DEFAULT_SETTINGS.stock).toEqual({ assets: [], volumeAlerts: true, volumeRatio: 2.5 });
     expect(DEFAULT_SETTINGS.profile).toEqual({ subject: '', context: '', sentimentAsset: null });
