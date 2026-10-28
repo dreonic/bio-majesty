@@ -3,7 +3,7 @@ import { IsoDateTime } from './common';
 
 /** A user of the pool as the Admin page shows it. */
 export const AdminUserSchema = z.object({
-  /** Cognito username: a UUID for invited users, google_<id> for Google sign-ins. */
+  /** Cognito username: a UUID for invited users, Google_<id> for Google sign-ins. */
   username: z.string(),
   /** Owner of the account's data (its partition). */
   sub: z.string(),

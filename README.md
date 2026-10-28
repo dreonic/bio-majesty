@@ -126,7 +126,7 @@ A stage can serve the dashboard on its own domain (`domainName`, e.g. `news.exam
    }'
    ```
    To change a key later, edit the JSON in the console (Systems Manager → Parameter Store → the parameter → Edit) or run the same command with `--overwrite`; the Lambdas pick it up within 5 minutes. With the defaults you need an Anthropic key (Claude models) and a Google key (Gemini embeddings for chat search). Providers without a key are simply unavailable in Settings.
-2. **Users** — there is no public sign-up. Manage people on the dashboard's **Admin** page, which only members of the Cognito group `admins` see. Make yourself the first admin once, after your first sign-in (Google users are listed in the console as `google_<number>`):
+2. **Users** — there is no public sign-up. Manage people on the dashboard's **Admin** page, which only members of the Cognito group `admins` see. Make yourself the first admin once, after your first sign-in (Google users are listed in the console as `Google_<number>`):
    ```bash
    aws cognito-idp admin-add-user-to-group --user-pool-id <UserPoolId> --username <your username> --group-name dashboard-users
    aws cognito-idp admin-add-user-to-group --user-pool-id <UserPoolId> --username <your username> --group-name admins

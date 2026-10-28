@@ -68,7 +68,7 @@ describe('admin API', () => {
   it('lists every user with their access, admin role and sign-in method', async () => {
     cognito.on(ListUsersCommand).resolves({
       Users: [
-        { Username: 'google_123', Attributes: attrs('s2', 'b@example.com'), UserStatus: 'EXTERNAL_PROVIDER', Enabled: true, UserCreateDate: new Date('2026-10-02') },
+        { Username: 'Google_123', Attributes: attrs('s2', 'b@example.com'), UserStatus: 'EXTERNAL_PROVIDER', Enabled: true, UserCreateDate: new Date('2026-10-02') },
         { Username: 'admin-user', Attributes: attrs('admin-sub', 'a@example.com'), UserStatus: 'CONFIRMED', Enabled: true, UserCreateDate: new Date('2026-10-01') },
       ],
     });
@@ -80,7 +80,7 @@ describe('admin API', () => {
     expect(body.me).toBe('admin-user');
     expect(body.users.map((u) => [u.username, u.provider, u.access, u.admin])).toEqual([
       ['admin-user', 'email', true, true],
-      ['google_123', 'google', false, false],
+      ['Google_123', 'google', false, false],
     ]);
   });
 

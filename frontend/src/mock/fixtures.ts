@@ -279,8 +279,8 @@ const user = (username: string, email: string, extra: Partial<AdminUser>, daysAg
   sub: `sub-${username}`,
   email,
   name: null,
-  provider: username.startsWith('google_') ? 'google' : 'email',
-  status: username.startsWith('google_') ? 'EXTERNAL_PROVIDER' : 'CONFIRMED',
+  provider: username.startsWith('Google_') ? 'google' : 'email',
+  status: username.startsWith('Google_') ? 'EXTERNAL_PROVIDER' : 'CONFIRMED',
   enabled: true,
   access: true,
   admin: false,
@@ -290,8 +290,8 @@ const user = (username: string, email: string, extra: Partial<AdminUser>, daysAg
 
 export const adminUsers: AdminUser[] = [
   user('demo-admin', 'demo@example.com', { name: 'Demo Admin', admin: true }, 40),
-  user('google_104', 'analyst@example.com', { name: 'Avery Analyst' }, 21),
+  user('Google_104', 'analyst@example.com', { name: 'Avery Analyst' }, 21),
   user('invited-1', 'new.colleague@example.com', { status: 'FORCE_CHANGE_PASSWORD' }, 2),
-  user('google_207', 'someone@gmail.example', { name: 'Sam Someone', access: false }, 1),
+  user('Google_207', 'someone@gmail.example', { name: 'Sam Someone', access: false }, 1),
   user('former-1', 'former@example.com', { enabled: false, access: false }, 90),
 ];

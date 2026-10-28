@@ -40,8 +40,8 @@ function toAdminUser(user: CognitoUser, groups: { access: boolean; admin: boolea
     sub: attr('sub') ?? '',
     email: attr('email'),
     name: attr('name'),
-    // Google sign-ins get usernames like google_1234567890.
-    provider: username.startsWith('google_') ? 'google' : 'email',
+    // Google sign-ins get usernames like Google_1234567890 (the provider name, then the Google ID).
+    provider: /^google_/i.test(username) ? 'google' : 'email',
     status: user.UserStatus ?? 'UNKNOWN',
     enabled: user.Enabled !== false,
     ...groups,
