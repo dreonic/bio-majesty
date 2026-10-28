@@ -174,9 +174,11 @@ jobs:
       - name: Check the dashboard is up
         id: check
         working-directory: backend
+        # Checks the CloudFront address, which answers before (and without) the custom domain's DNS record.
         run: |
           url=$(jq -r '[.[] | .DashboardUrl | select(.)] | first' cdk-outputs.json)
-          curl -fsS --retry 3 -o /dev/null "$url/"
-          curl -fsS --retry 3 "$url/config.json" | jq -e '.apiUrl' > /dev/null
+          cdn=$(jq -r '[.[] | .DashboardDnsTarget // empty | "https://\(.)"] | first // empty' cdk-outputs.json)
+          curl -fsS --retry 3 -o /dev/null "${cdn:-$url}/"
+          curl -fsS --retry 3 "${cdn:-$url}/config.json" | jq -e '.apiUrl' > /dev/null
           echo "url=$url" >> "$GITHUB_OUTPUT"
           echo "Deployed ${GITHUB_SHA::7} to $url" >> "$GITHUB_STEP_SUMMARY"
