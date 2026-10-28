@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { IsoDateTime } from './common';
 import { DEFAULT_EMBEDDING_DIMENSIONS, DEFAULT_EMBEDDING_MODEL, parseModelRef } from './models';
 import { AssetIdSchema } from './stock';
+import { TelegramConnectionSchema } from './telegram';
 
 /** LLM tasks whose model can be chosen in Settings. */
 export const AI_TASKS = ['querySuggest', 'prefilter', 'tagging', 'digest', 'chat'] as const;
@@ -134,9 +135,8 @@ export const SettingsViewSchema = SettingsSchema.extend({
   embedding: z.object({ model: z.string(), dimensions: z.number() }),
   telegram: z.object({
     configured: z.boolean(),
-    linked: z.boolean(),
-    chatTitle: z.string().nullable(),
-    linkedAt: IsoDateTime.nullable(),
+    /** Every chat and topic the account's notifications go to. */
+    connections: z.array(TelegramConnectionSchema),
   }),
   configuredProviders: z.array(z.string()),
   stage: z.string(),

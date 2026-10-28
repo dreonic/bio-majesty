@@ -20,13 +20,13 @@ import { createRouter } from '../../lib/router';
 import { isTelegramConfigured } from '../../notify/telegram';
 import { listRuns } from '../../repo/runs';
 import { getSettings, mergeSettings, saveSettings } from '../../repo/settings';
-import { getTelegramLink } from '../../repo/telegram';
+import { listTelegramLinks } from '../../repo/telegram';
 
 async function settingsView(sub: string): Promise<SettingsView> {
   const [settings, providers, telegram, telegramConfigured] = await Promise.all([
     getSettings(sub),
     configuredProviders(),
-    getTelegramLink(sub),
+    listTelegramLinks(sub),
     isTelegramConfigured(),
   ]);
   return {
@@ -34,9 +34,7 @@ async function settingsView(sub: string): Promise<SettingsView> {
     embedding: { model: env.embeddingModel || DEFAULT_EMBEDDING.model, dimensions: env.embeddingDimensions },
     telegram: {
       configured: telegramConfigured,
-      linked: telegram.chatId !== null,
-      chatTitle: telegram.chatTitle,
-      linkedAt: telegram.linkedAt,
+      connections: telegram.map(({ id, chatTitle, kind, linkedAt }) => ({ id, chatTitle, kind, linkedAt })),
     },
     configuredProviders: providers,
     stage: env.stage,

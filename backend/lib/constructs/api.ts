@@ -188,9 +188,10 @@ export class ApiConstruct extends Construct {
     route('/stock/export', { GET: stock });
     route('/stock/resync', { POST: stock });
 
-    route('/telegram/link', { POST: telegram, DELETE: telegram });
+    route('/telegram/link', { POST: telegram });
     route('/telegram/link/verify', { POST: telegram });
-    route('/telegram/test', { POST: telegram });
+    route('/telegram/links/{id}', { DELETE: telegram });
+    route('/telegram/links/{id}/test', { POST: telegram });
 
     route('/admin/users', { GET: admin, POST: admin });
     route('/admin/users/{username}', { PATCH: admin, DELETE: admin });

@@ -1,32 +1,36 @@
-import { GetCommand, PutCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
-import { ddb, table, ttlInDays } from './client';
-import { keys } from './keys';
+import { DeleteCommand, GetCommand, PutCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
+import type { TelegramLinkKind } from '@bio-majesty/shared';
+import { ddb, queryPrefix, stripKeys, table, ttlInDays } from './client';
+import { accountPk, keys } from './keys';
 
-/** The Telegram chat (and, in a forum supergroup, the topic) an account's digests and alerts go to. */
+/** One chat (and, in a forum supergroup, one topic) that gets the account's digests and alerts. */
 export interface TelegramLink {
-  chatId: number | null;
+  /** `<chatId>_<topicId or 0>`: connecting the same chat or topic again replaces it. */
+  id: string;
+  chatId: number;
   /** Topic (message_thread_id) inside a forum supergroup; null for a private chat, a plain group or the General topic. */
   topicId: number | null;
   /** "Chat" or "Group › Topic". */
-  chatTitle: string | null;
-  linkedAt: string | null;
+  chatTitle: string;
+  kind: TelegramLinkKind;
+  linkedAt: string;
 }
 
-export const UNLINKED: TelegramLink = { chatId: null, topicId: null, chatTitle: null, linkedAt: null };
+export const telegramLinkId = (chatId: number, topicId: number | null) => `${chatId}_${topicId ?? 0}`;
 
-export async function getTelegramLink(sub: string): Promise<TelegramLink> {
-  const res = await ddb().send(new GetCommand({ TableName: table(), Key: keys.telegram(sub) }));
-  if (!res.Item) return { ...UNLINKED };
-  return {
-    chatId: (res.Item.chatId as number | null) ?? null,
-    topicId: (res.Item.topicId as number | null) ?? null,
-    chatTitle: (res.Item.chatTitle as string | null) ?? null,
-    linkedAt: (res.Item.linkedAt as string | null) ?? null,
-  };
+/** The account's connections, oldest first. */
+export async function listTelegramLinks(sub: string): Promise<TelegramLink[]> {
+  const items = await queryPrefix(accountPk(sub), 'TELEGRAM#');
+  return items.map((i) => stripKeys(i) as unknown as TelegramLink).sort((a, b) => a.linkedAt.localeCompare(b.linkedAt));
 }
 
 export async function putTelegramLink(sub: string, link: TelegramLink): Promise<void> {
-  await ddb().send(new PutCommand({ TableName: table(), Item: { ...keys.telegram(sub), ...link } }));
+  await ddb().send(new PutCommand({ TableName: table(), Item: { ...keys.telegramChat(sub, link.id), ...link } }));
+}
+
+export async function deleteTelegramLink(sub: string, id: string): Promise<boolean> {
+  const res = await ddb().send(new DeleteCommand({ TableName: table(), Key: keys.telegramChat(sub, id), ReturnValues: 'ALL_OLD' }));
+  return Boolean(res.Attributes);
 }
 
 /** Next getUpdates offset of the (single) bot, so old /start messages are not re-read. */
@@ -48,14 +52,16 @@ export async function setUpdateOffset(offset: number): Promise<void> {
 
 export interface LinkCode {
   sub: string;
+  /** Which kind of chat the code may connect: a private code is refused in a group, and the other way round. */
+  kind: TelegramLinkKind;
   expiresAt: number;
   /** Set once the code's /start message was seen (possibly while another account was checking). */
   linkedChatTitle: string | null;
 }
 
-export async function putLinkCode(code: string, sub: string): Promise<void> {
+export async function putLinkCode(code: string, sub: string, kind: TelegramLinkKind): Promise<void> {
   await ddb().send(
-    new PutCommand({ TableName: table(), Item: { ...keys.telegramLink(code), sub, expiresAt: ttlInDays(1) } }),
+    new PutCommand({ TableName: table(), Item: { ...keys.telegramLink(code), sub, kind, expiresAt: ttlInDays(1) } }),
   );
 }
 
@@ -64,6 +70,7 @@ export async function getLinkCode(code: string): Promise<LinkCode | null> {
   if (!res.Item) return null;
   return {
     sub: String(res.Item.sub),
+    kind: res.Item.kind as TelegramLinkKind,
     expiresAt: Number(res.Item.expiresAt),
     linkedChatTitle: (res.Item.linkedChatTitle as string | undefined) ?? null,
   };

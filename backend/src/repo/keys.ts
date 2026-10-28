@@ -21,7 +21,8 @@ export const keys = {
   digest: (sub: string, createdAt: string, id: string) => ({ PK: accountPk(sub), SK: `DIGEST#${createdAt}#${id}` }),
   feedback: (sub: string, decidedAt: string, articleId: string) => ({ PK: accountPk(sub), SK: `FEEDBACK#${decidedAt}#${articleId}` }),
   settings: (sub: string) => ({ PK: accountPk(sub), SK: 'SETTINGS' }),
-  telegram: (sub: string) => ({ PK: accountPk(sub), SK: 'TELEGRAM' }),
+  /** One of the account's Telegram connections (`id` from telegramLinkId). */
+  telegramChat: (sub: string, id: string) => ({ PK: accountPk(sub), SK: `TELEGRAM#${id}` }),
   /** The bot's getUpdates offset (one bot for every account). */
   telegramBot: () => ({ PK: 'TELEGRAM', SK: 'BOT' }),
   telegramLink: (code: string) => ({ PK: `TGLINK#${code}`, SK: 'TGLINK' }),

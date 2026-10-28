@@ -104,6 +104,13 @@ AWS_PROFILE=biomajesty AWS_REGION=ap-southeast-1 npm run migrate:models-haiku -w
   --function <StockIngestFunction> --dry-run      # then without --dry-run
 ```
 
+Accounts now have several Telegram connections (`TELEGRAM#<id>` items) instead of one `TELEGRAM` item. `migrate:telegram-links` writes each linked account's connection as a new item and keeps the old one; run it right before pushing that version and again right after its deploy, then `--cleanup --yes` deletes the old items:
+
+```bash
+AWS_PROFILE=biomajesty AWS_REGION=ap-southeast-1 npm run migrate:telegram-links -w backend -- \
+  --function <StockIngestFunction> --dry-run      # then without --dry-run; later --cleanup --yes
+```
+
 Digests now carry the run's overall sentiment (`overall`, null when the digest model failed). `migrate:digest-overall` gives the digests stored before it `overall: null`:
 
 ```bash
@@ -161,11 +168,11 @@ A stage can serve the dashboard on its own domain (`domainName`, e.g. `news.exam
       Create it before deploying: CloudFormation reads it during the deploy and fails if it is missing. Each stage has its own parameter (prod: `/news-accumulator/prod/google-client-secret`).
       It is a plain `String`, not a SecureString: CloudFormation can't pass SecureStrings to Cognito (and Cognito shows the secret to anyone allowed to view the identity provider anyway). CloudFormation reads it only when it creates or changes the Google identity provider, so after changing the secret later, also paste it into the Cognito console (the user pool → Social and external providers → Google → Edit).
    3. A colleague signs in with Google once (they see *No access yet*), then an admin gives them access on the Admin page (*Waiting for access*); they press *Check again*.
-3. **Telegram** — create a bot with [@BotFather](https://t.me/BotFather) and put its token in the API keys parameter (`TELEGRAM_BOT_TOKEN`). Each account then uses **Settings → Connect Telegram**, which offers two ways (one bot serves every account of a stage):
+3. **Telegram** — create a bot with [@BotFather](https://t.me/BotFather) and put its token in the API keys parameter (`TELEGRAM_BOT_TOKEN`). Each account then connects one or more chats in **Settings → Telegram notifications** (up to 10; one bot serves every account of a stage). Pick the kind first:
    - **Private chat**: open the bot from the link and press *Start*.
    - **Group or topic**: add the bot to the group, then send the shown command (`/start@<bot> <code>`) in the group, or in the topic of a forum supergroup that should get that account's notifications. Several accounts can share one supergroup, each linked to its own topic; everyone in the group sees what is posted there. The bot needs no admin rights (it can't post in a closed topic).
 
-   Digests, run failures and volume alerts then go to that chat or topic. Give each stage its own bot: the stages poll the bot for link codes, and two stages sharing one token would take each other's updates.
+   Each code only connects its kind of chat: Telegram sends `/start` by itself when you open a bot you've talked to before, so a group code can't end up in a private chat. Digests, run failures and volume alerts go to every connected chat or topic; each one has its own *Send test* and *Disconnect*. Give each stage its own bot: the stages poll the bot for link codes, and two stages sharing one token would take each other's updates.
 4. **Profile** — **Settings → Profile**: who or what the news is about (blank for a new account; left empty, the AI follows the topics of the categories) and what sentiment is judged against.
 5. **Categories** — **Settings → Add category**. Start from a template (named after the profile's subject: the subject itself, regulation and policy, competitors, industry and market, people and leadership) or your own name and description. *Suggest with AI* drafts the queries, each with the Google News edition (country and language) to search. A new category can first search the past (a backfill: a number of days, weeks, months or years, up to about 3 years; default 6 months) and joins the daily run when it finishes. **Backfill** runs another one later; *Cancel backfill* stops a running one (items already tagged stay in the Review tab), and deleting a category stops its backfill too. The Categories section sits below AI models in Settings.
 6. **Assets** — **Settings → Assets → Add** (up to 10): type a name to search, or a symbol in the source's own format, and check the match shown under the box. Yahoo Finance is always offered; EODHD joins it in the source list once `EODHD_API_KEY` is in the API keys parameter. The history loads in the background; **Resync** reloads it.

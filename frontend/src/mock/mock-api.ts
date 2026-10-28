@@ -21,6 +21,7 @@ import {
   type StockRange,
   type StockSource,
   type SymbolMatch,
+  type TelegramLinkKind,
 } from '@bio-majesty/shared';
 import type { RuntimeConfig } from '../app/config';
 import { formatDate, formatPercent, formatPrice } from '../lib/format';
@@ -50,6 +51,8 @@ const state = {
   chats: new Map<string, unknown[]>(),
   decisions: [] as { changed: boolean }[],
   users: [...fx.adminUsers],
+  pendingTelegram: null as TelegramLinkKind | null,
+  verifyChecks: 0 as number | undefined,
 };
 
 const json = (body: unknown, status = 200) =>
@@ -403,22 +406,34 @@ async function route(method: string, url: URL, body: unknown): Promise<Response>
   }
 
   if (path === 'telegram/link' && method === 'POST') {
+    const kind = (body as { kind: TelegramLinkKind }).kind;
+    state.pendingTelegram = kind;
     return json({
-      code: 'demo',
-      deepLink: 'https://t.me/',
-      groupCommand: '/start@demo_bot demo',
+      kind,
+      code: 'demo-code',
+      deepLink: kind === 'private' ? 'https://t.me/' : null,
+      groupCommand: kind === 'group' ? '/start@demo_bot demo-code' : null,
       expiresAt: new Date(Date.now() + 600_000).toISOString(),
     });
   }
   if (path === 'telegram/link/verify') {
-    state.settings.telegram = { configured: true, linked: true, chatTitle: 'Demo chat', linkedAt: new Date().toISOString() };
-    return json({ linked: true, chatTitle: 'Demo chat' });
+    // Connects on the second check, so the waiting panel is visible for a moment.
+    if (!state.pendingTelegram || (state.verifyChecks = (state.verifyChecks ?? 0) + 1) < 2) return json({ linked: false, chatTitle: null });
+    const group = state.pendingTelegram === 'group';
+    const n = state.settings.telegram.connections.length + 1;
+    const connection = { id: `demo-${n}`, chatTitle: group ? `Demo group › Topic ${n}` : 'Demo Admin', kind: state.pendingTelegram, linkedAt: new Date().toISOString() };
+    state.settings.telegram.connections = [...state.settings.telegram.connections.filter((c) => c.chatTitle !== connection.chatTitle), connection];
+    state.pendingTelegram = null;
+    state.verifyChecks = 0;
+    return json({ linked: true, chatTitle: connection.chatTitle });
   }
-  if (path === 'telegram/link' && method === 'DELETE') {
-    state.settings.telegram = { configured: true, linked: false, chatTitle: null, linkedAt: null };
-    return json(null, 204);
+  if (seg[0] === 'telegram' && seg[1] === 'links' && seg[2]) {
+    if (method === 'DELETE') {
+      state.settings.telegram.connections = state.settings.telegram.connections.filter((c) => c.id !== decodeURIComponent(seg[2]!));
+      return json(null, 204);
+    }
+    return json({ sent: true });
   }
-  if (path === 'telegram/test') return json({ sent: true });
 
   if (path === 'admin/users' && method === 'GET') return json({ users: state.users, me: 'demo-admin', invites: true });
   if (path === 'admin/users' && method === 'POST') {

@@ -225,7 +225,10 @@ Not related, despite the name: other companies called Acme, and cartoon referenc
   },
   updatedAt: null,
   embedding: { model: 'google:gemini-embedding-2', dimensions: 768 },
-  telegram: { configured: true, linked: false, chatTitle: null, linkedAt: null },
+  telegram: {
+    configured: true,
+    connections: [{ id: '1001_0', chatTitle: 'Demo Admin', kind: 'private', linkedAt: iso(5 * DAY) }],
+  },
   configuredProviders: ['anthropic', 'google'],
   stage: 'demo',
   region: 'ap-southeast-1',

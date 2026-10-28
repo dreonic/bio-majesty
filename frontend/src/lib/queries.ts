@@ -31,6 +31,7 @@ import type {
   StockSearchResponse,
   StockSource,
   SuggestQueriesResponse,
+  TelegramLinkKind,
   TelegramLinkStartResponse,
   TelegramLinkVerifyResponse,
   TestModelResponse,
@@ -410,7 +411,7 @@ export function useResyncStock() {
 }
 
 export function useTelegramLink() {
-  return useMutation({ mutationFn: () => api<TelegramLinkStartResponse>('telegram/link', { method: 'POST' }) });
+  return useMutation({ mutationFn: (kind: TelegramLinkKind) => api<TelegramLinkStartResponse>('telegram/link', { method: 'POST', body: { kind } }) });
 }
 
 export function useTelegramVerify() {
@@ -423,16 +424,16 @@ export function useTelegramVerify() {
   });
 }
 
-export function useTelegramUnlink() {
+export function useTelegramDisconnect() {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: () => api<void>('telegram/link', { method: 'DELETE' }),
+    mutationFn: (id: string) => api<void>(`telegram/links/${encodeURIComponent(id)}`, { method: 'DELETE' }),
     onSettled: () => client.invalidateQueries({ queryKey: qk.settings }),
   });
 }
 
 export function useTelegramTest() {
-  return useMutation({ mutationFn: () => api<{ sent: boolean }>('telegram/test', { method: 'POST' }) });
+  return useMutation({ mutationFn: (id: string) => api<{ sent: boolean }>(`telegram/links/${encodeURIComponent(id)}/test`, { method: 'POST' }) });
 }
 
 export function useConversations() {
