@@ -111,6 +111,7 @@ export class DashboardStack extends Stack {
       buckets: [data.dataBucket, web.bucket],
       invokedFunctions: [...pipeline.pipelineFunctions, pipeline.stockIngestFn, api.deleteWorkerFn],
       stateMachines: [pipeline.dailyMachine, pipeline.backfillMachine],
+      scheduleGroups: [pipeline.dailyScheduleGroup.scheduleGroupName],
     });
   }
 }

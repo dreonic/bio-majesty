@@ -10,6 +10,8 @@ export interface NagRefs {
   /** Lambda functions invoked by Step Functions (LambdaInvoke grants `<fn>:*` for versions). */
   invokedFunctions: IConstruct[];
   stateMachines: IConstruct[];
+  /** Names of schedule groups whose schedules are created at runtime (one per profile). */
+  scheduleGroups: string[];
 }
 
 /**
@@ -71,6 +73,10 @@ export function applyNagSuppressions(stack: Stack, refs: NagRefs): void {
     const reason = 'Distributed Map child executions of this state machine.';
     rules[`AwsSolutions-IAM5[Resource::arn:${partition}:states:${region}:${account}:execution:${name}:*]`] = reason;
     rules[`AwsSolutions-IAM5[Resource::arn:${partition}:states:${region}:${account}:execution:${name}/*:*]`] = reason;
+  }
+  for (const group of refs.scheduleGroups) {
+    rules[`AwsSolutions-IAM5[Resource::arn:<AWS::Partition>:scheduler:${region}:${account}:schedule/${group}/*]`] =
+      "Each profile's daily-run schedule is created at runtime (named after the profile), inside this stack's schedule group.";
   }
 
   for (const [id, reason] of Object.entries(rules)) {
