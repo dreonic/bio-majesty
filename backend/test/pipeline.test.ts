@@ -69,6 +69,14 @@ describe('task planning', () => {
     expect(tasks.every((t) => t.mode === 'when' || t.provider === 'gdelt')).toBe(true);
   });
 
+  it('adds day-by-day Google News tasks for a longer window, while GDELT searches the exact window', () => {
+    const tasks = buildDailyTasks([category()], DEFAULT_SETTINGS, new Date('2026-10-11T06:00:00Z'), to);
+    const gnews = tasks.filter((t) => t.provider === 'gnews');
+    expect(gnews).toHaveLength(2 * 5); // per query: the last day, then 4 calendar days
+    expect(gnews.filter((t) => t.mode === 'when')).toHaveLength(2);
+    expect(tasks.find((t) => t.provider === 'gdelt')).toMatchObject({ from: '2026-10-11T06:00:00.000Z', to: to.toISOString(), mode: 'range' });
+  });
+
   it('searches a query once per edition on Google News but only once on GDELT', () => {
     const editions = category({ search: { ...category().search, queries: [{ q: 'acme', edition: 'US:en' }, { q: 'acme', edition: 'GB:en' }, { q: 'acme', edition: 'SG:en' }] } });
     const tasks = buildDailyTasks([editions, category({ id: 'cat2', search: { ...category().search, queries: [{ q: 'acme', edition: 'US:en' }] } })], DEFAULT_SETTINGS, from, to);

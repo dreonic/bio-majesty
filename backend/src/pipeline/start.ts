@@ -6,7 +6,7 @@ import { createRun, lastSuccessfulDailyRun } from '../repo/runs';
 import { getSettings } from '../repo/settings';
 import { GDELT_MAX_LOOKBACK_DAYS } from '../sources/gdelt';
 import type { SearchTask } from '../sources/types';
-import { backfillWindowDays, planWindows } from '../sources/windows';
+import { backfillWindowDays, dailyGoogleNewsWindows, planWindows } from '../sources/windows';
 import type { PipelineState } from './state';
 
 const DAY_MS = 86_400_000;
@@ -38,6 +38,7 @@ function onceForGdelt(entries: SearchTask['queries']): SearchTask['queries'] {
 export function buildDailyTasks(categories: Category[], settings: Settings, from: Date, to: Date): SearchTask[] {
   const tasks: SearchTask[] = [];
   const gdeltQueries: SearchTask['queries'] = [];
+  const gnewsWindows = dailyGoogleNewsWindows(from, to);
   for (const c of categories) {
     if (!c.active) continue;
     const sources = searchable(c, settings);
@@ -45,7 +46,9 @@ export function buildDailyTasks(categories: Category[], settings: Settings, from
     for (const q of c.search.queries) {
       const entry = { q: q.q, edition: q.edition, categoryId: c.id, exclude: c.search.exclude };
       if (sources.googleNews) {
-        tasks.push({ id: randomId(10), provider: 'gnews', categoryId: c.id, queries: [entry], from: from.toISOString(), to: to.toISOString(), mode: 'when' });
+        for (const w of gnewsWindows) {
+          tasks.push({ id: randomId(10), provider: 'gnews', categoryId: c.id, queries: [entry], from: w.from.toISOString(), to: w.to.toISOString(), mode: w.mode });
+        }
       }
       if (sources.gdelt) gdeltQueries.push(entry);
     }

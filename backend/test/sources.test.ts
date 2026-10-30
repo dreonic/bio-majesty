@@ -12,7 +12,7 @@ import {
   extractGoogleNewsId,
   parseGoogleNewsRss,
 } from '../src/sources/google-news-rss';
-import { backfillWindowDays, planWindows } from '../src/sources/windows';
+import { backfillWindowDays, dailyGoogleNewsWindows, planWindows, type SearchWindow } from '../src/sources/windows';
 
 const RSS = `<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0"><channel><title>"acme" - Google News</title>
@@ -42,6 +42,11 @@ describe('Google News RSS', () => {
       mode: 'when',
     });
     expect(q).toBe('"Acme Laboratorium" -acme.example -"image generation" when:1d');
+  });
+
+  it('never asks for more than the last day in a relative window', () => {
+    const long = { q: 'acme', from: new Date('2026-10-11T00:00:00Z'), to: new Date('2026-10-14T00:00:30Z'), mode: 'when' as const };
+    expect(buildGoogleNewsQuery(long)).toBe('acme when:1d');
   });
 
   it("builds absolute date ranges on the deployment's calendar (before: is exclusive)", () => {
@@ -157,6 +162,35 @@ describe('GDELT', () => {
     const meta = { query: 'q', lang: 'id', categoryId: 'c' } as const;
     expect(() => parseGdeltResponse("Parentheses may only be used around OR'd statements.", meta)).toThrow(/Parentheses may only/);
     expect(parseGdeltResponse('', meta)).toEqual([]);
+  });
+});
+
+describe('daily Google News windows', () => {
+  const to = new Date('2026-10-14T06:00:00+08:00');
+  const queries = (from: string) => {
+    vi.stubEnv('TIME_ZONE', 'Asia/Singapore');
+    const out = dailyGoogleNewsWindows(new Date(from), to).map((w: SearchWindow) => buildGoogleNewsQuery({ q: 'acme', ...w }));
+    vi.unstubAllEnvs();
+    return out;
+  };
+
+  it('searches only the last day when the run starts at, a little before or a little after its time', () => {
+    expect(queries('2026-10-13T06:00:00+08:00')).toEqual(['acme when:1d']);
+    expect(queries('2026-10-13T06:00:01+08:00')).toEqual(['acme when:1d']);
+    // A run one second later than the day before used to become `when:2d`.
+    expect(queries('2026-10-13T05:59:59+08:00')).toEqual(['acme when:1d']);
+    expect(queries('2026-10-13T05:30:00+08:00')).toEqual(['acme when:1d']);
+  });
+
+  it('searches the older part of a longer window one calendar day at a time, from a day early', () => {
+    expect(queries('2026-10-11T06:00:00+08:00')).toEqual([
+      'acme when:1d',
+      'acme after:2026-10-10 before:2026-10-11',
+      'acme after:2026-10-11 before:2026-10-12',
+      'acme after:2026-10-12 before:2026-10-13',
+      'acme after:2026-10-13 before:2026-10-14',
+    ]);
+    expect(queries('2026-10-13T05:29:00+08:00')).toEqual(['acme when:1d', 'acme after:2026-10-12 before:2026-10-13', 'acme after:2026-10-13 before:2026-10-14']);
   });
 });
 

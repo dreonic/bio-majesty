@@ -11,7 +11,7 @@ export { extractGoogleNewsId };
 /**
  * Google News RSS search (free, unofficial). Supports the same operators as
  * the Google News UI: "exact phrase", OR, -exclude, and date operators
- * `when:Nd` / `after:YYYY-MM-DD before:YYYY-MM-DD`. Returns up to ~100 items.
+ * `when:1d` / `after:YYYY-MM-DD before:YYYY-MM-DD`. Returns up to ~100 items.
  */
 export interface GoogleNewsQuery {
   q: string;
@@ -19,6 +19,7 @@ export interface GoogleNewsQuery {
   exclude?: string[];
   from: Date;
   to: Date;
+  /** 'when' = the 24 hours before the request; 'range' = the days from `from` to `to`. */
   mode: 'when' | 'range';
 }
 
@@ -29,8 +30,8 @@ export function buildGoogleNewsQuery(input: Omit<GoogleNewsQuery, 'edition'>): s
     if (t) parts.push(/\s/.test(t) ? `-"${t}"` : `-${t}`);
   }
   if (input.mode === 'when') {
-    const days = Math.min(7, Math.max(1, Math.ceil((input.to.getTime() - input.from.getTime()) / 86_400_000)));
-    parts.push(`when:${days}d`);
+    // Never more than a day: longer relative windows return fewer of the latest items (see dailyGoogleNewsWindows).
+    parts.push('when:1d');
   } else {
     // `before:` is exclusive, so add one day to include the window's last day. Days on the
     // deployment's clock: windows overlap by a day, so publishers in other zones lose nothing.

@@ -11,7 +11,7 @@ export interface SearchTask {
   queries: { q: string; edition: Edition; categoryId: string; exclude: string[] }[];
   from: string;
   to: string;
-  /** 'when' = relative (daily runs), 'range' = absolute dates (backfills). */
+  /** 'when' = the last 24 hours (daily runs), 'range' = absolute dates (older days of a daily window, backfills). */
   mode: 'when' | 'range';
 }
 
