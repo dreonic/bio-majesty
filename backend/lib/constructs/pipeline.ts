@@ -1,4 +1,4 @@
-import { Duration, TimeZone } from 'aws-cdk-lib';
+import { Duration, RemovalPolicy, TimeZone } from 'aws-cdk-lib';
 import type * as cognito from 'aws-cdk-lib/aws-cognito';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
@@ -27,15 +27,16 @@ type PipelineFunctions = Record<
 >;
 
 /**
- * News ingestion (daily + backfill state machines, one execution per account), the
- * dispatcher that starts each account's daily run, the stock refresh schedule, and
- * the vector indexer fed by the DynamoDB stream.
+ * News ingestion (daily + backfill state machines, one execution per profile), the schedule group
+ * holding each profile's daily-run schedule, the stock refresh schedule, and the vector indexer
+ * fed by the DynamoDB stream.
  */
 export class PipelineConstruct extends Construct {
   readonly dailyMachine: sfn.StateMachine;
   readonly backfillMachine: sfn.StateMachine;
   readonly schedulerRole: iam.Role;
-  readonly dispatchFn: lambda.IFunction;
+  /** One schedule per profile (created and updated by the API), each starting that profile's daily run. */
+  readonly dailyScheduleGroup: scheduler.ScheduleGroup;
   readonly stockIngestFn: lambda.IFunction;
   readonly pipelineFunctions: lambda.IFunction[];
   readonly indexerFn: lambda.IFunction;
@@ -76,28 +77,21 @@ export class PipelineConstruct extends Construct {
 
     this.schedulerRole = new iam.Role(this, 'SchedulerRole', {
       assumedBy: new iam.ServicePrincipal('scheduler.amazonaws.com'),
-      description: 'Lets EventBridge Scheduler run the news dispatcher and stock refreshes',
+      description: "Lets EventBridge Scheduler start the profiles' daily runs and the stock refreshes",
     });
     const every15Minutes = scheduler.ScheduleExpression.cron({ minute: '0/15', timeZone: TimeZone.of(config.timeZone) });
     const readAccounts = (fn: lambda.IFunction) => props.userPool.grant(fn, 'cognito-idp:ListUsersInGroup');
 
-    // Each account picks its daily-run time in Settings (quarter hours on the dashboard's clock):
-    // every 15 minutes the dispatcher starts the runs that are due.
-    this.dispatchFn = functions.create('NewsDispatch', {
-      entry: 'dispatch.ts',
-      description: "Start each account's daily news run at its chosen time",
-      timeout: Duration.minutes(1),
-      environment: { DAILY_STATE_MACHINE_ARN: this.dailyMachine.stateMachineArn },
+    // Each profile picks its daily-run time in Settings (quarter hours on the dashboard's clock); its
+    // schedule in this group starts the run a fixed few minutes later. The schedules are derived from
+    // the profiles' settings, so they go with the stack.
+    this.dailyScheduleGroup = new scheduler.ScheduleGroup(this, 'DailyRunSchedules', {
+      scheduleGroupName: `${config.resourcePrefix}-${config.stage}-daily-runs`,
+      removalPolicy: RemovalPolicy.DESTROY,
     });
-    data.table.grantReadData(this.dispatchFn);
-    readAccounts(this.dispatchFn);
-    this.dailyMachine.grantStartExecution(this.dispatchFn);
-    new scheduler.Schedule(this, 'NewsDispatchSchedule', {
-      scheduleName: `${config.resourcePrefix}-${config.stage}-news-dispatch`,
-      description: "Starts the accounts' daily news runs (each account's time is in its Settings)",
-      schedule: every15Minutes,
-      target: new schedulerTargets.LambdaInvoke(this.dispatchFn, { role: this.schedulerRole, retryAttempts: 0 }),
-    });
+    this.dailyMachine.grantStartExecution(this.schedulerRole);
+    // A scheduled run checks that the profile's account still has access.
+    readAccounts(fns.start);
 
     // Market data for every asset any account tracks, each from its own source. Each tick only asks
     // for assets whose market is open, or whose end-of-day refresh is due, to keep requests low.
@@ -144,9 +138,9 @@ export class PipelineConstruct extends Construct {
         bisectBatchOnError: true,
         reportBatchItemFailures: true,
         filters: [
-          // Only the accounts' article items (USER#<sub> / ART#<id>) matter to the index.
+          // Only the profiles' article items (PROFILE#<id> / ART#<id>) matter to the index.
           lambda.FilterCriteria.filter({
-            dynamodb: { Keys: { PK: { S: lambda.FilterRule.beginsWith('USER#') }, SK: { S: lambda.FilterRule.beginsWith('ART#') } } },
+            dynamodb: { Keys: { PK: { S: lambda.FilterRule.beginsWith('PROFILE#') }, SK: { S: lambda.FilterRule.beginsWith('ART#') } } },
           }),
         ],
       }),
@@ -182,7 +176,7 @@ export class PipelineConstruct extends Construct {
       new sfn.Map(this, `${name}SearchMap`, {
         itemsPath: '$.tasks',
         maxConcurrency: opts.searchConcurrency,
-        itemSelector: { 'sub.$': '$.sub', 'runId.$': '$.runId', 'task.$': '$$.Map.Item.Value' },
+        itemSelector: { 'profileId.$': '$.profileId', 'runId.$': '$.runId', 'task.$': '$$.Map.Item.Value' },
         resultPath: sfn.JsonPath.DISCARD,
       }),
     );
@@ -198,7 +192,7 @@ export class PipelineConstruct extends Construct {
       new sfn.DistributedMap(this, `${name}EnrichMap`, {
         itemReader: new sfn.S3JsonItemReader({ bucket: data.dataBucket, key: sfn.JsonPath.stringAt('$.relevantKey') }),
         itemSelector: {
-          'sub.$': '$.sub',
+          'profileId.$': '$.profileId',
           'runId.$': '$.runId',
           'runType.$': '$.runType',
           'categoryId.$': '$.categoryId',
@@ -220,7 +214,12 @@ export class PipelineConstruct extends Construct {
       .when(sfn.Condition.numberGreaterThan('$.relevantCount', 0), enrichMap.next(digest))
       .otherwise(digest);
 
-    const definition = start.next(searchMap).next(collect).next(prefilter).next(hasRelevant);
+    searchMap.next(collect).next(prefilter).next(hasRelevant);
+    // A daily run with nothing to search (or whose account lost access) ends after the start step.
+    const anythingToDo = new sfn.Choice(this, `${name}AnythingToDo`)
+      .when(sfn.Condition.booleanEquals('$.skip', true), new sfn.Succeed(this, `${name}Skipped`))
+      .otherwise(searchMap);
+    const definition = start.next(anythingToDo);
 
     return new sfn.StateMachine(this, `${name}Machine`, {
       definitionBody: sfn.DefinitionBody.fromChainable(definition),

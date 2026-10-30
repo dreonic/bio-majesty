@@ -1,23 +1,23 @@
 import { PutCommand, QueryCommand, type QueryCommandOutput } from '@aws-sdk/lib-dynamodb';
 import type { Feedback, FeedbackStats } from '@bio-majesty/shared';
 import { ddb, stripKeys, table } from './client';
-import { accountPk, keys } from './keys';
+import { keys, profilePk, type ProfileId } from './keys';
 
 /**
- * The account's review decisions, kept as training data (SK=FEEDBACK#<decidedAt>#<articleId>).
+ * The profile's review decisions, kept as training data (SK=FEEDBACK#<decidedAt>#<articleId>).
  * Re-reviews add a new record; consumers keep the latest per article.
  */
-export async function putFeedback(sub: string, feedback: Feedback): Promise<void> {
+export async function putFeedback(profileId: ProfileId, feedback: Feedback): Promise<void> {
   await ddb().send(
     new PutCommand({
       TableName: table(),
-      Item: { ...keys.feedback(sub, feedback.decidedAt, feedback.articleId), ...feedback },
+      Item: { ...keys.feedback(profileId, feedback.decidedAt, feedback.articleId), ...feedback },
     }),
   );
 }
 
-/** Newest first. `onlyCorrections` keeps records where the account's reviewer changed something. */
-export async function listFeedback(sub: string, opts: { limit?: number; onlyCorrections?: boolean } = {}): Promise<Feedback[]> {
+/** Newest first. `onlyCorrections` keeps records where the reviewer changed something. */
+export async function listFeedback(profileId: ProfileId, opts: { limit?: number; onlyCorrections?: boolean } = {}): Promise<Feedback[]> {
   const limit = opts.limit ?? 1000;
   const out: Feedback[] = [];
   const seen = new Set<string>();
@@ -27,7 +27,7 @@ export async function listFeedback(sub: string, opts: { limit?: number; onlyCorr
       new QueryCommand({
         TableName: table(),
         KeyConditionExpression: 'PK = :pk AND begins_with(SK, :p)',
-        ExpressionAttributeValues: { ':pk': accountPk(sub), ':p': 'FEEDBACK#' },
+        ExpressionAttributeValues: { ':pk': profilePk(profileId), ':p': 'FEEDBACK#' },
         ScanIndexForward: false,
         ExclusiveStartKey: startKey,
         Limit: 200,
@@ -46,7 +46,7 @@ export async function listFeedback(sub: string, opts: { limit?: number; onlyCorr
   return out;
 }
 
-export async function feedbackStats(sub: string): Promise<FeedbackStats> {
-  const all = await listFeedback(sub, { limit: 100_000 });
+export async function feedbackStats(profileId: ProfileId): Promise<FeedbackStats> {
+  const all = await listFeedback(profileId, { limit: 100_000 });
   return { total: all.length, corrections: all.filter((f) => f.changed.length > 0).length };
 }

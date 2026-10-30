@@ -9,11 +9,11 @@ import {
 } from '@bio-majesty/shared';
 import { logger } from '../lib/logger';
 import { ddb, table } from './client';
-import { keys } from './keys';
+import { keys, type ProfileId } from './keys';
 
-/** The account's settings, filling any missing sections with defaults (a new account has none stored). */
-export async function getSettings(sub: string): Promise<Settings> {
-  const res = await ddb().send(new GetCommand({ TableName: table(), Key: keys.settings(sub) }));
+/** The profile's settings, filling any missing sections with defaults (a new profile has none stored). */
+export async function getSettings(profileId: ProfileId): Promise<Settings> {
+  const res = await ddb().send(new GetCommand({ TableName: table(), Key: keys.settings(profileId) }));
   const stored = (res.Item?.data ?? {}) as Partial<Settings>;
   return mergeSettings(DEFAULT_SETTINGS, stored);
 }
@@ -27,7 +27,7 @@ export function mergeSettings(base: Settings, patch: Partial<Settings> | Setting
   const schedule = { ...base.schedule, ...(patch.schedule ?? {}) };
   const merged = {
     models,
-    // Older values may not sit on a quarter hour; the dispatcher only checks every 15 minutes.
+    // Older values may not sit on a quarter hour (run times are quarter hours).
     schedule: { ...schedule, dailyTime: quarterHour(schedule.dailyTime) },
     sources: { ...base.sources, ...(patch.sources ?? {}) },
     notifications: { ...base.notifications, ...(patch.notifications ?? {}) },
@@ -44,8 +44,8 @@ export function mergeSettings(base: Settings, patch: Partial<Settings> | Setting
   return parsed.data;
 }
 
-export async function saveSettings(sub: string, settings: Settings): Promise<Settings> {
+export async function saveSettings(profileId: ProfileId, settings: Settings): Promise<Settings> {
   const next = { ...settings, updatedAt: new Date().toISOString() };
-  await ddb().send(new PutCommand({ TableName: table(), Item: { ...keys.settings(sub), data: next } }));
+  await ddb().send(new PutCommand({ TableName: table(), Item: { ...keys.settings(profileId), data: next } }));
   return next;
 }

@@ -1,4 +1,5 @@
 import type { BackfillPeriod, Category, Settings } from '@bio-majesty/shared';
+import { profileHasAccess } from '../lib/accounts';
 import { randomId, timeId } from '../lib/ids';
 import { addDays, periodStart } from '../lib/time';
 import { getCategory, listCategories, updateCategory } from '../repo/categories';
@@ -8,6 +9,7 @@ import { GDELT_MAX_LOOKBACK_DAYS } from '../sources/gdelt';
 import type { SearchTask } from '../sources/types';
 import { backfillWindowDays, dailyGoogleNewsWindows, planWindows } from '../sources/windows';
 import type { PipelineState } from './state';
+import type { ProfileId } from '../repo/keys';
 
 const DAY_MS = 86_400_000;
 
@@ -83,13 +85,20 @@ export function buildBackfillTasks(category: Category, settings: Settings, perio
   return tasks;
 }
 
-/** Start one account's daily run: its categories, sources and window since its last successful run. */
-export async function startDaily(sub: string, trigger: 'schedule' | 'manual'): Promise<PipelineState> {
-  const [categories, settings, last] = await Promise.all([listCategories(sub), getSettings(sub), lastSuccessfulDailyRun(sub)]);
+/**
+ * Start one profile's daily run: its categories, sources and window since its last successful run.
+ * Skipped (no run recorded) when there is nothing to search, or when a scheduled run's account no
+ * longer has access.
+ */
+export async function startDaily(profileId: ProfileId, trigger: 'schedule' | 'manual'): Promise<PipelineState> {
+  const [categories, settings, last] = await Promise.all([listCategories(profileId), getSettings(profileId), lastSuccessfulDailyRun(profileId)]);
   const window = dailyWindow(last ? new Date(last.window.to) : null);
   const runId = timeId();
   const tasks = buildDailyTasks(categories, settings, window.from, window.to);
-  await createRun(sub, {
+  if (!tasks.length || (trigger === 'schedule' && !(await profileHasAccess(profileId)))) {
+    return { profileId, runId, runType: 'daily', categoryId: null, tasks: [], skip: true };
+  }
+  await createRun(profileId, {
     id: runId,
     type: 'daily',
     categoryId: null,
@@ -97,16 +106,16 @@ export async function startDaily(sub: string, trigger: 'schedule' | 'manual'): P
     startedAt: new Date().toISOString(),
     trigger,
   });
-  return { sub, runId, runType: 'daily', categoryId: null, tasks };
+  return { profileId, runId, runType: 'daily', categoryId: null, tasks, skip: false };
 }
 
-export async function startBackfill(sub: string, categoryId: string, period: BackfillPeriod): Promise<PipelineState> {
-  const [category, settings] = await Promise.all([getCategory(sub, categoryId), getSettings(sub)]);
+export async function startBackfill(profileId: ProfileId, categoryId: string, period: BackfillPeriod): Promise<PipelineState> {
+  const [category, settings] = await Promise.all([getCategory(profileId, categoryId), getSettings(profileId)]);
   if (!category) throw new Error(`Category ${categoryId} not found`);
   const runId = timeId();
   const now = new Date();
   const tasks = buildBackfillTasks(category, settings, period, now);
-  await createRun(sub, {
+  await createRun(profileId, {
     id: runId,
     type: 'backfill',
     categoryId,
@@ -114,9 +123,9 @@ export async function startBackfill(sub: string, categoryId: string, period: Bac
     startedAt: now.toISOString(),
     trigger: 'category',
   });
-  await updateCategory(sub, categoryId, (c) => ({
+  await updateCategory(profileId, categoryId, (c) => ({
     ...c,
     backfill: { ...c.backfill, period, status: 'running', runId, startedAt: now.toISOString(), completedAt: null, error: null },
   }));
-  return { sub, runId, runType: 'backfill', categoryId, tasks };
+  return { profileId, runId, runType: 'backfill', categoryId, tasks, skip: false };
 }

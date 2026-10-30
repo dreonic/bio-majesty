@@ -18,6 +18,7 @@ import { resolveWithFallback } from '../ai/fallback';
 import { loadSubjectContext } from '../ai/subject';
 import { corsHeaders, getUser, HttpError, parseBody, requireAccess, setRequestOrigin } from '../lib/http';
 import { errorMessage, logger } from '../lib/logger';
+import { resolveProfile } from '../lib/profile-access';
 import { listCategories } from '../repo/categories';
 import { getConversation, loadMessages, saveConversation } from '../repo/chats';
 import { getSettings } from '../repo/settings';
@@ -44,18 +45,18 @@ export const handler = awslambda.streamifyResponse(async (event: APIGatewayProxy
   setRequestOrigin(event);
   try {
     requireAccess(event);
-    const user = getUser(event);
+    const user = await resolveProfile(event, getUser(event));
     const body = parseBody(event, ChatRequestSchema);
     const [settings, categories, previous, existing] = await Promise.all([
-      getSettings(user.sub),
-      listCategories(user.sub),
-      loadMessages(user.sub, body.id),
-      getConversation(user.sub, body.id),
+      getSettings(user.profileId),
+      listCategories(user.profileId),
+      loadMessages(user.profileId, body.id),
+      getConversation(user.profileId, body.id),
     ]);
-    // The chat sees only this account's saved news and assets.
+    // The chat sees only this profile's saved news and assets.
     const known = new Map((await getAssets(settings.stock.assets)).map((a) => [a.id, a]));
     const assets = settings.stock.assets.map((id) => known.get(id) ?? fallbackAsset(id));
-    const tools = buildChatTools({ sub: user.sub, assets });
+    const tools = buildChatTools({ profileId: user.profileId, assets });
 
     let messages: UIMessage[];
     try {
@@ -97,7 +98,7 @@ export const handler = awslambda.streamifyResponse(async (event: APIGatewayProxy
         generateMessageId: createIdGenerator({ prefix: 'msg', size: 16 }),
         onEnd: async ({ messages: all }) => {
           try {
-            await saveConversation(user.sub, conversation, all);
+            await saveConversation(user.profileId, conversation, all);
           } catch (err) {
             logger.error('Failed to save conversation', { error: errorMessage(err) });
           }

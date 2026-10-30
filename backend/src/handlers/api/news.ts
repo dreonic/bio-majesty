@@ -9,10 +9,10 @@ import {
   type FinalTags,
   type ReviewRequest,
 } from '@bio-majesty/shared';
-import { badRequest, json, notFound, parseBody, parseQuery, pathParam, type AuthUser } from '../../lib/http';
+import { badRequest, json, notFound, parseBody, parseQuery, pathParam, type ProfileUser } from '../../lib/http';
 import { buildFeedback } from '../../feedback/build';
 import { errorMessage, logger } from '../../lib/logger';
-import { createRouter } from '../../lib/router';
+import { createProfileRouter } from '../../lib/router';
 import { parseDateInput } from '../../lib/time';
 import {
   applyReview,
@@ -28,6 +28,7 @@ import { latestDigests } from '../../repo/digests';
 import { feedbackStats, putFeedback } from '../../repo/feedback';
 import { deleteObjects, getJson, s3Keys } from '../../storage/s3';
 import type { StoredArticleText } from '../../vectors/indexer';
+import type { ProfileId } from '../../repo/keys';
 
 /** Translate a review action into a status/tag change, validating transitions. */
 export function reviewChange(article: Article, req: ReviewRequest, knownCategories: Set<string>): ReviewChange {
@@ -71,25 +72,25 @@ const FEEDBACK_DECISIONS = { approve: 'approved', reject: 'rejected', update: 'e
 /** A delete by status stops after this long (API Gateway gives up at 29 s) and reports `more`. */
 const DELETE_TIME_BUDGET_MS = 20_000;
 
-/** Store the decision as the account's training data (never fails the request). */
-async function recordFeedback(user: AuthUser, before: Article, after: Article, action: ReviewRequest['action']): Promise<void> {
+/** Store the decision as the profile's training data (never fails the request). */
+async function recordFeedback(user: ProfileUser, before: Article, after: Article, action: ReviewRequest['action']): Promise<void> {
   const decision = FEEDBACK_DECISIONS[action as keyof typeof FEEDBACK_DECISIONS];
   if (!decision) return;
   try {
-    await putFeedback(user.sub, buildFeedback(before, decision, after.final));
+    await putFeedback(user.profileId, buildFeedback(before, decision, after.final));
   } catch (err) {
     logger.error('Failed to store review feedback', { error: errorMessage(err), articleId: before.id });
   }
 }
 
-async function categoryIdSet(sub: string): Promise<Set<string>> {
-  return new Set((await listCategories(sub)).map((c) => c.id));
+async function categoryIdSet(profileId: ProfileId): Promise<Set<string>> {
+  return new Set((await listCategories(profileId)).map((c) => c.id));
 }
 
-export const handler = createRouter({
+export const handler = createProfileRouter({
   'GET /news': async (event, user) => {
     const q = parseQuery(event, NewsQuerySchema, ['categories', 'sentiments']);
-    const result = await listArticles(user.sub, {
+    const result = await listArticles(user.profileId, {
       status: q.status,
       from: q.from ? parseDateInput(q.from) : undefined,
       to: q.to ? parseDateInput(q.to, true) : undefined,
@@ -104,38 +105,38 @@ export const handler = createRouter({
 
   'GET /news/counts': async (_event, user) => {
     const [pending, filtered, skipped] = await Promise.all(
-      (['PENDING', 'FILTERED', 'REJECTED'] as const).map((status) => countByStatus(user.sub, status)),
+      (['PENDING', 'FILTERED', 'REJECTED'] as const).map((status) => countByStatus(user.profileId, status)),
     );
     return json(200, { pending, filtered, skipped });
   },
 
   'GET /news/{id}': async (event, user) => {
-    const article = await getArticle(user.sub, pathParam(event, 'id'));
+    const article = await getArticle(user.profileId, pathParam(event, 'id'));
     if (!article) throw notFound('Article not found');
-    const stored = await getJson<StoredArticleText>(s3Keys.articleText(user.sub, article.id));
+    const stored = await getJson<StoredArticleText>(s3Keys.articleText(user.profileId, article.id));
     const detail: ArticleDetail = { ...article, text: stored?.text ?? null };
     return json(200, detail);
   },
 
   'PATCH /news/{id}': async (event, user) => {
     const req = parseBody(event, ReviewRequestSchema);
-    const article = await getArticle(user.sub, pathParam(event, 'id'));
+    const article = await getArticle(user.profileId, pathParam(event, 'id'));
     if (!article) throw notFound('Article not found');
-    const updated = await applyReview(user.sub, article, reviewChange(article, req, await categoryIdSet(user.sub)));
+    const updated = await applyReview(user.profileId, article, reviewChange(article, req, await categoryIdSet(user.profileId)));
     await recordFeedback(user, article, updated, req.action);
     return json(200, updated);
   },
 
   'POST /news/bulk': async (event, user) => {
     const req = parseBody(event, BulkReviewRequestSchema);
-    const known = await categoryIdSet(user.sub);
+    const known = await categoryIdSet(user.profileId);
     const failed: { id: string; error: string }[] = [];
     let updated = 0;
     for (const id of req.ids) {
       try {
-        const article = await getArticle(user.sub, id);
+        const article = await getArticle(user.profileId, id);
         if (!article) throw new Error('not found');
-        const after = await applyReview(user.sub, article, reviewChange(article, { action: req.action }, known));
+        const after = await applyReview(user.profileId, article, reviewChange(article, { action: req.action }, known));
         await recordFeedback(user, article, after, req.action);
         updated++;
       } catch (err) {
@@ -155,7 +156,7 @@ export const handler = createRouter({
     const res: DeleteNewsResponse = { deleted: 0, failed: [], more: false };
     const removedIds: string[] = [];
     const remove = async (ids: string[]) => {
-      const { deleted, hidden, notDeletable } = await removeArticles(user.sub, ids);
+      const { deleted, hidden, notDeletable } = await removeArticles(user.profileId, ids);
       res.deleted += deleted.length + hidden.length;
       removedIds.push(...deleted, ...hidden);
       res.failed.push(...notDeletable.map((id) => ({ id, error: 'not skipped or filtered' })));
@@ -164,7 +165,7 @@ export const handler = createRouter({
       await remove(req.ids);
     } else {
       // Each page continues after the last key read, so removing as we go doesn't disturb the listing.
-      for await (const ids of articleIdPages(user.sub, req.status)) {
+      for await (const ids of articleIdPages(user.profileId, req.status)) {
         await remove(ids);
         if (Date.now() > deadline) {
           res.more = true;
@@ -174,17 +175,17 @@ export const handler = createRouter({
     }
     // Their extracted texts are no longer shown; missing objects (most filtered articles have none) are fine.
     try {
-      await deleteObjects(removedIds.map((id) => s3Keys.articleText(user.sub, id)));
+      await deleteObjects(removedIds.map((id) => s3Keys.articleText(user.profileId, id)));
     } catch (err) {
       logger.error('Failed to delete article texts', { error: errorMessage(err), count: removedIds.length });
     }
     return json(200, res);
   },
 
-  'GET /feedback/stats': async (_event, user) => json(200, await feedbackStats(user.sub)),
+  'GET /feedback/stats': async (_event, user) => json(200, await feedbackStats(user.profileId)),
 
   'GET /digest/latest': async (_event, user) => {
-    const [digest] = await latestDigests(user.sub, 1);
+    const [digest] = await latestDigests(user.profileId, 1);
     return json(200, { digest: digest ?? null });
   },
 });

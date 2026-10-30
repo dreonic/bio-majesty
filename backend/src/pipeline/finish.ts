@@ -1,15 +1,15 @@
 import { errorMessage, logger } from '../lib/logger';
 import { formatFailureMessage } from '../notify/telegram';
-import { notifyAccount } from '../notify/notify';
+import { notifyProfile } from '../notify/notify';
 import { updateCategory } from '../repo/categories';
 import { aggregateRunUsage, finishRun } from '../repo/runs';
 import type { FailInput, PipelineState } from './state';
 
 export async function finishRunStep(state: PipelineState): Promise<PipelineState> {
-  await aggregateRunUsage(state.sub, state.runId);
-  await finishRun(state.sub, state.runId, 'succeeded');
+  await aggregateRunUsage(state.profileId, state.runId);
+  await finishRun(state.profileId, state.runId, 'succeeded');
   if (state.runType === 'backfill' && state.categoryId) {
-    await updateCategory(state.sub, state.categoryId, (c) => ({
+    await updateCategory(state.profileId, state.categoryId, (c) => ({
       ...c,
       active: true,
       backfill: { ...c.backfill, status: 'done', completedAt: new Date().toISOString(), error: null },
@@ -18,20 +18,20 @@ export async function finishRunStep(state: PipelineState): Promise<PipelineState
   return state;
 }
 
-/** Catch-all failure handler: mark the run failed and alert the account. */
+/** Catch-all failure handler: mark the run failed and alert the profile's chats. */
 export async function failRunStep(input: FailInput): Promise<void> {
   const state = input;
   const message = describeError(input.error);
   logger.error('Pipeline run failed', { runId: state.runId, message });
-  const sub = state.sub;
-  if (!sub) return; // failed before the run had an account (bad input): nothing to record or notify
+  const profileId = state.profileId;
+  if (!profileId) return; // failed before the run had a profile (bad input): nothing to record or notify
   try {
     if (state.runId) {
-      await aggregateRunUsage(sub, state.runId).catch(() => undefined);
-      await finishRun(sub, state.runId, 'failed', message);
+      await aggregateRunUsage(profileId, state.runId).catch(() => undefined);
+      await finishRun(profileId, state.runId, 'failed', message);
     }
     if (state.runType === 'backfill' && state.categoryId) {
-      await updateCategory(sub, state.categoryId, (c) => ({
+      await updateCategory(profileId, state.categoryId, (c) => ({
         ...c,
         // Activate anyway so the daily run still covers this category.
         active: true,
@@ -41,7 +41,7 @@ export async function failRunStep(input: FailInput): Promise<void> {
   } catch (err) {
     logger.error('Failed to record run failure', { error: errorMessage(err) });
   }
-  await notifyAccount(sub, formatFailureMessage(state.runType === 'backfill' ? 'Backfill' : 'Daily news run', message), {
+  await notifyProfile(profileId, formatFailureMessage(state.runType === 'backfill' ? 'Backfill' : 'Daily news run', message), {
     buttonText: 'Open settings',
     path: '/settings',
   });

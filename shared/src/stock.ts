@@ -112,7 +112,7 @@ export const TradingSessionSchema = z.object({
 });
 export type TradingSession = z.infer<typeof TradingSessionSchema>;
 
-/** What the market-data source says about an asset (shared by every account that tracks it). */
+/** What the market-data source says about an asset (shared by every profile that tracks it). */
 export const StockAssetSchema = z.object({
   /** "yahoo:D05.SI": see assetId. */
   id: z.string(),

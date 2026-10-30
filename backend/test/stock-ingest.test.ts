@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const DAY = 86_400_000;
 const fetched: { kind: 'daily' | 'intraday' | 'quote' | 'lookup'; asset: string; daysBack?: number }[] = [];
-const checks: { kind: 'eod' | 'intraday'; sub: string; asset: string }[] = [];
+const checks: { kind: 'eod' | 'intraday'; profileId: string; asset: string }[] = [];
 const statuses = new Map<string, { historyLoadedAt: string | null; eodDoneFor: string | null; consecutiveFailures: number }>();
 const state = { intradayFails: false };
 
@@ -26,20 +26,20 @@ const idx: StockAsset = {
 const btc: StockAsset = { ...idx, id: 'yahoo:BTC-USD', symbol: 'BTC-USD', type: 'CRYPTOCURRENCY', timeZone: 'UTC', session: { start: '00:00', end: '23:59', days: 'daily' } };
 const eodhdIdx: StockAsset = { ...idx, id: 'eodhd:ACME.JK', source: 'eodhd' };
 const assets = new Map<string, StockAsset>();
-const accountAssets: Record<string, string[]> = {};
+const profileAssets: Record<string, string[]> = {};
 
 const snapshot = (n: number) => ({ candles: Array.from({ length: n }, (_, i) => ({ time: i, open: 1, high: 1, low: 1, close: 1, volume: 1 })), quote: null });
 const daysBack = (from: Date) => Math.round((Date.now() - from.getTime()) / DAY);
 
-vi.mock('../src/lib/accounts', () => ({ listAccounts: async () => Object.keys(accountAssets).map((sub) => ({ sub, email: null })) }));
+vi.mock('../src/lib/accounts', () => ({ listAllProfiles: async () => Object.keys(profileAssets).map((profileId) => ({ sub: 'u1', profileId })) }));
 vi.mock('../src/repo/settings', () => ({
-  getSettings: async (sub: string) => ({ stock: { assets: accountAssets[sub] ?? [], volumeRatio: 3 } }),
+  getSettings: async (profileId: string) => ({ stock: { assets: profileAssets[profileId] ?? [], volumeRatio: 3 } }),
 }));
 vi.mock('../src/stock/anomalies', () => ({
-  checkEodVolume: async (sub: string, a: StockAsset) => void checks.push({ kind: 'eod', sub, asset: a.id }),
-  checkIntradayVolume: async (sub: string, a: StockAsset) => void checks.push({ kind: 'intraday', sub, asset: a.id }),
+  checkEodVolume: async (profileId: string, a: StockAsset) => void checks.push({ kind: 'eod', profileId, asset: a.id }),
+  checkIntradayVolume: async (profileId: string, a: StockAsset) => void checks.push({ kind: 'intraday', profileId, asset: a.id }),
 }));
-vi.mock('../src/notify/notify', () => ({ notifyAccount: async () => true }));
+vi.mock('../src/notify/notify', () => ({ notifyProfile: async () => true }));
 vi.mock('../src/repo/stock', () => ({
   INTRADAY_RETENTION_DAYS: 10,
   getAsset: async (id: string) => assets.get(id) ?? null,
@@ -88,9 +88,9 @@ describe('stock refresh tick', () => {
     assets.clear();
     statuses.clear();
     state.intradayFails = false;
-    for (const sub of Object.keys(accountAssets)) delete accountAssets[sub];
-    accountAssets.u1 = ['yahoo:ACME.JK'];
-    accountAssets.u2 = ['yahoo:ACME.JK', 'yahoo:BTC-USD'];
+    for (const id of Object.keys(profileAssets)) delete profileAssets[id];
+    profileAssets.p1 = ['yahoo:ACME.JK'];
+    profileAssets.p2 = ['yahoo:ACME.JK', 'yahoo:BTC-USD'];
   });
   afterEach(() => vi.useRealTimers());
 
@@ -104,9 +104,9 @@ describe('stock refresh tick', () => {
     ]);
     // Each account tracking an asset gets its own volume check.
     expect(checks).toEqual([
-      { kind: 'intraday', sub: 'u1', asset: 'yahoo:ACME.JK' },
-      { kind: 'intraday', sub: 'u2', asset: 'yahoo:ACME.JK' },
-      { kind: 'intraday', sub: 'u2', asset: 'yahoo:BTC-USD' },
+      { kind: 'intraday', profileId: 'p1', asset: 'yahoo:ACME.JK' },
+      { kind: 'intraday', profileId: 'p2', asset: 'yahoo:ACME.JK' },
+      { kind: 'intraday', profileId: 'p2', asset: 'yahoo:BTC-USD' },
     ]);
   });
 
@@ -125,13 +125,13 @@ describe('stock refresh tick', () => {
   });
 
   it('follows a source whose intraday bars arrive after the close by its quote, and fetches the bars once settled', async () => {
-    accountAssets.u1 = ['eodhd:ACME.JK'];
-    accountAssets.u2 = [];
+    profileAssets.p1 = ['eodhd:ACME.JK'];
+    profileAssets.p2 = [];
     loaded({ 'eodhd:ACME.JK': '2026-10-20' });
     vi.setSystemTime(new Date('2026-10-21T05:00:00Z')); // 12:00 in Jakarta
     await handler({ mode: 'tick' });
     expect(fetched).toEqual([{ kind: 'quote', asset: 'eodhd:ACME.JK' }]);
-    expect(checks).toEqual([{ kind: 'intraday', sub: 'u1', asset: 'eodhd:ACME.JK' }]);
+    expect(checks).toEqual([{ kind: 'intraday', profileId: 'p1', asset: 'eodhd:ACME.JK' }]);
 
     fetched.length = 0;
     vi.setSystemTime(new Date('2026-10-21T10:30:00Z')); // 17:30: Yahoo's bars would be final, EODHD's not yet

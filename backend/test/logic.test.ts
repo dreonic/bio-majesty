@@ -1,12 +1,13 @@
-import { dateInZone, DEFAULT_SETTINGS, type Article, type Digest } from '@bio-majesty/shared';
+import { dailyRunStart, dateInZone, DEFAULT_SETTINGS, type Article, type Digest } from '@bio-majesty/shared';
 import type { APIGatewayProxyEvent } from 'aws-lambda';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { reviewChange } from '../src/handlers/api/news';
-import { isDue, quarterSlot } from '../src/handlers/dispatch';
 import { decideAction, image } from '../src/handlers/indexer';
 import { parseQuery } from '../src/lib/http';
 import { createRouter } from '../src/lib/router';
+import { dailySchedule } from '../src/lib/schedules';
+import { asProfileId } from '../src/repo/keys';
 import { localDate, parseDateInput } from '../src/lib/time';
 import { isPrivateAddress } from '../src/lib/ssrf';
 import { escapeHtml, formatDigestMessage } from '../src/notify/telegram';
@@ -78,10 +79,11 @@ describe('indexer decisions', () => {
     expect(decideAction(article(), article({ status: 'FILTERED' }))).toBe('none');
   });
 
-  it("reads only accounts' article items from the stream, with their owner", () => {
+  it("reads only profiles' article items from the stream, with their profile", () => {
     const raw = (pk: string, sk: string) => ({ PK: { S: pk }, SK: { S: sk }, id: { S: 'a1' }, status: { S: 'APPROVED' } });
-    expect(image(raw('USER#u1', 'ART#a1'))).toMatchObject({ sub: 'u1', article: { id: 'a1', status: 'APPROVED' } });
-    expect(image(raw('USER#u1', 'SETTINGS'))).toBeNull();
+    expect(image(raw('PROFILE#p1', 'ART#a1'))).toMatchObject({ profileId: 'p1', article: { id: 'a1', status: 'APPROVED' } });
+    expect(image(raw('PROFILE#p1', 'SETTINGS'))).toBeNull();
+    expect(image(raw('USER#u1', 'ART#a1'))).toBeNull();
     expect(image(raw('ART#a1', 'META'))).toBeNull();
   });
 });
@@ -289,21 +291,31 @@ describe('settings and schedule', () => {
     expect(next.schedule.dailyTime).toBe('06:00');
   });
 
-  it('moves an older run time to its quarter hour (the dispatcher checks every 15 minutes)', () => {
+  it('moves an older run time to its quarter hour', () => {
     expect(mergeSettings(DEFAULT_SETTINGS, { schedule: { dailyTime: '07:40' } } as never).schedule.dailyTime).toBe('07:30');
   });
 
-  it("starts an account's daily run in its quarter hour, when it has something to search for", () => {
-    // 22:59:30 UTC = 06:59 in Singapore, in the 06:45 slot.
-    const slot = quarterSlot(new Date('2026-10-20T22:59:30Z'), 'Asia/Singapore');
-    expect(slot).toEqual({ ymd: '2026-10-21', hhmm: '06:45' });
-    const searching = [{ active: true, search: { enabled: true, queries: [{ q: 'Acme', edition: 'ID:id' as const }], exclude: [], sources: { googleNews: true, gdelt: true } } }];
-    const schedule = (dailyTime: string, enabled = true) => ({ schedule: { enabled, dailyTime } });
-    expect(isDue(schedule('06:45'), searching, slot)).toBe(true);
-    expect(isDue(schedule('06:00'), searching, slot)).toBe(false);
-    expect(isDue(schedule('06:45', false), searching, slot)).toBe(false);
-    expect(isDue(schedule('06:45'), [], slot)).toBe(false); // a new account without categories
-    expect(isDue(schedule('06:45'), [{ ...searching[0]!, active: false }], slot)).toBe(false); // backfill still running
+  it("schedules a profile's daily run a fixed few minutes after its time, on the dashboard's clock", () => {
+    vi.stubEnv('DAILY_SCHEDULE_GROUP', 'news-test-daily-runs');
+    vi.stubEnv('DAILY_STATE_MACHINE_ARN', 'arn:aws:states:ap-southeast-1:111122223333:stateMachine:Daily');
+    vi.stubEnv('SCHEDULER_ROLE_ARN', 'arn:aws:iam::111122223333:role/scheduler');
+    vi.stubEnv('TIME_ZONE', 'Asia/Singapore');
+    const id = asProfileId('k3x9q2m8w1aa');
+    const start = dailyRunStart('06:45', id);
+    const [hour, minute] = start.split(':').map(Number);
+    expect(start >= '06:45' && start <= '06:59').toBe(true);
+    const schedule = dailySchedule(id, { enabled: true, dailyTime: '06:45' });
+    expect(schedule).toMatchObject({
+      Name: id,
+      GroupName: 'news-test-daily-runs',
+      ScheduleExpression: `cron(${minute} ${hour} * * ? *)`,
+      ScheduleExpressionTimezone: 'Asia/Singapore',
+      State: 'ENABLED',
+      Target: { Arn: 'arn:aws:states:ap-southeast-1:111122223333:stateMachine:Daily', RoleArn: 'arn:aws:iam::111122223333:role/scheduler' },
+    });
+    expect(JSON.parse(schedule.Target!.Input!)).toEqual({ mode: 'daily', trigger: 'schedule', profileId: id });
+    expect(dailySchedule(id, { enabled: false, dailyTime: '06:45' }).State).toBe('DISABLED');
+    vi.unstubAllEnvs();
   });
 });
 

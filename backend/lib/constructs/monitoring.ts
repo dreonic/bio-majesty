@@ -11,7 +11,8 @@ import type { AppConfig } from '../config';
 export interface MonitoringProps {
   config: AppConfig;
   stateMachines: sfn.StateMachine[];
-  dispatcher: lambda.IFunction;
+  /** The schedule group of the profiles' daily runs. */
+  dailyScheduleGroup: string;
   stockIngest: lambda.IFunction;
   indexer: lambda.IFunction;
   apiFunctions: lambda.IFunction[];
@@ -42,13 +43,18 @@ export class MonitoringConstruct extends Construct {
         .addAlarmAction(action);
     }
 
-    props.dispatcher
-      .metricErrors({ period: Duration.hours(1), statistic: 'Sum' })
-      .createAlarm(this, 'NewsDispatchErrors', {
-        threshold: 2,
+    new cloudwatch.Metric({
+      namespace: 'AWS/Scheduler',
+      metricName: 'InvocationDroppedCount',
+      dimensionsMap: { ScheduleGroup: props.dailyScheduleGroup },
+      period: Duration.hours(1),
+      statistic: 'Sum',
+    })
+      .createAlarm(this, 'DailyRunStartsDropped', {
+        threshold: 1,
         evaluationPeriods: 1,
         treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
-        alarmDescription: "The dispatcher can't start the accounts' daily news runs",
+        alarmDescription: "A profile's daily news run couldn't be started (EventBridge Scheduler gave up after its retries)",
       })
       .addAlarmAction(action);
 

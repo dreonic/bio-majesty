@@ -5,6 +5,10 @@ import {
   hasAccess,
   BackfillPeriodSchema,
   CategoryInputSchema,
+  dailyRunOffset,
+  dailyRunStart,
+  ProfileIdSchema,
+  ProfileInputSchema,
   formatBackfillPeriod,
   DEFAULT_EDITION,
   DEFAULT_SETTINGS,
@@ -29,6 +33,26 @@ import {
   type Article,
   type Candle,
 } from '../src';
+
+describe('profiles', () => {
+  it("starts each profile's daily run a fixed 0–14 minutes after its time, spread across profiles", () => {
+    const ids = Array.from({ length: 200 }, (_, i) => `${i.toString(36)}x${(i * 7919).toString(36)}`);
+    const offsets = ids.map(dailyRunOffset);
+    expect(offsets.every((o) => Number.isInteger(o) && o >= 0 && o <= 14)).toBe(true);
+    expect(new Set(offsets).size).toBe(15);
+    const offset = dailyRunOffset('k3x9q2m8w1aa');
+    expect(dailyRunStart('06:00', 'k3x9q2m8w1aa')).toBe(`06:${String(offset).padStart(2, '0')}`);
+    expect(dailyRunStart('06:00', 'k3x9q2m8w1aa')).toBe(dailyRunStart('06:00', 'k3x9q2m8w1aa'));
+    expect(dailyRunStart('23:45', 'k3x9q2m8w1aa') >= '23:45').toBe(true);
+  });
+
+  it('accepts only generated profile IDs and a name', () => {
+    expect(ProfileIdSchema.safeParse('k3x9q2m8w1aa').success).toBe(true);
+    for (const bad of ['', 'Acme', 'a-b', 'p1#SETTINGS']) expect(ProfileIdSchema.safeParse(bad).success).toBe(false);
+    expect(ProfileInputSchema.parse({ name: '  Acme  ' })).toEqual({ name: 'Acme' });
+    expect(ProfileInputSchema.safeParse({ name: '   ' }).success).toBe(false);
+  });
+});
 
 describe('settings', () => {
   it('ships valid defaults (opus 5.5, context off, volume alerts on, a blank subject and no assets)', () => {

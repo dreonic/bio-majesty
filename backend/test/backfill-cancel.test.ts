@@ -3,6 +3,7 @@ import type { Category } from '@bio-majesty/shared';
 import type { APIGatewayProxyEvent } from 'aws-lambda';
 import { mockClient } from 'aws-sdk-client-mock';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { asProfileId } from '../src/repo/keys';
 
 process.env.TABLE_NAME = 'test-table';
 process.env.BACKFILL_STATE_MACHINE_ARN = 'arn:aws:states:ap-southeast-1:111122223333:stateMachine:Backfill';
@@ -10,18 +11,21 @@ process.env.BACKFILL_STATE_MACHINE_ARN = 'arn:aws:states:ap-southeast-1:11112222
 const categories = new Map<string, Category>();
 const cancelledRuns: string[] = [];
 vi.mock('../src/repo/categories', () => ({
-  getCategory: async (_sub: string, id: string) => categories.get(id) ?? null,
+  getCategory: async (_profileId: string, id: string) => categories.get(id) ?? null,
   listCategories: async () => [...categories.values()],
-  putCategory: async (_sub: string, c: Category) => void categories.set(c.id, c),
-  deleteCategory: async (_sub: string, id: string) => void categories.delete(id),
-  updateCategory: async (_sub: string, id: string, patch: (c: Category) => Category) => {
+  putCategory: async (_profileId: string, c: Category) => void categories.set(c.id, c),
+  deleteCategory: async (_profileId: string, id: string) => void categories.delete(id),
+  updateCategory: async (_profileId: string, id: string, patch: (c: Category) => Category) => {
     const current = categories.get(id);
     if (!current) return null;
     categories.set(id, patch(current));
     return categories.get(id);
   },
 }));
-vi.mock('../src/repo/runs', () => ({ cancelRun: async (_sub: string, id: string) => void cancelledRuns.push(id) }));
+vi.mock('../src/repo/runs', () => ({ cancelRun: async (_profileId: string, id: string) => void cancelledRuns.push(id) }));
+vi.mock('../src/repo/profiles', () => ({
+  getAccountProfile: async (sub: string, id: string) => (sub === 'u1' && id === 'p1' ? { id, name: 'Acme', createdAt: '' } : null),
+}));
 
 const sfn = mockClient(SFNClient);
 const { handler } = await import('../src/handlers/api/categories');
@@ -31,7 +35,7 @@ const request = (method: string, resource: string, id: string) =>
   handler({
     httpMethod: method,
     resource,
-    headers: {},
+    headers: { 'X-Profile-Id': 'p1' },
     pathParameters: { id },
     body: null,
     requestContext: { authorizer: { claims: { sub: 'u1', 'cognito:groups': 'dashboard-users' } } },
@@ -57,25 +61,25 @@ beforeEach(() => {
   sfn.reset();
   sfn.on(ListExecutionsCommand).resolves({
     executions: [
-      { name: 'u1-cat1-1761600000000', executionArn: 'arn:exec:cat1', stateMachineArn: '', status: 'RUNNING', startDate: new Date() },
-      { name: 'u1-cat10-1761600000000', executionArn: 'arn:exec:cat10', stateMachineArn: '', status: 'RUNNING', startDate: new Date() },
-      { name: 'u2-cat1-1761600000000', executionArn: 'arn:exec:u2', stateMachineArn: '', status: 'RUNNING', startDate: new Date() },
+      { name: 'p1-cat1-1761600000000', executionArn: 'arn:exec:cat1', stateMachineArn: '', status: 'RUNNING', startDate: new Date() },
+      { name: 'p1-cat10-1761600000000', executionArn: 'arn:exec:cat10', stateMachineArn: '', status: 'RUNNING', startDate: new Date() },
+      { name: 'p2-cat1-1761600000000', executionArn: 'arn:exec:p2', stateMachineArn: '', status: 'RUNNING', startDate: new Date() },
     ],
   });
   sfn.on(StopExecutionCommand).resolves({ stopDate: new Date() });
 });
 
 describe('backfill executions', () => {
-  it('names each execution after its account and category', async () => {
+  it('names each execution after its profile and category', async () => {
     sfn.on(StartExecutionCommand).resolves({ executionArn: 'arn:exec:new' });
-    await startBackfillRun('u1', 'cat1', { amount: 10, unit: 'days' });
+    await startBackfillRun(asProfileId('p1'), 'cat1', { amount: 10, unit: 'days' });
     const input = sfn.commandCalls(StartExecutionCommand)[0]!.args[0].input;
-    expect(input.name).toMatch(/^u1-cat1-\d+$/);
-    expect(JSON.parse(input.input!)).toEqual({ mode: 'backfill', categoryId: 'cat1', period: { amount: 10, unit: 'days' }, sub: 'u1' });
+    expect(input.name).toMatch(/^p1-cat1-\d+$/);
+    expect(JSON.parse(input.input!)).toEqual({ mode: 'backfill', categoryId: 'cat1', period: { amount: 10, unit: 'days' }, profileId: 'p1' });
   });
 
-  it("stops only that category's executions (not cat10's, not another account's)", async () => {
-    expect(await stopBackfillRuns('u1', 'cat1')).toBe(1);
+  it("stops only that category's executions (not cat10's, not another profile's)", async () => {
+    expect(await stopBackfillRuns(asProfileId('p1'), 'cat1')).toBe(1);
     expect(sfn.commandCalls(StopExecutionCommand).map((c) => c.args[0].input.executionArn)).toEqual(['arn:exec:cat1']);
   });
 });

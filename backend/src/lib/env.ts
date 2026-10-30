@@ -75,8 +75,16 @@ export const env = {
   get passwordSignIn() {
     return optional('PASSWORD_SIGN_IN', 'true') !== 'false';
   },
-  /** Deletes an account's data, then its user (started by a delete on the Admin page). */
-  get accountDeleteFunction() {
-    return required('ACCOUNT_DELETE_FUNCTION');
+  /** Deletes a profile's data, or an account's profiles and then its user (Settings and Admin page deletes). */
+  get deleteWorkerFunction() {
+    return required('DELETE_WORKER_FUNCTION');
+  },
+  /** EventBridge Scheduler group holding one daily-run schedule per profile. */
+  get dailyScheduleGroup() {
+    return required('DAILY_SCHEDULE_GROUP');
+  },
+  /** Role EventBridge Scheduler assumes to start the daily runs. */
+  get schedulerRoleArn() {
+    return required('SCHEDULER_ROLE_ARN');
   },
 };

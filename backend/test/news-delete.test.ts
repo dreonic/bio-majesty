@@ -12,17 +12,21 @@ const deletedTexts: string[][] = [];
 vi.mock('../src/storage/s3', () => ({
   deleteObjects: async (keys: string[]) => void deletedTexts.push(keys),
   getJson: async () => null,
-  s3Keys: { articleText: (sub: string, id: string) => `users/${sub}/articles/${id}.json` },
+  s3Keys: { articleText: (profileId: string, id: string) => `profiles/${profileId}/articles/${id}.json` },
+}));
+// Account u1 owns profile p1, u2 owns p2.
+vi.mock('../src/repo/profiles', () => ({
+  getAccountProfile: async (sub: string, id: string) => ({ u1: 'p1', u2: 'p2' } as Record<string, string>)[sub] === id ? { id, name: id, createdAt: '' } : null,
 }));
 
 const db = mockClient(DynamoDBDocumentClient);
 const { handler } = await import('../src/handlers/api/news');
 
-const request = (body: unknown, sub = 'u1') =>
+const request = (body: unknown, sub = 'u1', profile = 'p1') =>
   handler({
     httpMethod: 'POST',
     resource: '/news/delete',
-    headers: {},
+    headers: { 'X-Profile-Id': profile },
     body: JSON.stringify(body),
     requestContext: { authorizer: { claims: { sub, 'cognito:groups': 'dashboard-users' } } },
   } as unknown as APIGatewayProxyEvent);
@@ -33,7 +37,7 @@ interface FakeArticle {
   deletedAt?: string;
 }
 
-/** u1's partition: articles by id, and dedupe keys (alias id -> article id). */
+/** p1's partition: articles by id, and dedupe keys (alias id -> article id). */
 let articles: Map<string, FakeArticle>;
 let aliases: Map<string, string>;
 
@@ -57,7 +61,7 @@ beforeEach(() => {
 
   db.reset();
   db.on(DeleteCommand).callsFake((input: DeleteCommand['input']) => {
-    if (input.Key?.PK !== 'USER#u1') failCondition();
+    if (input.Key?.PK !== 'PROFILE#p1') failCondition();
     const sk = String(input.Key?.SK);
     const values = input.ExpressionAttributeValues ?? {};
     if (sk.startsWith('ALIAS#')) {
@@ -74,14 +78,14 @@ beforeEach(() => {
   });
   db.on(UpdateCommand).callsFake((input: UpdateCommand['input']) => {
     const id = String(input.Key?.SK).replace(/^ART#/, '');
-    const a = input.Key?.PK === 'USER#u1' ? articles.get(id) : undefined;
+    const a = input.Key?.PK === 'PROFILE#p1' ? articles.get(id) : undefined;
     if (!a || a.status !== input.ExpressionAttributeValues?.[':filtered'] || a.deletedAt) failCondition();
     a!.deletedAt = String(input.ExpressionAttributeValues?.[':now']);
     return {};
   });
   // One article per page of a status list (GSI1), continuing after the last key like DynamoDB.
   db.on(QueryCommand).callsFake((input: QueryCommand['input']) => {
-    const status = String(input.ExpressionAttributeValues?.[':pk']).replace(/^USER#u1#STATUS#/, '');
+    const status = String(input.ExpressionAttributeValues?.[':pk']).replace(/^PROFILE#p1#STATUS#/, '');
     const order = [...articles.keys()];
     const after = input.ExclusiveStartKey ? order.indexOf(String(input.ExclusiveStartKey.SK).replace(/^ART#/, '')) : -1;
     const listed = (id: string) => articles.get(id)?.status === status && !articles.get(id)?.deletedAt;
@@ -103,7 +107,7 @@ describe('POST /news/delete', () => {
     expect(body.failed.map((f) => f.id).sort()).toEqual(['missing1', 'pending1', 'saved1']);
     expect([...articles.keys()].sort()).toEqual(['filtered1', 'pending1', 'saved1', 'skipped2']);
     expect(articles.get('filtered1')?.deletedAt).toBeTruthy();
-    expect(deletedTexts.flat().sort()).toEqual(['users/u1/articles/filtered1.json', 'users/u1/articles/skipped1.json']);
+    expect(deletedTexts.flat().sort()).toEqual(['profiles/p1/articles/filtered1.json', 'profiles/p1/articles/skipped1.json']);
   });
 
   it('forgets a recycle-bin article, so a later run or backfill can find it again', async () => {
@@ -128,9 +132,11 @@ describe('POST /news/delete', () => {
     expect([...aliases.keys()].sort()).toEqual(['title#s1', 'url#a1', 'url#f1', 'url#p1']);
   });
 
-  it("can't touch another account's news", async () => {
-    const body = JSON.parse((await request({ ids: ['skipped1', 'filtered1'] }, 'u2')).body) as DeleteNewsResponse;
+  it("can't touch another profile's news", async () => {
+    const body = JSON.parse((await request({ ids: ['skipped1', 'filtered1'] }, 'u2', 'p2')).body) as DeleteNewsResponse;
     expect(body.deleted).toBe(0);
+    expect(articles.size).toBe(5);
+    expect((await request({ ids: ['skipped1'] }, 'u2', 'p1')).statusCode).toBe(404);
     expect(articles.size).toBe(5);
   });
 

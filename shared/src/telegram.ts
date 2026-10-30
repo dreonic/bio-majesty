@@ -5,10 +5,10 @@ import { IsoDateTime } from './common';
 export const TELEGRAM_LINK_KINDS = ['private', 'group'] as const;
 export type TelegramLinkKind = (typeof TELEGRAM_LINK_KINDS)[number];
 
-/** Chats and topics one account can send its notifications to. */
+/** Chats and topics one profile can send its notifications to. */
 export const MAX_TELEGRAM_CONNECTIONS = 10;
 
-/** One chat or topic that gets the account's digests and alerts. */
+/** One chat or topic that gets the profile's digests and alerts. */
 export const TelegramConnectionSchema = z.object({
   id: z.string(),
   /** "Chat" or "Group › Topic". */

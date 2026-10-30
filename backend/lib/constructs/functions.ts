@@ -18,6 +18,8 @@ export interface FunctionOptions {
   timeout?: Duration;
   memorySize?: number;
   environment?: Record<string, string>;
+  /** A fixed name, for a function that refers to itself (CDK names the others). */
+  functionName?: string;
 }
 
 /** ESM shims so bundled CommonJS dependencies can still use require/__dirname. */
@@ -45,6 +47,7 @@ export class FunctionFactory {
     return new NodejsFunction(this.scope, id, {
       entry: path.join(BACKEND_ROOT, 'src', 'handlers', opts.entry),
       handler: opts.handler ?? 'handler',
+      functionName: opts.functionName,
       description: opts.description,
       runtime: lambda.Runtime.NODEJS_24_X,
       architecture: lambda.Architecture.ARM_64,

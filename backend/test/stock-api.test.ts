@@ -36,7 +36,10 @@ let settings: { stock: { assets: string[]; volumeRatio: number }; subject: { sen
 
 vi.mock('../src/repo/settings', () => ({
   getSettings: async () => settings,
-  saveSettings: async (_sub: string, next: typeof settings) => (settings = next),
+  saveSettings: async (_profileId: string, next: typeof settings) => (settings = next),
+}));
+vi.mock('../src/repo/profiles', () => ({
+  getAccountProfile: async (sub: string, id: string) => (sub === 'u1' && id === 'p1' ? { id, name: 'Acme', createdAt: '' } : null),
 }));
 vi.mock('../src/lib/aws', () => ({ invokeAsync: async (_fn: string, payload: unknown) => void invoked.push(payload) }));
 vi.mock('../src/repo/stock', () => ({
@@ -72,7 +75,7 @@ const call = (method: string, resource: string, opts: { query?: Record<string, s
   handler({
     httpMethod: method,
     resource,
-    headers: {},
+    headers: { 'X-Profile-Id': 'p1' },
     queryStringParameters: opts.query ?? null,
     pathParameters: opts.path ?? null,
     body: opts.body === undefined ? null : JSON.stringify(opts.body),

@@ -8,13 +8,14 @@ import {
 import type { Sentiment } from '@bio-majesty/shared';
 import { env } from '../lib/env';
 import { chunk } from '../repo/client';
+import { keys, type ProfileId } from '../repo/keys';
 
 let client: S3VectorsClient | undefined;
 const s3v = () => (client ??= new S3VectorsClient({}));
 
 /** Metadata stored with every chunk vector. Filterable: owner, articleId, publishedAt, categoryIds, sentiment. */
 export interface ChunkMetadata {
-  /** The account (Cognito sub) whose saved article this is: every query filters on it. */
+  /** The profile whose saved article this is: every query filters on it. */
   owner: string;
   articleId: string;
   chunk: number;
@@ -29,8 +30,8 @@ export interface ChunkMetadata {
 
 export const NON_FILTERABLE_KEYS = ['title', 'text', 'source'] as const;
 
-export function vectorKey(sub: string, articleId: string, chunkIndex: number): string {
-  return `${sub}#${articleId}#${chunkIndex}`;
+export function vectorKey(profileId: ProfileId, articleId: string, chunkIndex: number): string {
+  return `${profileId}#${articleId}#${chunkIndex}`;
 }
 
 export async function putChunkVectors(items: { key: string; vector: number[]; metadata: ChunkMetadata }[]): Promise<void> {
@@ -49,9 +50,9 @@ export async function putChunkVectors(items: { key: string; vector: number[]; me
   }
 }
 
-export async function deleteArticleVectors(sub: string, articleId: string, maxChunks = 64): Promise<void> {
+export async function deleteArticleVectors(profileId: ProfileId, articleId: string, maxChunks = 64): Promise<void> {
   // Keys are deterministic, so delete the possible range without listing.
-  const keys = Array.from({ length: maxChunks }, (_, i) => vectorKey(sub, articleId, i));
+  const keys = Array.from({ length: maxChunks }, (_, i) => vectorKey(profileId, articleId, i));
   for (const batch of chunk(keys, 100)) {
     await s3v().send(
       new DeleteVectorsCommand({ vectorBucketName: env.vectorBucket, indexName: env.vectorIndex, keys: batch }),
@@ -60,7 +61,7 @@ export async function deleteArticleVectors(sub: string, articleId: string, maxCh
 }
 
 export interface VectorFilter {
-  /** Required: an account only ever searches its own saved news. */
+  /** Required: a profile only ever searches its own saved news. */
   owner: string;
   from?: Date;
   to?: Date;

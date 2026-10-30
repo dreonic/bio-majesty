@@ -4,6 +4,7 @@ import { effectiveSummary, effectiveTags, type Article } from '@bio-majesty/shar
 import type { DynamoDBBatchResponse, DynamoDBStreamEvent } from 'aws-lambda';
 import { errorMessage, logger } from '../lib/logger';
 import { markIndexed } from '../repo/articles';
+import { asProfileId, type ProfileId } from '../repo/keys';
 import { indexArticle } from '../vectors/indexer';
 import { deleteArticleVectors } from '../vectors/store';
 
@@ -28,14 +29,14 @@ export function decideAction(oldImage: Article | null, newImage: Article | null)
   return 'none';
 }
 
-/** An account's article item (PK USER#<sub>, SK ART#<id>), with the account it belongs to. */
-export function image(raw: Record<string, unknown> | undefined): { sub: string; article: Article } | null {
+/** A profile's article item (PK PROFILE#<id>, SK ART#<id>), with the profile it belongs to. */
+export function image(raw: Record<string, unknown> | undefined): { profileId: ProfileId; article: Article } | null {
   if (!raw) return null;
   const item = unmarshall(raw as Record<string, AttributeValue>);
   const pk = String(item.PK ?? '');
-  if (!pk.startsWith('USER#') || !String(item.SK ?? '').startsWith('ART#')) return null;
+  if (!pk.startsWith('PROFILE#') || !String(item.SK ?? '').startsWith('ART#')) return null;
   // A soft-deleted (filtered) article is never saved, so it is never in the index.
-  return { sub: pk.slice('USER#'.length), article: item as unknown as Article };
+  return { profileId: asProfileId(pk.slice('PROFILE#'.length)), article: item as unknown as Article };
 }
 
 export async function handler(event: DynamoDBStreamEvent): Promise<DynamoDBBatchResponse> {
@@ -45,16 +46,16 @@ export async function handler(event: DynamoDBStreamEvent): Promise<DynamoDBBatch
     const after = image(record.dynamodb?.NewImage);
     const action = decideAction(before?.article ?? null, after?.article ?? null);
     if (action === 'none') continue;
-    const sub = (after ?? before)!.sub;
+    const profileId = (after ?? before)!.profileId;
     try {
       if (action === 'index' && after) {
-        const chunks = await indexArticle(sub, after.article);
-        await markIndexed(sub, after.article.id, new Date().toISOString());
+        const chunks = await indexArticle(profileId, after.article);
+        await markIndexed(profileId, after.article.id, new Date().toISOString());
         logger.info('Indexed article', { id: after.article.id, chunks });
       } else if (action === 'delete') {
         const id = (after ?? before)!.article.id;
-        await deleteArticleVectors(sub, id);
-        if (after) await markIndexed(sub, id, null);
+        await deleteArticleVectors(profileId, id);
+        if (after) await markIndexed(profileId, id, null);
         logger.info('Removed article from index', { id });
       }
     } catch (err) {

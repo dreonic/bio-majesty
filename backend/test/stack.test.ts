@@ -101,10 +101,10 @@ describe('DashboardStack', () => {
     });
   });
 
-  it("feeds only the accounts' article items to the indexer", () => {
+  it("feeds only the profiles' article items to the indexer", () => {
     template.hasResourceProperties('AWS::Lambda::EventSourceMapping', {
       FilterCriteria: {
-        Filters: [{ Pattern: JSON.stringify({ dynamodb: { Keys: { PK: { S: [{ prefix: 'USER#' }] }, SK: { S: [{ prefix: 'ART#' }] } } } }) }],
+        Filters: [{ Pattern: JSON.stringify({ dynamodb: { Keys: { PK: { S: [{ prefix: 'PROFILE#' }] }, SK: { S: [{ prefix: 'ART#' }] } } } }) }],
       },
       FunctionResponseTypes: ['ReportBatchItemFailures'],
     });
@@ -119,20 +119,41 @@ describe('DashboardStack', () => {
     });
   });
 
-  it("checks every 15 minutes on the exec's clock for due daily runs and market data", () => {
+  it("refreshes market data every 15 minutes on the exec's clock, and keeps the profiles' daily-run schedules in their own group", () => {
     expect(schedules(template)).toEqual({
-      'news-accumulator-test-news-dispatch': { expression: 'cron(0/15 * * * ? *)', timeZone: 'Asia/Singapore' },
       'news-accumulator-test-stock-refresh': { expression: 'cron(0/15 * * * ? *)', timeZone: 'Asia/Singapore' },
     });
-    expect(schedules(synth({ timeZone: 'Asia/Tokyo' }))['news-accumulator-test-news-dispatch']?.timeZone).toBe('Asia/Tokyo');
+    expect(schedules(synth({ timeZone: 'Asia/Tokyo' }))['news-accumulator-test-stock-refresh']?.timeZone).toBe('Asia/Tokyo');
+    template.hasResourceProperties('AWS::Scheduler::ScheduleGroup', { Name: 'news-accumulator-test-daily-runs' });
+    // Only the API (settings, profiles) writes those schedules; the delete worker removes them.
+    expect(withAction('scheduler:CreateSchedule')).toEqual(['ApiProfilesServiceRoleDefaultPolicy', 'ApiSettingsServiceRoleDefaultPolicy']);
+    expect(withAction('scheduler:DeleteSchedule')).toEqual(['ApiProfilesServiceRoleDefaultPolicy', 'DeleteWorkerServiceRoleDefaultPolicy']);
+    // The schedules start the daily runs through the scheduler's role.
+    expect(withAction('states:StartExecution')).toContain('PipelineSchedulerRoleDefaultPolicy');
   }, 60_000);
+
+  it('lets the browser send the profile header', () => {
+    template.hasResourceProperties('AWS::ApiGateway::GatewayResponse', {
+      ResponseParameters: Match.objectLike({ 'gatewayresponse.header.Access-Control-Allow-Headers': "'Authorization,Content-Type,X-Profile-Id'" }),
+    });
+    template.hasResourceProperties('AWS::ApiGateway::Method', {
+      HttpMethod: 'OPTIONS',
+      Integration: Match.objectLike({
+        IntegrationResponses: [
+          Match.objectLike({ ResponseParameters: Match.objectLike({ 'method.response.header.Access-Control-Allow-Headers': "'Authorization,Content-Type,X-Profile-Id'" }) }),
+        ],
+      }),
+    });
+  });
 
   it('tells every function that starts a state machine which one it is', () => {
     const functions = Object.entries(template.findResources('AWS::Lambda::Function'));
     const env = (name: string) => functions.find(([id]) => id.startsWith(name))?.[1].Properties.Environment?.Variables ?? {};
     for (const [name, variable, machine] of [
-      ['NewsDispatch', 'DAILY_STATE_MACHINE_ARN', 'Daily'],
       ['ApiSettings', 'DAILY_STATE_MACHINE_ARN', 'Daily'],
+      ['ApiProfiles', 'DAILY_STATE_MACHINE_ARN', 'Daily'],
+      ['DeleteWorker', 'DAILY_STATE_MACHINE_ARN', 'Daily'],
+      ['DeleteWorker', 'BACKFILL_STATE_MACHINE_ARN', 'Backfill'],
       ['ApiCategories', 'BACKFILL_STATE_MACHINE_ARN', 'Backfill'],
     ]) {
       expect(JSON.stringify(env(name!)[variable!] ?? 'missing'), `${name} ${variable}`).toContain(machine);
@@ -148,16 +169,16 @@ describe('DashboardStack', () => {
   it('lets only the background jobs and the admin API list the accounts (the dashboard-users group)', () => {
     expect(withAction('cognito-idp:ListUsersInGroup')).toEqual([
       'ApiAdminServiceRoleDefaultPolicy',
-      'NewsDispatchServiceRoleDefaultPolicy',
+      'PipelineStartServiceRoleDefaultPolicy',
       'StockIngestServiceRoleDefaultPolicy',
     ]);
   });
 
-  it('lets only the admin API manage users, and only the account-delete worker delete them', () => {
+  it('lets only the admin API manage users, and only the delete worker delete them', () => {
     for (const action of ['cognito-idp:AdminCreateUser', 'cognito-idp:AdminAddUserToGroup', 'cognito-idp:AdminDisableUser']) {
       expect(withAction(action), action).toEqual(['ApiAdminServiceRoleDefaultPolicy']);
     }
-    expect(withAction('cognito-idp:AdminDeleteUser')).toEqual(['AccountDeleteServiceRoleDefaultPolicy']);
+    expect(withAction('cognito-idp:AdminDeleteUser')).toEqual(['DeleteWorkerServiceRoleDefaultPolicy']);
     template.hasResourceProperties('AWS::Cognito::UserPoolGroup', { GroupName: 'admins' });
   });
 

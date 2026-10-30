@@ -9,11 +9,12 @@ import { getJson, s3Keys } from '../storage/s3';
 import { embedQuery } from '../vectors/embed';
 import type { StoredArticleText } from '../vectors/indexer';
 import { queryVectors } from '../vectors/store';
+import type { ProfileId } from '../repo/keys';
 
 /**
- * Read-only tools over one account's saved (approved) news and tracked assets. Plain
+ * Read-only tools over one profile's saved (approved) news and tracked assets. Plain
  * async functions with zod input schemas so they can back the in-app chat agent today
- * and an MCP endpoint or other agents later. Every function takes the account (`sub`).
+ * and an MCP endpoint or other agents later. Every function takes the profile (`profileId`).
  */
 
 const DateInput = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).describe(`YYYY-MM-DD (${env.timeZone})`);
@@ -40,7 +41,7 @@ export const listNewsInput = z.object({
 export const getArticleInput = z.object({ id: z.string().describe('Article id from a previous tool result') });
 
 /**
- * Price-tool input. `asset` is any string, checked against the account's assets when the tool
+ * Price-tool input. `asset` is any string, checked against the profile's assets when the tool
  * runs: saved chats replay earlier calls, and those must stay valid after an asset is removed.
  */
 export const assetPricesInput = z.object({
@@ -75,15 +76,15 @@ function toToolArticle(a: Article, names: Map<string, string>): ToolArticle {
   };
 }
 
-async function categoryNames(sub: string): Promise<Map<string, string>> {
-  return new Map((await listCategories(sub)).map((c) => [c.id, c.name]));
+async function categoryNames(profileId: ProfileId): Promise<Map<string, string>> {
+  return new Map((await listCategories(profileId)).map((c) => [c.id, c.name]));
 }
 
-export async function searchNews(sub: string, input: z.infer<typeof searchNewsInput>) {
+export async function searchNews(profileId: ProfileId, input: z.infer<typeof searchNewsInput>) {
   const limit = input.limit ?? 8;
   const vector = await embedQuery(input.query);
   const hits = await queryVectors(vector, Math.min(100, limit * 5), {
-    owner: sub,
+    owner: profileId,
     from: input.from ? parseDateInput(input.from) : undefined,
     to: input.to ? parseDateInput(input.to, true) : undefined,
     categoryIds: input.categoryIds,
@@ -97,8 +98,8 @@ export async function searchNews(sub: string, input: z.infer<typeof searchNewsIn
     best.set(h.metadata.articleId, cur);
   }
   const ranked = [...best.entries()].sort((a, b) => a[1].distance - b[1].distance).slice(0, limit);
-  const articles = (await batchGetArticles(sub, ranked.map(([id]) => id))).filter((a) => a.status === 'APPROVED');
-  const names = await categoryNames(sub);
+  const articles = (await batchGetArticles(profileId, ranked.map(([id]) => id))).filter((a) => a.status === 'APPROVED');
+  const names = await categoryNames(profileId);
   const byId = new Map(articles.map((a) => [a.id, a]));
   return {
     results: ranked
@@ -111,9 +112,9 @@ export async function searchNews(sub: string, input: z.infer<typeof searchNewsIn
   };
 }
 
-export async function listNews(sub: string, input: z.infer<typeof listNewsInput>) {
+export async function listNews(profileId: ProfileId, input: z.infer<typeof listNewsInput>) {
   const limit = input.limit ?? 25;
-  const { items, nextCursor } = await listArticles(sub, {
+  const { items, nextCursor } = await listArticles(profileId, {
     status: 'APPROVED',
     from: input.from ? parseDateInput(input.from) : undefined,
     to: input.to ? parseDateInput(input.to, true) : undefined,
@@ -122,15 +123,15 @@ export async function listNews(sub: string, input: z.infer<typeof listNewsInput>
     q: input.keyword,
     limit,
   });
-  const names = await categoryNames(sub);
+  const names = await categoryNames(profileId);
   return { count: items.length, truncated: nextCursor !== null, articles: items.map((a) => toToolArticle(a, names)) };
 }
 
-export async function getArticleTool(sub: string, input: z.infer<typeof getArticleInput>) {
-  const article = await getArticle(sub, input.id);
+export async function getArticleTool(profileId: ProfileId, input: z.infer<typeof getArticleInput>) {
+  const article = await getArticle(profileId, input.id);
   if (!article || article.status !== 'APPROVED') return { error: 'Article not found among saved news.' };
-  const stored = await getJson<StoredArticleText>(s3Keys.articleText(sub, article.id));
-  const names = await categoryNames(sub);
+  const stored = await getJson<StoredArticleText>(s3Keys.articleText(profileId, article.id));
+  const names = await categoryNames(profileId);
   return {
     ...toToolArticle(article, names),
     rationale: article.final?.rationale ?? article.suggestion?.rationale ?? null,
@@ -169,6 +170,6 @@ export async function getAssetPrices(input: Pick<AssetPricesInput, 'from' | 'to'
   };
 }
 
-export async function listCategoriesTool(sub: string): Promise<Pick<Category, 'id' | 'name' | 'description'>[]> {
-  return (await listCategories(sub)).map(({ id, name, description }) => ({ id, name, description }));
+export async function listCategoriesTool(profileId: ProfileId): Promise<Pick<Category, 'id' | 'name' | 'description'>[]> {
+  return (await listCategories(profileId)).map(({ id, name, description }) => ({ id, name, description }));
 }

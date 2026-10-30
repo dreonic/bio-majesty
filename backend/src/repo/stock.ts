@@ -1,7 +1,7 @@
 import { BatchGetCommand, BatchWriteCommand, GetCommand, PutCommand, QueryCommand, type QueryCommandOutput } from '@aws-sdk/lib-dynamodb';
 import { candleDate, dateInZone, type Candle, type Quote, type StockAsset, type VolumeAnomaly } from '@bio-majesty/shared';
 import { chunk, ddb, stripKeys, table } from './client';
-import { accountPk, keys } from './keys';
+import { keys, profilePk, type ProfileId } from './keys';
 
 /**
  * Intraday bars are kept long enough for the 1D and 5D charts (the last 8 days), then expire.
@@ -9,7 +9,7 @@ import { accountPk, keys } from './keys';
  */
 export const INTRADAY_RETENTION_DAYS = 10;
 
-/** Refresh state of one asset's market data (shared by every account tracking it). */
+/** Refresh state of one asset's market data (shared by every profile tracking it). */
 export interface StockStatus {
   lastSuccessAt: string | null;
   lastError: string | null;
@@ -129,18 +129,18 @@ export async function putAsset(asset: StockAsset): Promise<void> {
   await ddb().send(new PutCommand({ TableName: table(), Item: { ...keys.stockMeta(asset.id), ...asset } }));
 }
 
-/** An account's volume alert for one asset and day (each account has its own ratio and alerts). */
-export async function putAnomaly(sub: string, asset: string, anomaly: VolumeAnomaly): Promise<void> {
-  await ddb().send(new PutCommand({ TableName: table(), Item: { ...keys.anomaly(sub, asset, anomaly.date), ...anomaly } }));
+/** A profile's volume alert for one asset and day (each profile has its own ratio and alerts). */
+export async function putAnomaly(profileId: ProfileId, asset: string, anomaly: VolumeAnomaly): Promise<void> {
+  await ddb().send(new PutCommand({ TableName: table(), Item: { ...keys.anomaly(profileId, asset, anomaly.date), ...anomaly } }));
 }
 
-export async function getAnomaly(sub: string, asset: string, ymd: string): Promise<VolumeAnomaly | null> {
-  const res = await ddb().send(new GetCommand({ TableName: table(), Key: keys.anomaly(sub, asset, ymd) }));
+export async function getAnomaly(profileId: ProfileId, asset: string, ymd: string): Promise<VolumeAnomaly | null> {
+  const res = await ddb().send(new GetCommand({ TableName: table(), Key: keys.anomaly(profileId, asset, ymd) }));
   return res.Item ? (stripKeys(res.Item) as unknown as VolumeAnomaly) : null;
 }
 
-/** The account's stored (notified) anomalies of an asset since `fromYmd`, oldest first. */
-export async function listAnomalyRecords(sub: string, asset: string, fromYmd: string): Promise<VolumeAnomaly[]> {
+/** The profile's stored (notified) anomalies of an asset since `fromYmd`, oldest first. */
+export async function listAnomalyRecords(profileId: ProfileId, asset: string, fromYmd: string): Promise<VolumeAnomaly[]> {
   const out: VolumeAnomaly[] = [];
   let startKey: Record<string, unknown> | undefined;
   do {
@@ -148,7 +148,7 @@ export async function listAnomalyRecords(sub: string, asset: string, fromYmd: st
       new QueryCommand({
         TableName: table(),
         KeyConditionExpression: 'PK = :pk AND SK BETWEEN :a AND :b',
-        ExpressionAttributeValues: { ':pk': accountPk(sub), ':a': `ANOMALY#${asset}#${fromYmd}`, ':b': `ANOMALY#${asset}#~` },
+        ExpressionAttributeValues: { ':pk': profilePk(profileId), ':a': `ANOMALY#${asset}#${fromYmd}`, ':b': `ANOMALY#${asset}#~` },
         ExclusiveStartKey: startKey,
       }),
     );

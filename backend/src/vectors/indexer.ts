@@ -4,6 +4,7 @@ import { getJson, s3Keys } from '../storage/s3';
 import { chunkText } from './chunk';
 import { embedDocuments } from './embed';
 import { deleteArticleVectors, putChunkVectors, vectorKey, type ChunkMetadata } from './store';
+import type { ProfileId } from '../repo/keys';
 
 export interface StoredArticleText {
   url: string;
@@ -23,21 +24,21 @@ export function articleChunks(article: Article, text: string | null): string[] {
   return [head, ...body];
 }
 
-/** Index one of an account's saved articles (its vectors carry the account as `owner`). */
-export async function indexArticle(sub: string, article: Article, usage?: UsageCollector): Promise<number> {
-  const stored = await getJson<StoredArticleText>(s3Keys.articleText(sub, article.id));
+/** Index one of a profile's saved articles (its vectors carry the profile as `owner`). */
+export async function indexArticle(profileId: ProfileId, article: Article, usage?: UsageCollector): Promise<number> {
+  const stored = await getJson<StoredArticleText>(s3Keys.articleText(profileId, article.id));
   const chunks = articleChunks(article, stored?.text ?? null);
   const vectors = await embedDocuments(chunks, usage);
   const tags = effectiveTags(article);
   const publishedAt = Math.floor(new Date(article.publishedAt).getTime() / 1000);
   // Remove stale chunks first (the article may have had more chunks before).
-  await deleteArticleVectors(sub, article.id);
+  await deleteArticleVectors(profileId, article.id);
   await putChunkVectors(
     vectors.map((vector, i) => ({
-      key: vectorKey(sub, article.id, i),
+      key: vectorKey(profileId, article.id, i),
       vector,
       metadata: {
-        owner: sub,
+        owner: profileId,
         articleId: article.id,
         chunk: i,
         publishedAt,

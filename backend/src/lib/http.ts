@@ -1,6 +1,7 @@
 import { ACCESS_GROUP, hasAccess } from '@bio-majesty/shared';
 import type { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import type { z } from 'zod';
+import type { ProfileId } from '../repo/keys';
 import { env } from './env';
 import { errorMessage, logger } from './logger';
 
@@ -33,7 +34,7 @@ export function corsHeaders(): Record<string, string> {
   const origin = requestOrigin && allowed.includes(requestOrigin) ? requestOrigin : (allowed[0] ?? '*');
   return {
     'Access-Control-Allow-Origin': origin,
-    'Access-Control-Allow-Headers': 'Authorization,Content-Type',
+    'Access-Control-Allow-Headers': 'Authorization,Content-Type,X-Profile-Id',
     'Access-Control-Allow-Methods': 'GET,POST,PUT,PATCH,DELETE,OPTIONS',
     Vary: 'Origin',
   };
@@ -95,11 +96,16 @@ export function pathParam(event: APIGatewayProxyEvent, name: string): string {
   return decodeURIComponent(value);
 }
 
-/** The signed-in account: every item it owns is keyed by `sub`. */
+/** The signed-in account (its profiles are listed under `sub`). */
 export interface AuthUser {
   sub: string;
   email: string | null;
   name: string | null;
+}
+
+/** The signed-in account working on one of its profiles: everything the profile owns is keyed by `profileId`. */
+export interface ProfileUser extends AuthUser {
+  profileId: ProfileId;
 }
 
 /** Claims injected by the Cognito user-pool authorizer. */

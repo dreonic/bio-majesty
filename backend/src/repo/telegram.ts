@@ -1,9 +1,9 @@
 import { DeleteCommand, GetCommand, PutCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import type { TelegramLinkKind } from '@bio-majesty/shared';
 import { ddb, queryPrefix, stripKeys, table, ttlInDays } from './client';
-import { accountPk, keys } from './keys';
+import { asProfileId, keys, profilePk, type ProfileId } from './keys';
 
-/** One chat (and, in a forum supergroup, one topic) that gets the account's digests and alerts. */
+/** One chat (and, in a forum supergroup, one topic) that gets the profile's digests and alerts. */
 export interface TelegramLink {
   /** `<chatId>_<topicId or 0>`: connecting the same chat or topic again replaces it. */
   id: string;
@@ -18,18 +18,18 @@ export interface TelegramLink {
 
 export const telegramLinkId = (chatId: number, topicId: number | null) => `${chatId}_${topicId ?? 0}`;
 
-/** The account's connections, oldest first. */
-export async function listTelegramLinks(sub: string): Promise<TelegramLink[]> {
-  const items = await queryPrefix(accountPk(sub), 'TELEGRAM#');
+/** The profile's connections, oldest first. */
+export async function listTelegramLinks(profileId: ProfileId): Promise<TelegramLink[]> {
+  const items = await queryPrefix(profilePk(profileId), 'TELEGRAM#');
   return items.map((i) => stripKeys(i) as unknown as TelegramLink).sort((a, b) => a.linkedAt.localeCompare(b.linkedAt));
 }
 
-export async function putTelegramLink(sub: string, link: TelegramLink): Promise<void> {
-  await ddb().send(new PutCommand({ TableName: table(), Item: { ...keys.telegramChat(sub, link.id), ...link } }));
+export async function putTelegramLink(profileId: ProfileId, link: TelegramLink): Promise<void> {
+  await ddb().send(new PutCommand({ TableName: table(), Item: { ...keys.telegramChat(profileId, link.id), ...link } }));
 }
 
-export async function deleteTelegramLink(sub: string, id: string): Promise<boolean> {
-  const res = await ddb().send(new DeleteCommand({ TableName: table(), Key: keys.telegramChat(sub, id), ReturnValues: 'ALL_OLD' }));
+export async function deleteTelegramLink(profileId: ProfileId, id: string): Promise<boolean> {
+  const res = await ddb().send(new DeleteCommand({ TableName: table(), Key: keys.telegramChat(profileId, id), ReturnValues: 'ALL_OLD' }));
   return Boolean(res.Attributes);
 }
 
@@ -51,17 +51,17 @@ export async function setUpdateOffset(offset: number): Promise<void> {
 }
 
 export interface LinkCode {
-  sub: string;
+  profileId: ProfileId;
   /** Which kind of chat the code may connect: a private code is refused in a group, and the other way round. */
   kind: TelegramLinkKind;
   expiresAt: number;
-  /** Set once the code's /start message was seen (possibly while another account was checking). */
+  /** Set once the code's /start message was seen (possibly while another profile was checking). */
   linkedChatTitle: string | null;
 }
 
-export async function putLinkCode(code: string, sub: string, kind: TelegramLinkKind): Promise<void> {
+export async function putLinkCode(code: string, profileId: ProfileId, kind: TelegramLinkKind): Promise<void> {
   await ddb().send(
-    new PutCommand({ TableName: table(), Item: { ...keys.telegramLink(code), sub, kind, expiresAt: ttlInDays(1) } }),
+    new PutCommand({ TableName: table(), Item: { ...keys.telegramLink(code), profileId, kind, expiresAt: ttlInDays(1) } }),
   );
 }
 
@@ -69,7 +69,7 @@ export async function getLinkCode(code: string): Promise<LinkCode | null> {
   const res = await ddb().send(new GetCommand({ TableName: table(), Key: keys.telegramLink(code) }));
   if (!res.Item) return null;
   return {
-    sub: String(res.Item.sub),
+    profileId: asProfileId(String(res.Item.profileId)),
     kind: res.Item.kind as TelegramLinkKind,
     expiresAt: Number(res.Item.expiresAt),
     linkedChatTitle: (res.Item.linkedChatTitle as string | undefined) ?? null,

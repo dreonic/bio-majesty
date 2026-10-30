@@ -22,9 +22,9 @@ import {
 import { z } from 'zod';
 import { invokeAsync } from '../../lib/aws';
 import { env } from '../../lib/env';
-import { badRequest, conflict, HttpError, json, notFound, parseBody, parseQuery, type AuthUser } from '../../lib/http';
+import { badRequest, conflict, HttpError, json, notFound, parseBody, parseQuery, type ProfileUser } from '../../lib/http';
 import { errorMessage } from '../../lib/logger';
-import { createRouter } from '../../lib/router';
+import { createProfileRouter } from '../../lib/router';
 import { addDays, addMonths, parseDateInput } from '../../lib/time';
 import { getSettings, saveSettings } from '../../repo/settings';
 import { getAsset, getAssets, getQuote, getStockStatus, listAnomalyRecords, putAsset, queryDaily, queryIntraday } from '../../repo/stock';
@@ -49,9 +49,9 @@ const SUGGESTIONS = 3;
 
 const AssetQuery = z.object({ asset: AssetIdSchema });
 
-/** The caller's asset, or 404: an account only reads market data for the assets it tracks. */
-async function ownAsset(user: AuthUser, id: string): Promise<{ settings: Settings; asset: StockAsset }> {
-  const settings = await getSettings(user.sub);
+/** The caller's asset, or 404: a profile only reads market data for the assets it tracks. */
+async function ownAsset(user: ProfileUser, id: string): Promise<{ settings: Settings; asset: StockAsset }> {
+  const settings = await getSettings(user.profileId);
   if (!settings.stock.assets.includes(id)) throw notFound(`${id} is not one of your assets`);
   return { settings, asset: (await getAsset(id)) ?? fallbackAsset(id) };
 }
@@ -80,14 +80,14 @@ async function lookupFailure(provider: StockProvider, symbol: string, err: unkno
   return `No ${label} data for ${symbol} (${errorMessage(err).slice(0, 200)}).${hint}`;
 }
 
-export const handler = createRouter({
-  'GET /stock/assets': async (_event, user) => json(200, await assetList(await getSettings(user.sub))),
+export const handler = createProfileRouter({
+  'GET /stock/assets': async (_event, user) => json(200, await assetList(await getSettings(user.profileId))),
 
   /** Track another asset: looked up on its source first, then its history loads in the background. */
   'POST /stock/assets': async (event, user) => {
     const { source, symbol } = parseBody(event, AddAssetRequestSchema);
     const id = assetId(source, symbol);
-    const settings = await getSettings(user.sub);
+    const settings = await getSettings(user.profileId);
     if (settings.stock.assets.includes(id)) throw conflict(`${symbol} from ${STOCK_SOURCE_INFO[source].label} is already in your list`);
     if (settings.stock.assets.length >= MAX_ASSETS) throw badRequest(`You can track up to ${MAX_ASSETS} assets; remove one first`);
     const provider = await usableSource(source);
@@ -100,7 +100,7 @@ export const handler = createRouter({
       }
       await putAsset(asset);
     }
-    const next = await saveSettings(user.sub, { ...settings, stock: { ...settings.stock, assets: [...settings.stock.assets, id] } });
+    const next = await saveSettings(user.profileId, { ...settings, stock: { ...settings.stock, assets: [...settings.stock.assets, id] } });
     if (!(await getStockStatus(id)).historyLoadedAt) await invokeAsync(env.stockIngestFunction, { mode: 'resync', asset: id });
     return json(201, await assetList(next));
   },
@@ -108,12 +108,12 @@ export const handler = createRouter({
   // Like the other stock routes, the asset ID goes in the query string.
   'DELETE /stock/assets': async (event, user) => {
     const { asset: id } = parseQuery(event, AssetQuery);
-    const settings = await getSettings(user.sub);
+    const settings = await getSettings(user.profileId);
     if (!settings.stock.assets.includes(id)) throw notFound(`${id} is not one of your assets`);
     if (settings.subject.sentimentAsset === id) {
       throw badRequest(`Sentiment is judged against ${id}. Pick another asset (or the subject itself) in Settings → Subject first.`);
     }
-    const next = await saveSettings(user.sub, {
+    const next = await saveSettings(user.profileId, {
       ...settings,
       stock: { ...settings.stock, assets: settings.stock.assets.filter((a) => a !== id) },
     });
@@ -165,7 +165,7 @@ export const handler = createRouter({
     // Load extra history so the first days in range have a full baseline window.
     const daily = asset.hasVolume ? await queryDaily(q.asset, addDays(from, -45), now, asset.timeZone) : [];
     const detected = detectVolumeAnomalies(daily, { window: ANOMALY_WINDOW, minRatio: stock.volumeRatio }).filter((a) => a.date >= fromDate);
-    const records = await listAnomalyRecords(user.sub, q.asset, fromDate);
+    const records = await listAnomalyRecords(user.profileId, q.asset, fromDate);
     const byDate = new Map<string, VolumeAnomaly>(records.map((r) => [r.date, r]));
     const items: VolumeAnomaly[] = detected.map((a) => ({ ...a, notifiedAt: byDate.get(a.date)?.notifiedAt ?? null }));
     // Intraday flags for a session whose daily bar is not stored yet.

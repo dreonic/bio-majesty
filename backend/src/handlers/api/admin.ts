@@ -10,14 +10,10 @@ import {
 import type { APIGatewayProxyEvent } from 'aws-lambda';
 import { invokeAsync } from '../../lib/aws';
 import { env } from '../../lib/env';
-import { badRequest, conflict, forbidden, json, noContent, notFound, parseBody, pathParam, type AuthUser } from '../../lib/http';
+import { badRequest, forbidden, json, noContent, notFound, parseBody, pathParam, type AuthUser } from '../../lib/http';
 import { createRouter, type RouteHandler } from '../../lib/router';
 import { getUser, inviteUser, listUsers, resendInvite, setEnabled, setGroup, signOutEverywhere } from '../../lib/users';
-import { listRuns } from '../../repo/runs';
-import type { AccountDeleteEvent } from '../account-delete';
-
-/** A run older than this is treated as stuck, not in progress. */
-const RUN_IN_PROGRESS_MS = 6 * 60 * 60 * 1000;
+import type { DeleteEvent } from '../delete-worker';
 
 const claims = (event: APIGatewayProxyEvent) => (event.requestContext?.authorizer?.claims ?? {}) as Record<string, string>;
 
@@ -85,18 +81,14 @@ export const handler = createRouter({
   'DELETE /admin/users/{username}': adminOnly(async (event, me) => {
     const user = await target(event);
     notSelf(user, me, 'delete');
-    // A run in flight would write news back into the deleted partition.
-    const runs = await listRuns(user.sub, 5);
-    if (runs.some((r) => r.status === 'running' && Date.now() - Date.parse(r.startedAt) < RUN_IN_PROGRESS_MS)) {
-      throw conflict('A news run is in progress for this account. Try again when it has finished (usually within a few minutes).');
-    }
-    // Stop everything now (sign-in, background runs); the worker deletes the data, then the user.
+    // Lock the account out now (sign-in, scheduled runs); the worker stops runs in progress and
+    // deletes the profiles one by one, then the user.
     await setGroup(user.username, ACCESS_GROUP, false);
     if (user.admin) await setGroup(user.username, ADMIN_GROUP, false);
     await setEnabled(user.username, false);
     await signOutEverywhere(user.username);
-    const payload: AccountDeleteEvent = { sub: user.sub, username: user.username };
-    await invokeAsync(env.accountDeleteFunction, payload);
+    const payload: DeleteEvent = { sub: user.sub, username: user.username };
+    await invokeAsync(env.deleteWorkerFunction, payload);
     return json(202, { deleting: true });
   }),
 });

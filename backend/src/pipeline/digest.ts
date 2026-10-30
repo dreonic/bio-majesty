@@ -5,7 +5,7 @@ import { UsageCollector } from '../ai/usage';
 import { errorMessage, logger } from '../lib/logger';
 import { localDate } from '../lib/time';
 import { formatDigestMessage, escapeHtml } from '../notify/telegram';
-import { notifyAccount } from '../notify/notify';
+import { notifyProfile } from '../notify/notify';
 import { batchGetArticles, listRunItems } from '../repo/articles';
 import { getCategory, listCategories } from '../repo/categories';
 import { putDigest } from '../repo/digests';
@@ -13,19 +13,19 @@ import { recordRunUsage } from '../repo/runs';
 import { getSettings } from '../repo/settings';
 import type { PipelineState } from './state';
 
-/** Summarize what the run found, store the account's digest, and notify it on Telegram. */
+/** Summarize what the run found, store the profile's digest, and notify it on Telegram. */
 export async function digestRun(state: PipelineState): Promise<PipelineState> {
-  const { sub } = state;
+  const { profileId } = state;
   const ids = await listRunItems(state.runId);
-  const articles = (await batchGetArticles(sub, ids)).filter((a) => a.status === 'PENDING');
-  const [categories, settings] = await Promise.all([listCategories(sub), getSettings(sub)]);
-  const category = state.categoryId ? await getCategory(sub, state.categoryId) : null;
+  const articles = (await batchGetArticles(profileId, ids)).filter((a) => a.status === 'PENDING');
+  const [categories, settings] = await Promise.all([listCategories(profileId), getSettings(profileId)]);
+  const category = state.categoryId ? await getCategory(profileId, state.categoryId) : null;
 
   if (!articles.length) {
     if (state.runType === 'backfill') {
-      await notifyAccount(sub, `🔎 Backfill for <b>${escapeHtml(category?.name ?? 'category')}</b> finished: no new items to review.`);
+      await notifyProfile(profileId, `🔎 Backfill for <b>${escapeHtml(category?.name ?? 'category')}</b> finished: no new items to review.`);
     } else if (settings.notifications.notifyWhenEmpty) {
-      await notifyAccount(sub, '📰 Daily news run finished: no new items today.');
+      await notifyProfile(profileId, '📰 Daily news run finished: no new items today.');
     }
     return { ...state, pending: 0 };
   }
@@ -64,7 +64,7 @@ export async function digestRun(state: PipelineState): Promise<PipelineState> {
     counts,
     createdAt: new Date().toISOString(),
   };
-  await putDigest(sub, digest);
-  await notifyAccount(sub, formatDigestMessage(digest), { buttonText: 'Open review queue', path: '/?tab=review' });
+  await putDigest(profileId, digest);
+  await notifyProfile(profileId, formatDigestMessage(digest), { buttonText: 'Open review queue', path: '/?tab=review' });
   return { ...state, pending: articles.length };
 }

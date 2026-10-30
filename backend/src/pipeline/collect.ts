@@ -46,7 +46,7 @@ export function mergeCandidates(raw: RawCandidate[]): MergedCandidate[] {
   return merged;
 }
 
-/** Gather raw search results for the run, merge them, and drop articles the account already knows. */
+/** Gather raw search results for the run, merge them, and drop articles the profile already knows. */
 export async function collectCandidates(state: PipelineState): Promise<PipelineState> {
   const files = await listKeys(s3Keys.rawPrefix(state.runId));
   const raw: RawCandidate[] = [];
@@ -54,11 +54,11 @@ export async function collectCandidates(state: PipelineState): Promise<PipelineS
 
   const merged = mergeCandidates(raw);
   const allAliases = merged.flatMap(candidateAliases);
-  const known = await existingAliases(state.sub, allAliases);
+  const known = await existingAliases(state.profileId, allAliases);
   const fresh = merged.filter((c) => !candidateAliases(c).some((a) => known.has(aliasId(a))));
 
   await putJson(s3Keys.candidates(state.runId), fresh);
-  await addRunStats(state.sub, state.runId, { found: merged.length, duplicates: merged.length - fresh.length });
+  await addRunStats(state.profileId, state.runId, { found: merged.length, duplicates: merged.length - fresh.length });
   const { tasks: _tasks, ...rest } = state;
   return { ...rest, candidateCount: fresh.length };
 }

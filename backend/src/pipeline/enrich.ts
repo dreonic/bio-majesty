@@ -15,19 +15,20 @@ import { decodeGoogleNewsUrl } from '../sources/gnews-decode';
 import type { MergedCandidate } from '../sources/types';
 import { articleFromCandidate } from './article-factory';
 import type { EnrichInput } from './state';
+import type { ProfileId } from '../repo/keys';
 
 export type EnrichOutcome = 'pending' | 'filtered' | 'duplicate' | 'missing';
 
 const EXAMPLES_TTL_MS = 10 * 60 * 1000;
 const examplesCache = new Map<string, { at: number; limit: number; items: Feedback[] }>();
 
-/** The account's most recent corrections (cached per Lambda instance). */
-async function correctionExamples(sub: string, limit: number): Promise<Feedback[]> {
-  const cached = examplesCache.get(sub);
+/** The profile's most recent corrections (cached per Lambda instance). */
+async function correctionExamples(profileId: ProfileId, limit: number): Promise<Feedback[]> {
+  const cached = examplesCache.get(profileId);
   if (cached && cached.limit === limit && Date.now() - cached.at < EXAMPLES_TTL_MS) return cached.items;
   try {
-    const items = await listFeedback(sub, { limit, onlyCorrections: true });
-    examplesCache.set(sub, { at: Date.now(), limit, items });
+    const items = await listFeedback(profileId, { limit, onlyCorrections: true });
+    examplesCache.set(profileId, { at: Date.now(), limit, items });
     return items;
   } catch (err) {
     logger.warn('Could not load correction examples; tagging without them', { error: errorMessage(err) });
@@ -37,7 +38,7 @@ async function correctionExamples(sub: string, limit: number): Promise<Feedback[
 
 /** Resolve the publisher URL, fetch the article, tag it with the LLM, and store it for review. */
 export async function enrichCandidate(input: EnrichInput): Promise<{ outcome: EnrichOutcome; articleId?: string }> {
-  const { sub } = input;
+  const { profileId } = input;
   const candidate = await getJson<MergedCandidate>(s3Keys.relevantItem(input.runId, input.candidateId));
   if (!candidate) return { outcome: 'missing' };
 
@@ -62,9 +63,9 @@ export async function enrichCandidate(input: EnrichInput): Promise<{ outcome: En
 
   // 2. The real URL may reveal a duplicate the collect step could not see.
   if (url !== candidate.url) {
-    const known = await existingAliases(sub, aliases);
+    const known = await existingAliases(profileId, aliases);
     if (aliases.some((a) => known.has(aliasId(a)))) {
-      await addRunStats(sub, input.runId, { duplicates: 1 });
+      await addRunStats(profileId, input.runId, { duplicates: 1 });
       return { outcome: 'duplicate' };
     }
   }
@@ -74,9 +75,9 @@ export async function enrichCandidate(input: EnrichInput): Promise<{ outcome: En
   if (!isGoogleNewsUrl(url)) extracted = await fetchArticle(url);
 
   // 4. Tag with the LLM.
-  const [categories, settings] = await Promise.all([listCategories(sub), getSettings(sub)]);
+  const [categories, settings] = await Promise.all([listCategories(profileId), getSettings(profileId)]);
   const usage = new UsageCollector();
-  const examples = settings.learning.useFeedbackContext ? await correctionExamples(sub, settings.learning.maxExamples) : [];
+  const examples = settings.learning.useFeedbackContext ? await correctionExamples(profileId, settings.learning.maxExamples) : [];
   const subject = await loadSubjectContext(settings);
   let article: Article;
   try {
@@ -123,7 +124,7 @@ export async function enrichCandidate(input: EnrichInput): Promise<{ outcome: En
   } catch (err) {
     // Keep the item reviewable even if every model attempt failed.
     logger.error('Tagging failed; storing article without suggestion', { error: errorMessage(err) });
-    await addRunStats(sub, input.runId, { errors: 1 });
+    await addRunStats(profileId, input.runId, { errors: 1 });
     article = articleFromCandidate(candidate, {
       status: 'PENDING',
       runId: input.runId,
@@ -138,23 +139,23 @@ export async function enrichCandidate(input: EnrichInput): Promise<{ outcome: En
 
   // 5. Persist.
   if (extracted?.text) {
-    await putJson(s3Keys.articleText(sub, article.id), {
+    await putJson(s3Keys.articleText(profileId, article.id), {
       url,
       title: extracted.title,
       text: extracted.text,
       extractedAt: new Date().toISOString(),
     });
   }
-  const created = await createArticle(sub, article, aliases);
+  const created = await createArticle(profileId, article, aliases);
   if (!created) {
-    await addRunStats(sub, input.runId, { duplicates: 1 });
+    await addRunStats(profileId, input.runId, { duplicates: 1 });
     return { outcome: 'duplicate', articleId: article.id };
   }
   if (article.status === 'PENDING') {
     await addRunItem(input.runId, article.id);
-    await addRunStats(sub, input.runId, { pending: 1 });
+    await addRunStats(profileId, input.runId, { pending: 1 });
     return { outcome: 'pending', articleId: article.id };
   }
-  await addRunStats(sub, input.runId, { filtered: 1 });
+  await addRunStats(profileId, input.runId, { filtered: 1 });
   return { outcome: 'filtered', articleId: article.id };
 }

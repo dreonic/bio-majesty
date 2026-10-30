@@ -23,7 +23,7 @@ export async function prefilterRun(state: PipelineState): Promise<PipelineState>
     return { ...state, relevantCount: 0, relevantKey };
   }
 
-  const [categories, settings] = await Promise.all([listCategories(state.sub), getSettings(state.sub)]);
+  const [categories, settings] = await Promise.all([listCategories(state.profileId), getSettings(state.profileId)]);
   const exclude = [...new Set(categories.flatMap((c) => c.search.exclude))];
   const usage = new UsageCollector();
   const decisions = await prefilterHeadlines(
@@ -52,12 +52,12 @@ export async function prefilterRun(state: PipelineState): Promise<PipelineState>
         categoryId: state.categoryId,
         filterReason: d.reason || 'not relevant',
       });
-      if (await createArticle(state.sub, article, candidateAliases(c))) filtered++;
+      if (await createArticle(state.profileId, article, candidateAliases(c))) filtered++;
     }
   }
 
   await putJson(relevantKey, relevant);
-  await addRunStats(state.sub, state.runId, { filtered });
+  await addRunStats(state.profileId, state.runId, { filtered });
   await recordRunUsage(state.runId, usage.toEntries());
   return { ...state, relevantCount: relevant.length, relevantKey };
 }

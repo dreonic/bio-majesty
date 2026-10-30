@@ -55,7 +55,7 @@ export const TaskModelSettingsSchema = z.object({
 });
 export type TaskModelSettings = z.infer<typeof TaskModelSettingsSchema>;
 
-/** HH:mm on a quarter hour: the news dispatcher checks every 15 minutes. */
+/** HH:mm on a quarter hour; each profile's run starts a fixed few minutes later (dailyRunOffset). */
 export const DAILY_TIME_PATTERN = /^([01]\d|2[0-3]):(00|15|30|45)$/;
 
 export const ScheduleSettingsSchema = z.object({
@@ -71,7 +71,7 @@ export function quarterHour(hhmm: string): string {
   return `${m[1]}:${String(Math.floor(Number(m[2]) / 15) * 15).padStart(2, '0')}`;
 }
 
-/** Most assets one account can track (each adds requests to its market-data source). */
+/** Most assets one profile can track (each adds requests to its market-data source). */
 export const MAX_ASSETS = 10;
 
 /**
@@ -120,7 +120,7 @@ export const SettingsSchema = z.object({
   subject: SubjectSchema,
   learning: z.object({
     /**
-     * Give the tagging model the account's recent corrections as examples.
+     * Give the tagging model the profile's recent corrections as examples.
      * Corrections are always stored for future training, even when off.
      */
     useFeedbackContext: z.boolean(),
@@ -135,7 +135,7 @@ export const SettingsViewSchema = SettingsSchema.extend({
   embedding: z.object({ model: z.string(), dimensions: z.number() }),
   telegram: z.object({
     configured: z.boolean(),
-    /** Every chat and topic the account's notifications go to. */
+    /** Every chat and topic the profile's notifications go to. */
     connections: z.array(TelegramConnectionSchema),
   }),
   configuredProviders: z.array(z.string()),

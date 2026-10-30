@@ -12,7 +12,7 @@ import { effectiveTags, type Article, type ArticleStatus, type FinalTags, type S
 import { nowIso } from '../lib/time';
 import { aliasKeys, extractGoogleNewsId, type AliasKey } from '../lib/url';
 import { chunk, ddb, decodeCursor, encodeCursor, stripKeys, table, ttlInDays } from './client';
-import { keys } from './keys';
+import { keys, type ProfileId } from './keys';
 
 const FILTERED_TTL_DAYS = 30;
 
@@ -26,10 +26,10 @@ interface ArticleExtras {
 
 type ArticleItem = Article & ArticleExtras & Record<string, unknown>;
 
-function toItem(sub: string, article: Article, aliasIds: string[]): Record<string, unknown> {
+function toItem(profileId: ProfileId, article: Article, aliasIds: string[]): Record<string, unknown> {
   return {
-    ...keys.article(sub, article.id),
-    ...keys.articleGsi(sub, article.status, article.publishedAt, article.id),
+    ...keys.article(profileId, article.id),
+    ...keys.articleGsi(profileId, article.status, article.publishedAt, article.id),
     ...article,
     // A DynamoDB string set (ADD-able when another run finds the article under a new key).
     ...(aliasIds.length ? { aliasIds: new Set(aliasIds) } : {}),
@@ -54,32 +54,32 @@ export function aliasId(alias: AliasKey): string {
  * Create the article together with its dedupe keys. Returns false when it already existed; the
  * keys are then added to the existing article (a later run may know it under another URL).
  */
-export async function createArticle(sub: string, article: Article, aliases: AliasKey[]): Promise<boolean> {
+export async function createArticle(profileId: ProfileId, article: Article, aliases: AliasKey[]): Promise<boolean> {
   const ids = [...new Set(aliases.map(aliasId))];
   let created = true;
   try {
     await ddb().send(
       new PutCommand({
         TableName: table(),
-        Item: toItem(sub, article, ids),
+        Item: toItem(profileId, article, ids),
         ConditionExpression: 'attribute_not_exists(PK)',
       }),
     );
   } catch (err) {
     if (!isConditionFailure(err)) throw err;
     created = false;
-    if (ids.length) await addAliasIds(sub, article.id, ids);
+    if (ids.length) await addAliasIds(profileId, article.id, ids);
   }
-  await putAliasItems(sub, article.id, ids);
+  await putAliasItems(profileId, article.id, ids);
   return created;
 }
 
-async function addAliasIds(sub: string, articleId: string, ids: string[]): Promise<void> {
+async function addAliasIds(profileId: ProfileId, articleId: string, ids: string[]): Promise<void> {
   try {
     await ddb().send(
       new UpdateCommand({
         TableName: table(),
-        Key: keys.article(sub, articleId),
+        Key: keys.article(profileId, articleId),
         UpdateExpression: 'ADD aliasIds :ids',
         ConditionExpression: 'attribute_exists(PK)',
         ExpressionAttributeValues: { ':ids': new Set(ids) },
@@ -90,10 +90,10 @@ async function addAliasIds(sub: string, articleId: string, ids: string[]): Promi
   }
 }
 
-async function putAliasItems(sub: string, articleId: string, ids: string[]): Promise<void> {
+async function putAliasItems(profileId: ProfileId, articleId: string, ids: string[]): Promise<void> {
   for (const batch of chunk(ids, 25)) {
     let request: Record<string, { PutRequest: { Item: Record<string, unknown> } }[]> | undefined = {
-      [table()]: batch.map((id) => ({ PutRequest: { Item: { ...keys.alias(sub, id), articleId } } })),
+      [table()]: batch.map((id) => ({ PutRequest: { Item: { ...keys.alias(profileId, id), articleId } } })),
     };
     while (request && Object.keys(request).length) {
       const res = await ddb().send(new BatchWriteCommand({ RequestItems: request }));
@@ -102,18 +102,18 @@ async function putAliasItems(sub: string, articleId: string, ids: string[]): Pro
   }
 }
 
-/** The account's article, or null if it doesn't exist or was deleted from the filtered list. */
-export async function getArticle(sub: string, id: string): Promise<Article | null> {
-  const res = await ddb().send(new GetCommand({ TableName: table(), Key: keys.article(sub, id) }));
+/** The profile's article, or null if it doesn't exist or was deleted from the filtered list. */
+export async function getArticle(profileId: ProfileId, id: string): Promise<Article | null> {
+  const res = await ddb().send(new GetCommand({ TableName: table(), Key: keys.article(profileId, id) }));
   return res.Item && !isHidden(res.Item) ? fromItem(res.Item) : null;
 }
 
-export async function batchGetArticles(sub: string, ids: string[]): Promise<Article[]> {
+export async function batchGetArticles(profileId: ProfileId, ids: string[]): Promise<Article[]> {
   const unique = [...new Set(ids)];
   const out: Article[] = [];
   for (const batch of chunk(unique, 100)) {
     let request: Record<string, { Keys: Record<string, unknown>[] }> | undefined = {
-      [table()]: { Keys: batch.map((id) => keys.article(sub, id)) },
+      [table()]: { Keys: batch.map((id) => keys.article(profileId, id)) },
     };
     while (request && Object.keys(request).length) {
       const res = await ddb().send(new BatchGetCommand({ RequestItems: request }));
@@ -131,16 +131,16 @@ export interface ReviewChange {
 }
 
 /** Apply a review decision; keeps GSI1 and TTL attributes consistent with the status. */
-export async function applyReview(sub: string, article: Article, change: ReviewChange): Promise<Article> {
+export async function applyReview(profileId: ProfileId, article: Article, change: ReviewChange): Promise<Article> {
   const status = change.status ?? article.status;
   const final = change.final === undefined ? article.final : change.final;
   const reviewedAt = nowIso();
-  const gsi = keys.articleGsi(sub, status, article.publishedAt, article.id);
+  const gsi = keys.articleGsi(profileId, status, article.publishedAt, article.id);
 
   const res = await ddb().send(
     new UpdateCommand({
       TableName: table(),
-      Key: keys.article(sub, article.id),
+      Key: keys.article(profileId, article.id),
       UpdateExpression:
         status === 'FILTERED'
           ? 'SET #status = :status, #final = :final, reviewedAt = :reviewedAt, GSI1PK = :g1, GSI1SK = :g2'
@@ -160,11 +160,11 @@ export async function applyReview(sub: string, article: Article, change: ReviewC
   return fromItem(res.Attributes ?? {});
 }
 
-export async function markIndexed(sub: string, id: string, indexedAt: string | null): Promise<void> {
+export async function markIndexed(profileId: ProfileId, id: string, indexedAt: string | null): Promise<void> {
   await ddb().send(
     new UpdateCommand({
       TableName: table(),
-      Key: keys.article(sub, id),
+      Key: keys.article(profileId, id),
       UpdateExpression: 'SET indexedAt = :t',
       ConditionExpression: 'attribute_exists(PK)',
       ExpressionAttributeValues: { ':t': indexedAt },
@@ -186,16 +186,16 @@ export interface ListArticlesOptions {
 }
 
 /**
- * The account's articles, newest first, by status and publish-date window. Keyword, category and
+ * The profile's articles, newest first, by status and publish-date window. Keyword, category and
  * sentiment filters are applied in Lambda (volumes are small).
  */
-export async function listArticles(sub: string, opts: ListArticlesOptions): Promise<{ items: Article[]; nextCursor: string | null }> {
+export async function listArticles(profileId: ProfileId, opts: ListArticlesOptions): Promise<{ items: Article[]; nextCursor: string | null }> {
   const from = (opts.from ?? new Date('2000-01-01T00:00:00Z')).toISOString();
   const to = `${(opts.to ?? new Date(Date.now() + 24 * 3600 * 1000)).toISOString()}~`;
   const maxScan = opts.maxScan ?? 3000;
   const needle = opts.q?.trim().toLowerCase();
   const terms = needle ? needle.split(/\s+/).filter(Boolean) : [];
-  const { GSI1PK } = keys.articleGsi(sub, opts.status, '', '');
+  const { GSI1PK } = keys.articleGsi(profileId, opts.status, '', '');
 
   const items: Article[] = [];
   let startKey = decodeCursor(opts.cursor);
@@ -246,9 +246,9 @@ function matches(a: Article, categories?: string[], sentiments?: Sentiment[], te
   return true;
 }
 
-/** Pages of ids of every article of the account with this status, newest first. */
-export async function* articleIdPages(sub: string, status: ArticleStatus): AsyncGenerator<string[]> {
-  const { GSI1PK } = keys.articleGsi(sub, status, '', '');
+/** Pages of ids of every article of the profile with this status, newest first. */
+export async function* articleIdPages(profileId: ProfileId, status: ArticleStatus): AsyncGenerator<string[]> {
+  const { GSI1PK } = keys.articleGsi(profileId, status, '', '');
   let startKey: Record<string, unknown> | undefined;
   do {
     const res: QueryCommandOutput = await ddb().send(
@@ -283,16 +283,16 @@ export interface RemoveResult {
  * is soft-deleted: it leaves the list and counts, but its keys stay, so later runs keep dropping it.
  * DynamoDB checks the status, so pending and saved news is never touched, even in a race.
  */
-export async function removeArticles(sub: string, ids: string[]): Promise<RemoveResult> {
+export async function removeArticles(profileId: ProfileId, ids: string[]): Promise<RemoveResult> {
   const out: RemoveResult = { deleted: [], hidden: [], notDeletable: [] };
   for (const batch of chunk([...new Set(ids)], 25)) {
     await Promise.all(
       batch.map(async (id) => {
-        const removed = await deleteSkipped(sub, id);
+        const removed = await deleteSkipped(profileId, id);
         if (removed) {
-          await deleteAliasItems(sub, id, aliasIdsOf(removed));
+          await deleteAliasItems(profileId, id, aliasIdsOf(removed));
           out.deleted.push(id);
-        } else if (await hideFiltered(sub, id)) {
+        } else if (await hideFiltered(profileId, id)) {
           out.hidden.push(id);
         } else {
           out.notDeletable.push(id);
@@ -304,12 +304,12 @@ export async function removeArticles(sub: string, ids: string[]): Promise<Remove
 }
 
 /** Delete a recycle-bin article; returns the deleted item, or null if it isn't in the bin. */
-async function deleteSkipped(sub: string, id: string): Promise<Record<string, unknown> | null> {
+async function deleteSkipped(profileId: ProfileId, id: string): Promise<Record<string, unknown> | null> {
   try {
     const res = await ddb().send(
       new DeleteCommand({
         TableName: table(),
-        Key: keys.article(sub, id),
+        Key: keys.article(profileId, id),
         ConditionExpression: '#status = :rejected',
         ExpressionAttributeNames: { '#status': 'status' },
         ExpressionAttributeValues: { ':rejected': 'REJECTED' satisfies ArticleStatus },
@@ -323,12 +323,12 @@ async function deleteSkipped(sub: string, id: string): Promise<Record<string, un
   }
 }
 
-async function hideFiltered(sub: string, id: string): Promise<boolean> {
+async function hideFiltered(profileId: ProfileId, id: string): Promise<boolean> {
   try {
     await ddb().send(
       new UpdateCommand({
         TableName: table(),
-        Key: keys.article(sub, id),
+        Key: keys.article(profileId, id),
         UpdateExpression: 'SET deletedAt = :now REMOVE GSI1PK, GSI1SK',
         ConditionExpression: '#status = :filtered AND attribute_not_exists(deletedAt)',
         ExpressionAttributeNames: { '#status': 'status' },
@@ -358,14 +358,14 @@ export function aliasIdsOf(item: Record<string, unknown>): string[] {
 }
 
 /** Delete dedupe keys that still point at this article (another article may have taken one over). */
-async function deleteAliasItems(sub: string, articleId: string, ids: string[]): Promise<void> {
+async function deleteAliasItems(profileId: ProfileId, articleId: string, ids: string[]): Promise<void> {
   await Promise.all(
     ids.map(async (id) => {
       try {
         await ddb().send(
           new DeleteCommand({
             TableName: table(),
-            Key: keys.alias(sub, id),
+            Key: keys.alias(profileId, id),
             ConditionExpression: 'articleId = :id',
             ExpressionAttributeValues: { ':id': articleId },
           }),
@@ -377,8 +377,8 @@ async function deleteAliasItems(sub: string, articleId: string, ids: string[]): 
   );
 }
 
-export async function countByStatus(sub: string, status: ArticleStatus): Promise<number> {
-  const { GSI1PK } = keys.articleGsi(sub, status, '', '');
+export async function countByStatus(profileId: ProfileId, status: ArticleStatus): Promise<number> {
+  const { GSI1PK } = keys.articleGsi(profileId, status, '', '');
   let count = 0;
   let startKey: Record<string, unknown> | undefined;
   do {
@@ -398,13 +398,13 @@ export async function countByStatus(sub: string, status: ArticleStatus): Promise
   return count;
 }
 
-/** Returns the subset of the account's dedupe keys that already exist (as alias ids). */
-export async function existingAliases(sub: string, aliases: AliasKey[]): Promise<Set<string>> {
+/** Returns the subset of the profile's dedupe keys that already exist (as alias ids). */
+export async function existingAliases(profileId: ProfileId, aliases: AliasKey[]): Promise<Set<string>> {
   const found = new Set<string>();
   const unique = [...new Set(aliases.map(aliasId))];
   for (const batch of chunk(unique, 100)) {
     let request: Record<string, { Keys: Record<string, unknown>[]; ProjectionExpression: string }> | undefined = {
-      [table()]: { Keys: batch.map((id) => keys.alias(sub, id)), ProjectionExpression: 'SK' },
+      [table()]: { Keys: batch.map((id) => keys.alias(profileId, id)), ProjectionExpression: 'SK' },
     };
     while (request && Object.keys(request).length) {
       const res = await ddb().send(new BatchGetCommand({ RequestItems: request }));

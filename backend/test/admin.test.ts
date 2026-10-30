@@ -20,7 +20,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 process.env.TABLE_NAME = 'test-table';
 process.env.USER_POOL_ID = 'pool-1';
-process.env.ACCOUNT_DELETE_FUNCTION = 'account-delete-fn';
+process.env.DELETE_WORKER_FUNCTION = 'delete-worker-fn';
 
 const cognito = mockClient(CognitoIdentityProviderClient);
 const db = mockClient(DynamoDBDocumentClient);
@@ -132,23 +132,16 @@ describe('admin API', () => {
     expect((await request('PATCH', '/admin/users/{username}', { username: 'u1', body: { access: true, admin: true } })).statusCode).toBe(200);
   });
 
-  it('waits for a running news run before deleting', async () => {
+  it('deletes by locking the user out, then handing the profiles and the user to the worker (which stops runs in progress)', async () => {
     givenUser(['dashboard-users']);
-    db.on(QueryCommand).resolves({ Items: [{ id: 'r1', status: 'running', startedAt: new Date().toISOString() }] });
-    expect((await request('DELETE', '/admin/users/{username}', { username: 'u1' })).statusCode).toBe(409);
-    expect(lambda.calls()).toHaveLength(0);
-  });
-
-  it('deletes by locking the user out, then handing the data to the worker', async () => {
-    givenUser(['dashboard-users']);
-    db.on(QueryCommand).resolves({ Items: [{ id: 'old', status: 'running', startedAt: '2026-01-01T00:00:00.000Z' }] });
     const res = await request('DELETE', '/admin/users/{username}', { username: 'u1' });
     expect(res.statusCode).toBe(202);
     expect(cognito.commandCalls(AdminRemoveUserFromGroupCommand)[0]!.args[0].input.GroupName).toBe('dashboard-users');
     expect(cognito.commandCalls(AdminDisableUserCommand)).toHaveLength(1);
     expect(cognito.commandCalls(AdminUserGlobalSignOutCommand)).toHaveLength(1);
     const invoke = lambda.commandCalls(InvokeCommand)[0]!.args[0].input;
-    expect(invoke.FunctionName).toBe('account-delete-fn');
+    expect(invoke.FunctionName).toBe('delete-worker-fn');
+    expect(db.calls()).toHaveLength(0);
     expect(invoke.InvocationType).toBe('Event');
     expect(JSON.parse(String(invoke.Payload))).toEqual({ sub: 's1', username: 'u1' });
   });

@@ -15,6 +15,7 @@ import {
 } from '../tools/news-tools';
 import { categoriesBlock, sentimentBasis, subjectContext, UNTRUSTED_NOTE, type SubjectContext } from './prompts';
 import { mergeProviderOptions } from './run-task';
+import type { ProfileId } from '../repo/keys';
 
 /**
  * Error text for the chat's UI message stream. The AI SDK also saves it as a failed
@@ -55,28 +56,28 @@ function assetLabel(asset: Pick<StockAsset, 'id' | 'name'>): string {
 
 /**
  * Read-only tools exposed to the chat model (built on the shared news-tools module), over the
- * account's own saved news and assets only.
+ * profile's own saved news and assets only.
  */
-export function buildChatTools(ctx: { sub: string; assets: StockAsset[] }) {
-  const { sub, assets } = ctx;
+export function buildChatTools(ctx: { profileId: ProfileId; assets: StockAsset[] }) {
+  const { profileId, assets } = ctx;
   const byId = new Map(assets.map((a) => [a.id, a]));
   return {
     searchNews: tool({
       description:
         'Semantic search over the saved (reviewed and approved) news. Use for questions about topics, events, entities or themes. Returns articles with ids, dates, sentiment, summaries and short excerpts.',
       inputSchema: searchNewsInput,
-      execute: (input) => searchNews(sub, input),
+      execute: (input) => searchNews(profileId, input),
     }),
     listNews: tool({
       description:
         'List saved news by date range, category, sentiment or keyword, newest first. Use for counts, timelines and "what happened in <period>" questions.',
       inputSchema: listNewsInput,
-      execute: (input) => listNews(sub, input),
+      execute: (input) => listNews(profileId, input),
     }),
     getArticle: tool({
       description: 'Read the full extracted text of one saved article by id when summaries are not enough.',
       inputSchema: getArticleInput,
-      execute: (input) => getArticleTool(sub, input),
+      execute: (input) => getArticleTool(profileId, input),
     }),
     // Only with at least one tracked asset. (Chats saved before assets had IDs called `getStockPrices`:
     // with no tool of that name, the AI SDK replays those calls as dynamic tool parts.)

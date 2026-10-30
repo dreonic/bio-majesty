@@ -40,7 +40,7 @@ export class DashboardStack extends Stack {
       ALLOWED_ORIGINS: origins.join(','),
       EMBEDDING_MODEL: config.embeddingModel,
       EMBEDDING_DIMENSIONS: String(config.embeddingDimensions),
-      // Its dashboard-users group is the list of accounts (read by the background jobs).
+      // Its dashboard-users group is the list of accounts (read by the stock refresh and scheduled runs).
       USER_POOL_ID: auth.userPool.userPoolId,
       LOG_LEVEL: 'INFO',
     });
@@ -71,7 +71,7 @@ export class DashboardStack extends Stack {
     const monitoring = new MonitoringConstruct(this, 'Monitoring', {
       config,
       stateMachines: [pipeline.dailyMachine, pipeline.backfillMachine],
-      dispatcher: pipeline.dispatchFn,
+      dailyScheduleGroup: pipeline.dailyScheduleGroup.scheduleGroupName,
       stockIngest: pipeline.stockIngestFn,
       indexer: pipeline.indexerFn,
       apiFunctions: api.functions,
@@ -97,6 +97,10 @@ export class DashboardStack extends Stack {
     new CfnOutput(this, 'ApiKeysParameter', { value: data.apiKeys.parameterName, description: 'SSM SecureString to create with the API keys and the Telegram bot token (see README)' });
     new CfnOutput(this, 'StockIngestFunction', { value: pipeline.stockIngestFn.functionName });
     new CfnOutput(this, 'DailyStateMachineArn', { value: pipeline.dailyMachine.stateMachineArn });
+    new CfnOutput(this, 'ProfilesFunction', {
+      value: api.profilesFn.functionName,
+      description: 'Its environment names the table, bucket and schedule group (for migration scripts)',
+    });
     new CfnOutput(this, 'AlarmTopicArn', {
       value: monitoring.topic.topicArn,
       description: 'SNS topic of the alarms: subscribe addresses here (or set alarmEmail) to receive them',
@@ -105,7 +109,7 @@ export class DashboardStack extends Stack {
     applyNagSuppressions(this, {
       table: data.table,
       buckets: [data.dataBucket, web.bucket],
-      invokedFunctions: [...pipeline.pipelineFunctions, pipeline.stockIngestFn, pipeline.dispatchFn, api.accountDeleteFn],
+      invokedFunctions: [...pipeline.pipelineFunctions, pipeline.stockIngestFn, api.deleteWorkerFn],
       stateMachines: [pipeline.dailyMachine, pipeline.backfillMachine],
     });
   }

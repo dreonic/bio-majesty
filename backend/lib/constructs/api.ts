@@ -1,4 +1,4 @@
-import { Duration, Size } from 'aws-cdk-lib';
+import { ArnFormat, Duration, Size, Stack } from 'aws-cdk-lib';
 import * as apigateway from 'aws-cdk-lib/aws-apigateway';
 import type * as cognito from 'aws-cdk-lib/aws-cognito';
 import * as iam from 'aws-cdk-lib/aws-iam';
@@ -24,8 +24,10 @@ export class ApiConstruct extends Construct {
   readonly api: apigateway.RestApi;
   readonly url: string;
   readonly functions: lambda.IFunction[] = [];
-  /** Deletes an account's data and user, invoked asynchronously by the admin API. */
-  readonly accountDeleteFn: lambda.IFunction;
+  /** Deletes a profile's data, or an account's profiles and user, invoked asynchronously by the API. */
+  readonly deleteWorkerFn: lambda.IFunction;
+  /** The /profiles API (its environment also serves the migration scripts). */
+  readonly profilesFn: lambda.IFunction;
 
   constructor(scope: Construct, id: string, props: ApiProps) {
     super(scope, id);
@@ -50,7 +52,7 @@ export class ApiConstruct extends Construct {
       },
       defaultCorsPreflightOptions: {
         allowOrigins: allowedOrigins,
-        allowHeaders: ['Authorization', 'Content-Type'],
+        allowHeaders: ['Authorization', 'Content-Type', 'X-Profile-Id'],
         allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
         maxAge: Duration.hours(1),
       },
@@ -61,7 +63,7 @@ export class ApiConstruct extends Construct {
         type,
         responseHeaders: {
           'Access-Control-Allow-Origin': 'method.request.header.origin',
-          'Access-Control-Allow-Headers': "'Authorization,Content-Type'",
+          'Access-Control-Allow-Headers': "'Authorization,Content-Type,X-Profile-Id'",
         },
       });
     }
@@ -87,8 +89,8 @@ export class ApiConstruct extends Construct {
 
     const news = make('News', 'api/news.ts');
     data.dataBucket.grantRead(news);
-    // Deleting skipped/filtered articles also removes their extracted text (users/<sub>/articles/*).
-    data.dataBucket.grantDelete(news, 'users/*');
+    // Deleting skipped/filtered articles also removes their extracted text (profiles/<id>/articles/*).
+    data.dataBucket.grantDelete(news, 'profiles/*');
 
     const categories = make('Categories', 'api/categories.ts', {
       environment: { BACKFILL_STATE_MACHINE_ARN: pipeline.backfillMachine.stateMachineArn },
@@ -98,11 +100,19 @@ export class ApiConstruct extends Construct {
     pipeline.backfillMachine.grant(categories, 'states:ListExecutions');
     pipeline.backfillMachine.grantExecution(categories, 'states:StopExecution');
 
-    // Run times live in each account's settings (read by the dispatcher): no schedule to update here.
-    const settings = make('Settings', 'api/settings.ts', {
-      environment: { DAILY_STATE_MACHINE_ARN: pipeline.dailyMachine.stateMachineArn },
-    });
+    // Each profile's daily run is started by its own schedule, which follows the run time in its Settings.
+    const scheduleEnv = {
+      DAILY_STATE_MACHINE_ARN: pipeline.dailyMachine.stateMachineArn,
+      DAILY_SCHEDULE_GROUP: pipeline.dailyScheduleGroup.scheduleGroupName,
+      SCHEDULER_ROLE_ARN: pipeline.schedulerRole.roleArn,
+    };
+    const writeSchedules = (fn: lambda.IFunction) => {
+      pipeline.dailyScheduleGroup.grants.writeSchedules(fn);
+      pipeline.schedulerRole.grantPassRole(fn.grantPrincipal);
+    };
+    const settings = make('Settings', 'api/settings.ts', { environment: scheduleEnv });
     pipeline.dailyMachine.grantStartExecution(settings);
+    writeSchedules(settings);
 
     const stock = make('Stock', 'api/stock.ts', {
       environment: { STOCK_INGEST_FUNCTION: pipeline.stockIngestFn.functionName },
@@ -123,23 +133,52 @@ export class ApiConstruct extends Construct {
       }),
     );
 
-    // User management for the admins group. Deleting a user hands the data to a worker that isn't
-    // bound by the API's 29 seconds.
-    const accountDelete = functions.create('AccountDelete', {
-      entry: 'account-delete.ts',
-      description: "Delete an account's data, then its user",
+    // Deleting a profile (Settings) or a user (Admin page) hands the data to a worker that isn't
+    // bound by the API's 29 seconds; an account with many profiles carries on in a new invocation of
+    // itself (hence its fixed name).
+    const deleteWorkerName = `${config.resourcePrefix}-${config.stage}-delete-worker`;
+    const deleteWorker = functions.create('DeleteWorker', {
+      entry: 'delete-worker.ts',
+      functionName: deleteWorkerName,
+      description: "Delete a profile's data, or an account's profiles and then its user",
       timeout: Duration.minutes(15),
+      environment: {
+        DAILY_SCHEDULE_GROUP: pipeline.dailyScheduleGroup.scheduleGroupName,
+        DAILY_STATE_MACHINE_ARN: pipeline.dailyMachine.stateMachineArn,
+        BACKFILL_STATE_MACHINE_ARN: pipeline.backfillMachine.stateMachineArn,
+      },
     });
-    data.table.grantReadWriteData(accountDelete);
-    data.dataBucket.grantRead(accountDelete);
-    data.dataBucket.grantDelete(accountDelete, 'users/*');
-    data.dataBucket.grantDelete(accountDelete, 'chats/*');
-    props.userPool.grant(accountDelete, 'cognito-idp:AdminDeleteUser');
-    this.functions.push(accountDelete);
-    this.accountDeleteFn = accountDelete;
+    data.table.grantReadWriteData(deleteWorker);
+    data.dataBucket.grantRead(deleteWorker);
+    data.dataBucket.grantDelete(deleteWorker, 'profiles/*');
+    props.userPool.grant(deleteWorker, 'cognito-idp:AdminDeleteUser');
+    pipeline.dailyScheduleGroup.grants.deleteSchedules(deleteWorker);
+    for (const machine of [pipeline.dailyMachine, pipeline.backfillMachine]) {
+      machine.grant(deleteWorker, 'states:ListExecutions');
+      machine.grantExecution(deleteWorker, 'states:DescribeExecution', 'states:StopExecution');
+    }
+    deleteWorker.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ['lambda:InvokeFunction'],
+        resources: [Stack.of(this).formatArn({ service: 'lambda', resource: 'function', resourceName: deleteWorkerName, arnFormat: ArnFormat.COLON_RESOURCE_NAME })],
+      }),
+    );
+    this.functions.push(deleteWorker);
+    this.deleteWorkerFn = deleteWorker;
 
+    // The account's profiles: list, create (with its schedule), rename, delete.
+    const profiles = make('Profiles', 'api/profiles.ts', { environment: { ...scheduleEnv, DELETE_WORKER_FUNCTION: deleteWorker.functionName } });
+    writeSchedules(profiles);
+    pipeline.dailyScheduleGroup.grants.deleteSchedules(profiles);
+    this.profilesFn = profiles;
+    // Taking back a profile whose schedule couldn't be created deletes its (few) items and objects.
+    data.dataBucket.grantRead(profiles);
+    data.dataBucket.grantDelete(profiles, 'profiles/*');
+    deleteWorker.grantInvoke(profiles);
+
+    // User management for the admins group.
     const admin = make('Admin', 'api/admin.ts', {
-      environment: { ACCOUNT_DELETE_FUNCTION: accountDelete.functionName, PASSWORD_SIGN_IN: String(config.passwordSignIn) },
+      environment: { DELETE_WORKER_FUNCTION: deleteWorker.functionName, PASSWORD_SIGN_IN: String(config.passwordSignIn) },
     });
     props.userPool.grant(
       admin,
@@ -154,7 +193,7 @@ export class ApiConstruct extends Construct {
       'cognito-idp:AdminDisableUser',
       'cognito-idp:AdminUserGlobalSignOut',
     );
-    accountDelete.grantInvoke(admin);
+    deleteWorker.grantInvoke(admin);
 
     const integrate = (fn: lambda.IFunction) => new apigateway.LambdaIntegration(fn, { scopePermissionToMethod: false });
     const route = (path: string, methods: Record<string, lambda.IFunction>) => {
@@ -192,6 +231,9 @@ export class ApiConstruct extends Construct {
     route('/telegram/link/verify', { POST: telegram });
     route('/telegram/links/{id}', { DELETE: telegram });
     route('/telegram/links/{id}/test', { POST: telegram });
+
+    route('/profiles', { GET: profiles, POST: profiles });
+    route('/profiles/{id}', { PATCH: profiles, DELETE: profiles });
 
     route('/admin/users', { GET: admin, POST: admin });
     route('/admin/users/{username}', { PATCH: admin, DELETE: admin });

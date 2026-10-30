@@ -1,9 +1,10 @@
 import { displaySymbol, parseAssetId, STOCK_SOURCE_INFO, type Settings, type StockAsset } from '@bio-majesty/shared';
-import { listAccounts } from '../lib/accounts';
+import { listAllProfiles } from '../lib/accounts';
 import { errorMessage, logger } from '../lib/logger';
 import { addDays } from '../lib/time';
 import { escapeHtml } from '../notify/telegram';
-import { notifyAccount } from '../notify/notify';
+import { notifyProfile } from '../notify/notify';
+import type { ProfileId } from '../repo/keys';
 import { getSettings } from '../repo/settings';
 import {
   getAsset,
@@ -24,33 +25,37 @@ const ALERT_AFTER_FAILURES = 3;
 /** The end-of-day run re-fetches this many days of intraday bars, so a short outage leaves no gap. */
 const INTRADAY_REFETCH_DAYS = 7;
 
-/** An account that tracks an asset, with its settings (volume alert threshold and toggle). */
+/** A profile that tracks an asset, with its settings (volume alert threshold and toggle). */
 interface Tracker {
-  sub: string;
+  profileId: ProfileId;
   settings: Settings;
 }
 
 type Mode = 'intraday' | 'eod' | 'resync';
 
-/** Every asset any account tracks (by ID), with the accounts tracking it. */
+/** Every asset any profile tracks (by ID), with the profiles tracking it. */
 async function trackersByAsset(): Promise<Map<string, Tracker[]>> {
   const byAsset = new Map<string, Tracker[]>();
-  for (const { sub } of await listAccounts()) {
-    const settings = await getSettings(sub);
-    for (const id of settings.stock.assets) byAsset.set(id, [...(byAsset.get(id) ?? []), { sub, settings }]);
+  for (const { profileId } of await listAllProfiles()) {
+    const settings = await getSettings(profileId);
+    for (const id of settings.stock.assets) {
+      const trackers = byAsset.get(id) ?? [];
+      trackers.push({ profileId, settings });
+      byAsset.set(id, trackers);
+    }
   }
   return byAsset;
 }
 
 /**
- * Market-data refresh. Scheduled every 15 minutes for every asset any account tracks, each from
+ * Market-data refresh. Scheduled every 15 minutes for every asset any profile tracks, each from
  * its own source:
  *  - intraday:   while the asset's session is open (delayed bars + quote; only the quote when the
  *                source's bars arrive after the close)
  *  - end of day: once per trading date, once the source has settled it (last two weeks of daily
  *                bars, last week of intraday bars)
  *  - resync:     the full daily history plus recent intraday bars (new assets, Settings → Resync)
- * Unusual volume is checked and alerted per account (each has its own threshold and Telegram chat).
+ * Unusual volume is checked and alerted per profile (each has its own threshold and Telegram chats).
  */
 export async function handler(event: { mode?: 'tick' | 'resync'; asset?: string } = {}): Promise<{ refreshed: string[] }> {
   const now = new Date();
@@ -61,9 +66,9 @@ export async function handler(event: { mode?: 'tick' | 'resync'; asset?: string 
     return { refreshed: [event.asset] };
   }
   const refreshed: string[] = [];
-  for (const [id, accounts] of trackers) {
+  for (const [id, assetTrackers] of trackers) {
     try {
-      if (await tick(id, accounts, now)) refreshed.push(id);
+      if (await tick(id, assetTrackers, now)) refreshed.push(id);
     } catch {
       // Recorded in the asset's status (and alerted after repeated failures); go on with the others.
     }
@@ -72,20 +77,20 @@ export async function handler(event: { mode?: 'tick' | 'resync'; asset?: string 
 }
 
 /** Refresh what is due for one asset; returns whether anything was fetched. */
-async function tick(id: string, accounts: Tracker[], now: Date): Promise<boolean> {
+async function tick(id: string, trackers: Tracker[], now: Date): Promise<boolean> {
   const [asset, status] = await Promise.all([getAsset(id), getStockStatus(id)]);
   // First time (or no metadata yet): load the full daily history before anything else.
   if (!asset || !status.historyLoadedAt) {
-    await refresh(id, 'resync', accounts, now);
+    await refresh(id, 'resync', trackers, now);
     return true;
   }
   const plan = refreshPlan(asset, status.eodDoneFor, now);
-  if (plan.eodFor) await refresh(id, 'eod', accounts, now, plan.eodFor);
-  if (plan.intraday) await refresh(id, 'intraday', accounts, now);
+  if (plan.eodFor) await refresh(id, 'eod', trackers, now, plan.eodFor);
+  if (plan.intraday) await refresh(id, 'intraday', trackers, now);
   return Boolean(plan.eodFor || plan.intraday);
 }
 
-async function refresh(id: string, mode: Mode, accounts: Tracker[], now: Date, eodFor?: string): Promise<void> {
+async function refresh(id: string, mode: Mode, trackers: Tracker[], now: Date, eodFor?: string): Promise<void> {
   const parsed = parseAssetId(id);
   if (!parsed) throw new Error(`Invalid asset ID "${id}"`);
   const provider = stockProvider(parsed.source);
@@ -102,13 +107,13 @@ async function refresh(id: string, mode: Mode, accounts: Tracker[], now: Date, e
       await putIntradayCandles(id, snapshot.candles);
       if (snapshot.quote) await putQuote(snapshot.quote);
       candles = snapshot.candles.length;
-      for (const a of accounts) await checkIntradayVolume(a.sub, asset, snapshot.quote, a.settings, now);
+      for (const t of trackers) await checkIntradayVolume(t.profileId, asset, snapshot.quote, t.settings, now);
     } else {
       const snapshot = await provider.daily(asset, mode === 'resync' ? historyStart(asset) : addDays(now, -15));
       await putDailyCandles(id, snapshot.candles);
       if (snapshot.quote) await putQuote(snapshot.quote);
       candles = snapshot.candles.length;
-      for (const a of accounts) await checkEodVolume(a.sub, asset, a.settings, now);
+      for (const t of trackers) await checkEodVolume(t.profileId, asset, t.settings, now);
       candles += await refillIntraday(provider, asset, addDays(now, mode === 'resync' ? -INTRADAY_RETENTION_DAYS : -INTRADAY_REFETCH_DAYS));
     }
     await putStockStatus(id, {
@@ -127,7 +132,7 @@ async function refresh(id: string, mode: Mode, accounts: Tracker[], now: Date, e
     if (failures === ALERT_AFTER_FAILURES) {
       const source = STOCK_SOURCE_INFO[parsed.source].label;
       const text = `⚠️ <b>Stock data for ${escapeHtml(displaySymbol(id))} is not updating</b>\n${failures} failed refreshes in a row (${escapeHtml(source)}): ${escapeHtml(message.slice(0, 300))}`;
-      for (const a of accounts) await notifyAccount(a.sub, text);
+      for (const t of trackers) await notifyProfile(t.profileId, text);
     }
     throw err;
   }

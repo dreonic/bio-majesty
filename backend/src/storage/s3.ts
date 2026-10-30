@@ -8,6 +8,7 @@ import {
   S3Client,
 } from '@aws-sdk/client-s3';
 import { env } from '../lib/env';
+import { keys, type ProfileId } from '../repo/keys';
 
 let client: S3Client | undefined;
 const s3 = () => (client ??= new S3Client({}));
@@ -66,14 +67,14 @@ export async function listKeys(prefix: string): Promise<string[]> {
 
 /** Object key layout in the data bucket. */
 export const s3Keys = {
-  /** Extracted text of an account's article (each account fetches its own copy). */
-  articleText: (sub: string, id: string) => `users/${sub}/articles/${id}.json`,
+  /** Extracted text of a profile's article (each profile fetches its own copy). */
+  articleText: (profileId: ProfileId, id: string) => `profiles/${profileId}/articles/${id}.json`,
   rawResults: (runId: string, taskId: string) => `raw/${runId}/${taskId}.json`,
   rawPrefix: (runId: string) => `raw/${runId}/`,
   candidates: (runId: string) => `runs/${runId}/candidates.json`,
   relevant: (runId: string) => `runs/${runId}/relevant.json`,
   relevantItem: (runId: string, candidateId: string) => `runs/${runId}/items/${candidateId}.json`,
-  chat: (sub: string, id: string) => `chats/${sub}/${id}.json`,
-  /** Every prefix holding one account's objects (deleted with the account). */
-  accountPrefixes: (sub: string) => [`users/${sub}/`, `chats/${sub}/`],
+  chat: (profileId: ProfileId, id: string) => `profiles/${profileId}/chats/${id}.json`,
+  /** Where all of one profile's objects live (deleted with the profile). */
+  profilePrefix: (profileId: ProfileId) => `profiles/${profileId}/`,
 };

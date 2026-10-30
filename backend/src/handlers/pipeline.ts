@@ -9,31 +9,33 @@ import { executeSearchTask } from '../pipeline/search';
 import { startBackfill, startDaily } from '../pipeline/start';
 import type { EnrichInput, FailInput, PipelineState } from '../pipeline/state';
 import type { SearchTask } from '../sources/types';
+import { asProfileId, type ProfileId } from '../repo/keys';
 
 /**
  * Step Functions task handlers. Each receives the state object and returns
  * the next one (see lib/constructs/pipeline.ts for the state machines). Every
- * run belongs to one account (`sub`).
+ * run belongs to one profile (`profileId`).
  */
 
 export async function start(event: {
   mode?: 'daily' | 'backfill';
   trigger?: 'schedule' | 'manual';
-  sub?: string;
+  profileId?: string;
   categoryId?: string;
   period?: BackfillPeriod;
 }): Promise<PipelineState> {
-  if (!event.sub) throw new Error('A run needs the account (sub) it belongs to');
+  if (!event.profileId) throw new Error('A run needs the profile (profileId) it belongs to');
+  const profileId = asProfileId(event.profileId);
   if (event.mode === 'backfill') {
     if (!event.categoryId || !event.period) throw new Error('Backfill requires categoryId and period');
-    return startBackfill(event.sub, event.categoryId, event.period);
+    return startBackfill(profileId, event.categoryId, event.period);
   }
-  return startDaily(event.sub, event.trigger ?? 'schedule');
+  return startDaily(profileId, event.trigger ?? 'schedule');
 }
 
-export async function search(event: { sub: string; runId: string; task: SearchTask }, context: Context) {
+export async function search(event: { profileId: ProfileId; runId: string; task: SearchTask }, context: Context) {
   const deadline = Date.now() + context.getRemainingTimeInMillis() - 20_000;
-  return executeSearchTask(event.sub, event.runId, event.task, deadline);
+  return executeSearchTask(event.profileId, event.runId, event.task, deadline);
 }
 
 export const collect = (state: PipelineState) => collectCandidates(state);
