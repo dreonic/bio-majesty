@@ -176,7 +176,7 @@ export class PipelineConstruct extends Construct {
     const start = catchAll(invoke('Start', fns.start));
 
     // Search tasks run in parallel; a failed query is logged and skipped.
-    const searchStep = invoke('Search', fns.search).addRetry({ errors: ['States.ALL'], maxAttempts: 2, interval: Duration.seconds(15), backoffRate: 2 });
+    const searchStep = invoke('Search', fns.search).addRetry({ errors: ['States.ALL'], maxAttempts: 2, interval: Duration.seconds(15), backoffRate: 2, jitterStrategy: sfn.JitterType.FULL });
     searchStep.addCatch(new sfn.Pass(this, `${name}SearchSkipped`), { resultPath: sfn.JsonPath.DISCARD });
     const searchMap = catchAll(
       new sfn.Map(this, `${name}SearchMap`, {
@@ -192,7 +192,7 @@ export class PipelineConstruct extends Construct {
     const prefilter = catchAll(invoke('Prefilter', fns.prefilter));
 
     // Each relevant candidate is fetched + tagged in its own child execution.
-    const enrichStep = invoke('Enrich', fns.enrich).addRetry({ errors: ['States.ALL'], maxAttempts: 2, interval: Duration.seconds(20), backoffRate: 2 });
+    const enrichStep = invoke('Enrich', fns.enrich).addRetry({ errors: ['States.ALL'], maxAttempts: 2, interval: Duration.seconds(20), backoffRate: 2, jitterStrategy: sfn.JitterType.FULL });
     enrichStep.addCatch(new sfn.Pass(this, `${name}EnrichSkipped`), { resultPath: sfn.JsonPath.DISCARD });
     const enrichMap = catchAll(
       new sfn.DistributedMap(this, `${name}EnrichMap`, {

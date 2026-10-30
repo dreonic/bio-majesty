@@ -1,5 +1,6 @@
 import { displaySymbol, type Digest, type StockAsset, type VolumeAnomaly } from '@bio-majesty/shared';
 import { getSecret } from '../lib/secrets';
+import { sleep } from '../lib/time';
 
 /**
  * Minimal Telegram Bot API client. Linking uses getUpdates (no public webhook):
@@ -19,7 +20,14 @@ interface TelegramResponse<T> {
   ok: boolean;
   result?: T;
   description?: string;
+  error_code?: number;
+  /** On a 429 ("Too Many Requests"), how many seconds to wait before sending again. */
+  parameters?: { retry_after?: number };
 }
+
+/** Rate-limited sends wait and try again this often, if Telegram's wait is short enough. */
+const RATE_LIMIT_RETRIES = 2;
+const MAX_RATE_LIMIT_WAIT_S = 30;
 
 export interface TelegramChat {
   id: number;
@@ -55,16 +63,27 @@ export async function isTelegramConfigured(): Promise<boolean> {
   return Boolean(await getSecret('TELEGRAM_BOT_TOKEN'));
 }
 
+/**
+ * Telegram limits how fast a bot sends (about 1 message a second per chat, 20 a minute per group):
+ * over that it answers 429 with the seconds to wait, so wait that long and send again.
+ */
 async function call<T>(method: string, body: Record<string, unknown> = {}): Promise<T> {
-  const res = await fetch(`${API}/bot${await token()}/${method}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-    signal: AbortSignal.timeout(15_000),
-  });
-  const data = (await res.json()) as TelegramResponse<T>;
-  if (!data.ok || data.result === undefined) throw new Error(`Telegram ${method} failed: ${data.description ?? res.status}`);
-  return data.result;
+  for (let attempt = 0; ; attempt++) {
+    const res = await fetch(`${API}/bot${await token()}/${method}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(15_000),
+    });
+    const data = (await res.json()) as TelegramResponse<T>;
+    if (data.ok && data.result !== undefined) return data.result;
+    const wait = data.parameters?.retry_after;
+    if (data.error_code === 429 && wait !== undefined && wait <= MAX_RATE_LIMIT_WAIT_S && attempt < RATE_LIMIT_RETRIES) {
+      await sleep(wait * 1000 + Math.random() * 1000);
+      continue;
+    }
+    throw new Error(`Telegram ${method} failed: ${data.description ?? res.status}`);
+  }
 }
 
 let botUsername: string | undefined;
