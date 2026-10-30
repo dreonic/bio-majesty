@@ -12,7 +12,7 @@ import {
 import { CheckCircle2, CircleAlert, FlaskConical } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useToast } from '../../components/toast';
-import { Badge, Button, Card, Input, SectionTitle, Select, Spinner, Textarea } from '../../components/ui';
+import { Badge, Button, Card, CardFooter, Input, SectionTitle, Select, Spinner, Textarea } from '../../components/ui';
 import { useModels, useSettings, useTestModel, useUpdateSettings } from '../../lib/queries';
 
 type ModelsState = Record<AiTask, TaskModelSettings>;
@@ -42,11 +42,6 @@ export function ModelsSection() {
       <SectionTitle
         title="AI models"
         description="Choose the model for each task. Any provider whose API key is in the stack's API keys parameter can be used; changes apply to the next run."
-        actions={
-          <Button variant="primary" onClick={save} disabled={!dirty} loading={update.isPending}>
-            Save models
-          </Button>
-        }
       />
       <div className="flex flex-wrap gap-2 border-b border-hairline px-5 py-3 text-xs">
         {PROVIDERS.map((p) => (
@@ -78,6 +73,11 @@ export function ModelsSection() {
           </div>
         </div>
       )}
+      <CardFooter>
+        <Button variant="primary" size="sm" onClick={save} disabled={!dirty} loading={update.isPending}>
+          Save models
+        </Button>
+      </CardFooter>
     </Card>
   );
 }

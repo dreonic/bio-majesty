@@ -165,6 +165,11 @@ export function SectionTitle({ title, description, actions }: { title: string; d
   );
 }
 
+/** A card's save (and similar) buttons, at its bottom right. */
+export function CardFooter({ children }: { children: ReactNode }) {
+  return <div className="flex flex-wrap items-center justify-end gap-2 border-t border-hairline px-5 py-3">{children}</div>;
+}
+
 export function Field({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
   return (
     <label className="block space-y-1.5">

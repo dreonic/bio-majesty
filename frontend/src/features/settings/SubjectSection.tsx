@@ -1,7 +1,7 @@
 import { displaySymbol, STOCK_SOURCE_INFO } from '@bio-majesty/shared';
 import { useEffect, useState } from 'react';
 import { useToast } from '../../components/toast';
-import { Button, Card, Field, Input, SectionTitle, Select, Spinner, Textarea } from '../../components/ui';
+import { Button, Card, CardFooter, Field, Input, SectionTitle, Select, Spinner, Textarea } from '../../components/ui';
 import { useSettings, useStockAssets, useUpdateSettings } from '../../lib/queries';
 
 /** Who the profile's news is about, and what sentiment means: it shapes every AI task of this profile. */
@@ -45,11 +45,6 @@ export function SubjectSection() {
       <SectionTitle
         title="Subject"
         description="Who your news is about. The AI uses this to filter and tag news, write digests and answer in chat. Changes apply from the next run; news already found keeps its tags."
-        actions={
-          <Button variant="primary" size="sm" disabled={!dirty} loading={update.isPending} onClick={save}>
-            Save subject
-          </Button>
-        }
       />
       <div className="space-y-4 px-5 py-4">
         <Field label="Subject" hint='How the AI refers to what you follow, e.g. "Acme Group", "the Singapore property market" or "EU AI rules". Leave it empty to follow only the topics of your categories.'>
@@ -70,6 +65,11 @@ export function SubjectSection() {
           </Select>
         </Field>
       </div>
+      <CardFooter>
+        <Button variant="primary" size="sm" disabled={!dirty} loading={update.isPending} onClick={save}>
+          Save subject
+        </Button>
+      </CardFooter>
     </Card>
   );
 }

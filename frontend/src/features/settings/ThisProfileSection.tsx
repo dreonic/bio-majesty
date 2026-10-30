@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { useProfiles } from '../../app/profiles';
 import { Modal } from '../../components/overlays';
 import { useToast } from '../../components/toast';
-import { Button, Card, Field, Input, SectionTitle } from '../../components/ui';
+import { Button, Card, CardFooter, Field, Input, SectionTitle } from '../../components/ui';
 
 /** The open profile itself: its name (in the profile menu and on its Telegram messages), and deleting it. */
 export function ThisProfileSection() {
@@ -42,20 +42,16 @@ export function ThisProfileSection() {
       <SectionTitle
         title="This profile"
         description="Everything on this page and the dashboard belongs to this profile. Switch profiles or add one from the menu at the top right."
-        actions={
-          <Button variant="primary" size="sm" disabled={!dirty} loading={saving} onClick={save}>
-            Save name
-          </Button>
-        }
       />
-      <div className="flex flex-wrap items-end gap-4 px-5 pt-4 pb-2">
-        <div className="min-w-56 flex-1">
-          <Field label="Name" hint="Shown in the profile menu and at the top of this profile's Telegram messages.">
-            <Input value={name} onChange={(e) => setName(e.target.value)} maxLength={60} />
-          </Field>
-        </div>
+      <div className="px-5 py-4">
+        <Field label="Name" hint="Shown in the profile menu and at the top of this profile's Telegram messages.">
+          <Input value={name} onChange={(e) => setName(e.target.value)} maxLength={60} />
+        </Field>
+      </div>
+      <CardFooter>
         <Button
           variant="danger"
+          size="sm"
           icon={<Trash2 className="size-4" />}
           disabled={onlyOne}
           title={onlyOne ? 'This is your only profile: add another one before deleting it' : undefined}
@@ -63,10 +59,10 @@ export function ThisProfileSection() {
         >
           Delete profile
         </Button>
-      </div>
-      <p className="px-5 pb-4 text-xs text-ink-2">
-        Profile ID <code className="tabular">{current.id}</code> (for scripts such as export:feedback)
-      </p>
+        <Button variant="primary" size="sm" disabled={!dirty} loading={saving} onClick={save}>
+          Save name
+        </Button>
+      </CardFooter>
       <Modal
         open={confirming}
         onOpenChange={(open) => !deleting && setConfirming(open)}
