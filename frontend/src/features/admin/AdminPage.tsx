@@ -1,6 +1,6 @@
-import type { AdminUser } from '@bio-majesty/shared';
+import type { AdminUser, ProfileSummary } from '@bio-majesty/shared';
 import { Mail, Trash2, UserPlus } from 'lucide-react';
-import { useState, type FormEvent } from 'react';
+import { Fragment, useState, type FormEvent } from 'react';
 import { Navigate } from 'react-router';
 import { useSession } from '../../app/session';
 import { Modal } from '../../components/overlays';
@@ -20,6 +20,7 @@ export function AdminPage() {
   const list = users.data?.users ?? [];
   const me = users.data?.me ?? '';
   const invites = users.data?.invites ?? false;
+  const profiles = users.data?.profiles ?? {};
   // Signed in (e.g. with Google) but never let in, and not switched off on purpose.
   const waiting = list.filter((u) => !u.access && u.enabled && u.status !== 'FORCE_CHANGE_PASSWORD');
 
@@ -66,7 +67,14 @@ export function AdminPage() {
               ) : (
                 <ul className="divide-y divide-hairline border-t border-hairline">
                   {list.map((user) => (
-                    <UserRow key={user.username} user={user} self={user.username === me} invites={invites} onDelete={() => setDeleting(user)} />
+                    <UserRow
+                      key={user.username}
+                      user={user}
+                      profiles={profiles[user.sub] ?? []}
+                      self={user.username === me}
+                      invites={invites}
+                      onDelete={() => setDeleting(user)}
+                    />
                   ))}
                 </ul>
               )}
@@ -111,7 +119,8 @@ function InviteForm() {
   );
 }
 
-function Identity({ user, self = false }: { user: AdminUser; self?: boolean }) {
+/** Who the user is; with `profiles`, also the IDs that scripts and support need. */
+function Identity({ user, self = false, profiles }: { user: AdminUser; self?: boolean; profiles?: ProfileSummary[] }) {
   return (
     <div className="min-w-0 flex-1">
       <p className="flex flex-wrap items-center gap-2 text-sm font-medium text-ink">
@@ -121,6 +130,18 @@ function Identity({ user, self = false }: { user: AdminUser; self?: boolean }) {
       <p className="mt-0.5 text-xs text-ink-2">
         {[user.name, user.provider === 'google' ? 'Google sign-in' : 'Email and password', `added ${formatDate(user.createdAt)}`].filter(Boolean).join(' · ')}
       </p>
+      {profiles && (
+        <p className="mt-0.5 text-xs break-words text-muted">
+          Account ID <code className="select-all">{user.sub}</code>
+          {profiles.length > 0 && ' · Profile IDs: '}
+          {profiles.map((p, i) => (
+            <Fragment key={p.id}>
+              {i > 0 && ', '}
+              {p.name} <code className="select-all">{p.id}</code>
+            </Fragment>
+          ))}
+        </p>
+      )}
     </div>
   );
 }
@@ -165,7 +186,19 @@ function status(user: AdminUser, invites: boolean): { label: string; className?:
   return { label: 'Active', className: 'border-good/30 bg-good-wash text-ink' };
 }
 
-function UserRow({ user, self, invites, onDelete }: { user: AdminUser; self: boolean; invites: boolean; onDelete: () => void }) {
+function UserRow({
+  user,
+  profiles,
+  self,
+  invites,
+  onDelete,
+}: {
+  user: AdminUser;
+  profiles: ProfileSummary[];
+  self: boolean;
+  invites: boolean;
+  onDelete: () => void;
+}) {
   const update = useUpdateUser();
   const resend = useResendInvite();
   const toast = useToast();
@@ -176,7 +209,7 @@ function UserRow({ user, self, invites, onDelete }: { user: AdminUser; self: boo
 
   return (
     <li className={cn('flex flex-wrap items-center gap-x-5 gap-y-3 px-5 py-3', !user.enabled && 'bg-surface')}>
-      <Identity user={user} self={self} />
+      <Identity user={user} self={self} profiles={profiles} />
       <Badge className={badge.className} title={badge.title}>
         {badge.label}
       </Badge>

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { IsoDateTime } from './common';
+import type { ProfileSummary } from './profile';
 
 /** A user of the pool as the Admin page shows it. */
 export const AdminUserSchema = z.object({
@@ -23,6 +24,8 @@ export type AdminUser = z.infer<typeof AdminUserSchema>;
 
 export interface AdminUsersResponse {
   users: AdminUser[];
+  /** Each account's profiles by its sub, oldest first: their IDs are what scripts such as export:feedback take. */
+  profiles: Record<string, ProfileSummary[]>;
   /** The signed-in admin's username (they can't remove, disable or delete themselves). */
   me: string;
   /** Email invitations are possible (email-and-password sign-in is on); otherwise people sign in with Google. */

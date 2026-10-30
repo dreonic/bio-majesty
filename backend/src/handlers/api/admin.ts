@@ -13,6 +13,7 @@ import { env } from '../../lib/env';
 import { badRequest, forbidden, json, noContent, notFound, parseBody, pathParam, type AuthUser } from '../../lib/http';
 import { createRouter, type RouteHandler } from '../../lib/router';
 import { getUser, inviteUser, listUsers, resendInvite, setEnabled, setGroup, signOutEverywhere } from '../../lib/users';
+import { listProfiles } from '../../repo/profiles';
 import type { DeleteEvent } from '../delete-worker';
 
 const claims = (event: APIGatewayProxyEvent) => (event.requestContext?.authorizer?.claims ?? {}) as Record<string, string>;
@@ -43,7 +44,9 @@ function notSelf(user: AdminUser, me: AuthUser, what: string): void {
 
 export const handler = createRouter({
   'GET /admin/users': adminOnly(async (event) => {
-    const body: AdminUsersResponse = { users: await listUsers(), me: claims(event)['cognito:username'] ?? '', invites: env.passwordSignIn };
+    const users = await listUsers();
+    const profiles = Object.fromEntries(await Promise.all(users.map(async (u) => [u.sub, await listProfiles(u.sub)] as const)));
+    const body: AdminUsersResponse = { users, profiles, me: claims(event)['cognito:username'] ?? '', invites: env.passwordSignIn };
     return json(200, body);
   }),
 

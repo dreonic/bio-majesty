@@ -74,6 +74,9 @@ describe('admin API', () => {
     });
     cognito.on(ListUsersInGroupCommand, { GroupName: 'dashboard-users' }).resolves({ Users: [{ Username: 'admin-user' }] });
     cognito.on(ListUsersInGroupCommand, { GroupName: 'admins' }).resolves({ Users: [{ Username: 'admin-user' }] });
+    db.on(QueryCommand, { ExpressionAttributeValues: { ':pk': 'ACCOUNT#admin-sub', ':p': 'PROFILE#' } }).resolves({
+      Items: [{ PK: 'ACCOUNT#admin-sub', SK: 'PROFILE#p1', id: 'p1', name: 'Acme', createdAt: '2026-10-01T00:00:00.000Z' }],
+    });
 
     const res = await request('GET', '/admin/users');
     const body = JSON.parse(res.body) as AdminUsersResponse;
@@ -82,6 +85,7 @@ describe('admin API', () => {
       ['admin-user', 'email', true, true],
       ['Google_123', 'google', false, false],
     ]);
+    expect(body.profiles).toEqual({ 'admin-sub': [{ id: 'p1', name: 'Acme', createdAt: '2026-10-01T00:00:00.000Z' }], s2: [] });
   });
 
   it('invites an email user with dashboard access, and rejects a duplicate', async () => {

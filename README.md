@@ -136,7 +136,7 @@ A stage can serve the dashboard on its own domain (`domainName`, e.g. `news.exam
 
    Removing access or disabling someone takes effect when their sign-in renews (within an hour), and stops their profiles' daily runs and price refreshes. Admins can't remove their own access or admin role, or disable or delete themselves. The Cognito console (User pools → bio-majesty-dev or news-accumulator-prod) still works for the same things.
 
-   **Every member is a separate account, with its own profiles.** A new account first names its first profile, which starts blank: no subject, categories or assets, so no news runs until it adds a category. More profiles come from **Add profile** in the navbar's menu (no limit; a new one opens its Settings); **Settings → This profile** renames or deletes the open one (not the last one, nor while its news run is in progress) and shows its ID for scripts. Each profile's data stays in its own partition, and its daily run uses only its own categories (so two profiles following the same company each pay for their own AI tagging). The dashboard remembers the last profile opened in each browser.
+   **Every member is a separate account, with its own profiles.** A new account first names its first profile, which starts blank: no subject, categories or assets, so no news runs until it adds a category. More profiles come from **Add profile** in the navbar's menu (no limit; a new one opens its Settings); **Settings → This profile** renames or deletes the open one (not the last one, nor while its news run is in progress); the **Admin** page lists every account's ID and its profiles' IDs, for scripts. Each profile's data stays in its own partition, and its daily run uses only its own categories (so two profiles following the same company each pay for their own AI tagging). The dashboard remembers the last profile opened in each browser.
 
    **Google sign-in** (optional) — with `googleClientId` set, the login page also offers Google. Any Google account can then sign in and gets a Cognito user, so the group above is what keeps the dashboard private.
    1. In the [Google Cloud console](https://console.cloud.google.com/auth/clients), set up the OAuth consent screen (choose *Internal* if the company uses Google Workspace: only company accounts can then sign in), then create an OAuth client of type *Web application* with
@@ -178,7 +178,7 @@ Copy `frontend/public/config.example.json` to `frontend/public/config.json`, fil
 
 The LLM layer is provider-agnostic (Vercel AI SDK): Anthropic, OpenAI, Google Gemini and OpenRouter (hundreds of models with one key). **Settings → AI models** picks a model, reasoning effort and optional fallback model per task (query suggestions, headline prefilter, tagging, digest, chat); a *Test* button checks each choice. Defaults are **Claude Haiku 5.5** (the smallest and cheapest Claude model) for every task; Anthropic's server-side refusal fallback (`fallbacks: "default"`) is enabled automatically for the Claude models that support it (Opus, Sonnet, Fable).
 
-Before switching the tagging model, measure it against a profile's own decisions (the profile ID is shown under **Settings → This profile**):
+Before switching the tagging model, measure it against a profile's own decisions (profile IDs are listed on the **Admin** page):
 
 ```bash
 TABLE_NAME=... DATA_BUCKET=... AWS_REGION=ap-southeast-1 ANTHROPIC_API_KEY=... \
