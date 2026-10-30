@@ -1,6 +1,9 @@
+import { PROFILE_HEADER } from '@bio-majesty/shared';
+
 /**
  * Thin fetch wrapper for the dashboard API. The Cognito ID token is supplied
- * by the auth layer through `setTokenProvider`.
+ * by the auth layer through `configureApi`; the profile requests work on, by
+ * the profile layer through `setApiProfile`.
  */
 export class ApiError extends Error {
   constructor(
@@ -16,6 +19,7 @@ export class ApiError extends Error {
 let baseUrl = '';
 let tokenProvider: () => string | undefined = () => undefined;
 let onUnauthorized: () => void = () => undefined;
+let profileId: string | null = null;
 
 export function configureApi(opts: { baseUrl: string; getToken: () => string | undefined; onUnauthorized: () => void }) {
   baseUrl = opts.baseUrl;
@@ -27,9 +31,15 @@ export function apiBaseUrl(): string {
   return baseUrl;
 }
 
-export function authHeader(): Record<string, string> {
+/** The profile every request works on from now on (the API checks that it is one of the account's). */
+export function setApiProfile(id: string | null) {
+  profileId = id;
+}
+
+/** The ID token and the current profile, for every API request (and the chat stream). */
+export function apiHeaders(): Record<string, string> {
   const token = tokenProvider();
-  return token ? { Authorization: token } : {};
+  return { ...(token ? { Authorization: token } : {}), ...(profileId ? { [PROFILE_HEADER]: profileId } : {}) };
 }
 
 type Query = Record<string, string | number | boolean | string[] | undefined | null>;
@@ -52,7 +62,7 @@ export async function api<T>(
   const res = await fetch(buildUrl(path, opts.query), {
     method: opts.method ?? 'GET',
     headers: {
-      ...authHeader(),
+      ...apiHeaders(),
       ...(opts.body !== undefined ? { 'Content-Type': 'application/json' } : {}),
     },
     body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,

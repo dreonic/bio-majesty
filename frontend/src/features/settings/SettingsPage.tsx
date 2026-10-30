@@ -4,9 +4,10 @@ import { ModelsSection } from './ModelsSection';
 import { ScheduleSection } from './ScheduleSection';
 import { SourcesSection } from './SourcesSection';
 import { SubjectSection } from './SubjectSection';
+import { ThisProfileSection } from './ThisProfileSection';
 import { TelegramSection } from './TelegramSection';
 
-/** Everything here belongs to the signed-in account; other accounts have their own. */
+/** Everything here belongs to the open profile; the account's other profiles have their own. */
 export function SettingsPage() {
   return (
     <div className="h-full overflow-y-auto">
@@ -14,10 +15,11 @@ export function SettingsPage() {
         <div>
           <h1 className="text-xl font-semibold text-ink">Settings</h1>
           <p className="mt-1 text-sm text-ink-2">
-            Your account&apos;s settings: who the news is about, what to search for, which assets to follow, which AI models to use, when to run,
+            This profile&apos;s settings: who its news is about, what to search for, which assets to follow, which AI models to use, when to run,
             and where to send notifications.
           </p>
         </div>
+        <ThisProfileSection />
         <SubjectSection />
         <AssetsSection />
         <ModelsSection />

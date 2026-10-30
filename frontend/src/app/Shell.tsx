@@ -1,12 +1,13 @@
-import { LayoutDashboard, LogOut, Settings, Users } from 'lucide-react';
+import { LayoutDashboard, Settings, Users } from 'lucide-react';
 import { NavLink, Outlet } from 'react-router';
 import { Badge } from '../components/ui';
 import { cn } from '../lib/cn';
+import { ProfileMenu } from './ProfileMenu';
 import { useSession } from './session';
 import type { RuntimeConfig } from './config';
 
 export function Shell({ config }: { config: RuntimeConfig }) {
-  const { email, signOut, demo, admin } = useSession();
+  const { demo, admin } = useSession();
 
   const navClass = ({ isActive }: { isActive: boolean }) =>
     cn(
@@ -39,11 +40,8 @@ export function Shell({ config }: { config: RuntimeConfig }) {
             </NavLink>
           )}
         </nav>
-        <div className="ml-auto flex items-center gap-3">
-          {email && <span className="hidden text-sm text-ink-2 sm:inline">{email}</span>}
-          <button onClick={signOut} className="inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-sm text-ink-2 hover:bg-wash hover:text-ink">
-            <LogOut className="size-4" aria-hidden /> Sign out
-          </button>
+        <div className="ml-auto flex min-w-0 items-center">
+          <ProfileMenu />
         </div>
       </header>
       <main className="min-h-0 flex-1">

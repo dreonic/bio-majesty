@@ -1,6 +1,7 @@
-import { quarterHour, type Run } from '@bio-majesty/shared';
+import { dailyRunStart, quarterHour, type Run } from '@bio-majesty/shared';
 import { CheckCircle2, CircleAlert, Loader2, Play } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { useProfiles } from '../../app/profiles';
 import { useToast } from '../../components/toast';
 import { Button, Card, Input, SectionTitle, Spinner, Switch } from '../../components/ui';
 import { displayTimeZone, formatDateTime, timeZoneLabel } from '../../lib/format';
@@ -13,6 +14,7 @@ export function ScheduleSection() {
   const runs = useRuns();
   const feedback = useFeedbackStats();
   const categories = useCategories().data ?? [];
+  const { current } = useProfiles();
   const toast = useToast();
   const [time, setTime] = useState('06:00');
   const [enabled, setEnabled] = useState(true);
@@ -26,6 +28,9 @@ export function ScheduleSection() {
 
   const dirty = settings.data && (quarterHour(time) !== settings.data.schedule.dailyTime || enabled !== settings.data.schedule.enabled);
   const names = new Map(categories.map((c) => [c.id, c.name]));
+  // A run with nothing to search ends straight away, without a record.
+  const searchable = categories.some((c) => c.active && c.search.enabled && c.search.queries.length > 0);
+  const startsAt = dailyRunStart(quarterHour(time), current.id);
 
   return (
     <Card>
@@ -36,6 +41,8 @@ export function ScheduleSection() {
           <Button
             icon={<Play className="size-4" />}
             loading={runDaily.isPending}
+            disabled={!searchable}
+            title={searchable ? undefined : 'Add a category with search queries first (or wait for its backfill)'}
             onClick={() => runDaily.mutate(undefined, { onSuccess: () => toast.success('Daily run started'), onError: toast.error })}
           >
             Run now
@@ -45,12 +52,17 @@ export function ScheduleSection() {
       <div className="flex flex-wrap items-center gap-4 border-b border-hairline px-5 py-4">
         <label className="flex items-center gap-2 text-sm text-ink">
           Run every day at
-          {/* The dispatcher checks every 15 minutes, so run times are quarter hours. */}
           <Input type="time" step={900} value={time} onChange={(e) => setTime(e.target.value)} className="w-32" aria-label="Daily run time (quarter hours)" />
           <span className="text-ink-2" title={displayTimeZone()}>
             {timeZoneLabel()}
           </span>
         </label>
+        <span
+          className="text-sm text-ink-2"
+          title="Each profile starts a fixed few minutes after its time, so profiles set to the same time don't all search at once."
+        >
+          starts at {startsAt}
+        </span>
         <Switch checked={enabled} onChange={setEnabled} label="Enabled" />
         <Button
           variant="primary"
@@ -60,7 +72,7 @@ export function ScheduleSection() {
           onClick={() =>
             update.mutate(
               { schedule: { dailyTime: quarterHour(time), enabled } },
-              { onSuccess: (s) => toast.success(`Schedule updated: every day at ${s.schedule.dailyTime}`), onError: toast.error },
+              { onSuccess: (s) => toast.success(`Schedule updated: every day at ${dailyRunStart(s.schedule.dailyTime, current.id)}`), onError: toast.error },
             )
           }
         >

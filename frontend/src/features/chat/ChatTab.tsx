@@ -8,7 +8,7 @@ import type { RuntimeConfig } from '../../app/config';
 import { SentimentBadge } from '../../components/tags';
 import { useToast } from '../../components/toast';
 import { Button, EmptyState, Spinner, Textarea } from '../../components/ui';
-import { authHeader } from '../../lib/api';
+import { apiHeaders } from '../../lib/api';
 import { cn } from '../../lib/cn';
 import { relativeTime } from '../../lib/format';
 import { qk, useCategories, useConversation, useConversations, useDeleteConversation, useStockAssets } from '../../lib/queries';
@@ -95,7 +95,7 @@ function ChatSession({ id, initialMessages, config }: { id: string; initialMessa
     () =>
       new DefaultChatTransport({
         api: `${config.apiUrl}chat`,
-        headers: () => authHeader(),
+        headers: () => apiHeaders(),
         // History lives server-side; send only the newest message.
         prepareSendMessagesRequest: ({ messages, id: chatId }) => ({ body: { id: chatId, message: messages[messages.length - 1] } }),
       }),

@@ -8,6 +8,7 @@ import {
   type Category,
   type Conversation,
   type Digest,
+  type ProfileSummary,
   type Run,
   type Sentiment,
   type SettingsView,
@@ -234,7 +235,13 @@ Not related, despite the name: other companies called Acme, and cartoon referenc
   region: 'ap-southeast-1',
 };
 
-/** A brand-new account (mock mode with `?blank`): the defaults, nothing set up yet. */
+/** The demo account's profiles: the first has the sample data, the second starts blank. */
+export const profiles: ProfileSummary[] = [
+  { id: 'acme', name: 'Acme Group', createdAt: iso(40 * DAY) },
+  { id: 'beta', name: 'Beta Holdings', createdAt: iso(2 * DAY) },
+];
+
+/** A brand-new profile: the defaults, nothing set up yet. */
 export const blankSettings: SettingsView = { ...settings, stock: DEFAULT_SETTINGS.stock, subject: DEFAULT_SETTINGS.subject };
 
 export const models = {

@@ -8,6 +8,7 @@ import {
   displaySymbol,
   effectiveTags,
   midnightInZone,
+  PROFILE_HEADER,
   SENTIMENTS,
   STOCK_SOURCE_INFO,
   stockCsv,
@@ -17,6 +18,7 @@ import {
   type BulkReviewRequest,
   type Category,
   type DeleteNewsRequest,
+  type ProfileSummary,
   type Sentiment,
   type StockRange,
   type StockSource,
@@ -40,20 +42,33 @@ export const MOCK_CONFIG: RuntimeConfig = {
   cognito: { authority: 'https://mock.invalid', clientId: 'mock', domain: 'https://mock.invalid' },
 };
 
-/** `?blank` in the URL starts the demo as a brand-new account: default settings, no categories or news. */
+/** `?blank` in the URL starts the demo as a brand-new account: no profiles yet. */
 const blank = new URLSearchParams(window.location.search).has('blank');
 
-const state = {
-  articles: blank ? [] : [...fx.articles],
-  categories: blank ? [] : [...fx.categories],
-  settings: structuredClone(blank ? fx.blankSettings : fx.settings),
-  conversations: [...fx.conversations],
-  chats: new Map<string, unknown[]>(),
-  decisions: [] as { changed: boolean }[],
+/** One profile's data: the fictional Acme Group sample, or blank like a new profile. */
+function newDesk(sample: boolean) {
+  return {
+    sample,
+    articles: sample ? [...fx.articles] : [],
+    categories: sample ? [...fx.categories] : [],
+    settings: structuredClone(sample ? fx.settings : { ...fx.blankSettings, telegram: { ...fx.blankSettings.telegram, connections: [] } }),
+    conversations: sample ? [...fx.conversations] : [],
+    chats: new Map<string, unknown[]>(),
+    decisions: [] as { changed: boolean }[],
+    pendingTelegram: null as TelegramLinkKind | null,
+    verifyChecks: 0 as number | undefined,
+  };
+}
+type Desk = ReturnType<typeof newDesk>;
+
+/** The demo account: its users list (Admin page) and its profiles, each with its own desk. */
+const account = {
   users: [...fx.adminUsers],
-  pendingTelegram: null as TelegramLinkKind | null,
-  verifyChecks: 0 as number | undefined,
+  profiles: blank ? [] : [...fx.profiles],
 };
+const desks = new Map<string, Desk>(account.profiles.map((p, i) => [p.id, newDesk(i === 0)]));
+/** The desk of the profile the current request names (X-Profile-Id). */
+let state: Desk = newDesk(false);
 
 const json = (body: unknown, status = 200) =>
   new Response(status === 204 ? null : JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
@@ -235,10 +250,39 @@ function chatStream(body: { id: string; message: { id: string; parts: { type: st
   });
 }
 
-async function route(method: string, url: URL, body: unknown): Promise<Response> {
+async function route(method: string, url: URL, body: unknown, profileId: string | null): Promise<Response> {
   const path = url.pathname.replace(/^\/api\//, '');
   const seg = path.split('/');
   await delay(150);
+
+  // The account's profiles (no profile header needed).
+  if (path === 'profiles' && method === 'GET') return json({ items: account.profiles });
+  if (path === 'profiles' && method === 'POST') {
+    const name = String((body as { name?: string }).name ?? '').trim();
+    if (!name) return json({ error: 'bad_request', message: 'Give the profile a name' }, 400);
+    const profile: ProfileSummary = { id: `p${Date.now().toString(36)}`, name, createdAt: new Date().toISOString() };
+    account.profiles = [...account.profiles, profile];
+    desks.set(profile.id, newDesk(false));
+    return json(profile, 201);
+  }
+  if (seg[0] === 'profiles' && seg[1]) {
+    const profile = account.profiles.find((p) => p.id === seg[1]);
+    if (!profile) return json({ error: 'not_found', message: 'Profile not found' }, 404);
+    if (method === 'PATCH') {
+      profile.name = String((body as { name?: string }).name ?? '').trim() || profile.name;
+      return json(profile);
+    }
+    if (account.profiles.length <= 1) return json({ error: 'bad_request', message: 'This is your only profile. Add another one before deleting it.' }, 400);
+    account.profiles = account.profiles.filter((p) => p !== profile);
+    desks.delete(profile.id);
+    return json({ deleting: true }, 202);
+  }
+  // Everything else but the Admin page works on the profile the request names, like the API.
+  if (seg[0] !== 'admin') {
+    const desk = profileId ? desks.get(profileId) : undefined;
+    if (!desk) return profileId ? json({ error: 'not_found', message: 'Profile not found' }, 404) : json({ error: 'bad_request', message: 'Pick a profile first (no X-Profile-Id header)' }, 400);
+    state = desk;
+  }
 
   if (method === 'GET' && path === 'news') return json(list(url));
   if (method === 'GET' && path === 'news/counts') {
@@ -273,7 +317,7 @@ async function route(method: string, url: URL, body: unknown): Promise<Response>
     const failed = 'ids' in req ? req.ids.filter((id) => !doomed.has(id)).map((id) => ({ id, error: 'not skipped or filtered' })) : [];
     return json({ deleted: doomed.size, failed, more: false });
   }
-  if (method === 'GET' && path === 'digest/latest') return json({ digest: blank ? null : fx.digest });
+  if (method === 'GET' && path === 'digest/latest') return json({ digest: state.sample ? fx.digest : null });
 
   if (path === 'categories' && method === 'GET') return json({ items: [...state.categories].sort((a, b) => a.name.localeCompare(b.name)) });
   if (path === 'categories' && method === 'POST') {
@@ -344,7 +388,7 @@ async function route(method: string, url: URL, body: unknown): Promise<Response>
     await delay(700);
     return json({ ok: true, latencyMs: 812, output: 'OK', error: null });
   }
-  if (path === 'runs') return json({ items: blank ? [] : fx.runs });
+  if (path === 'runs') return json({ items: state.sample ? fx.runs : [] });
   if (path === 'runs/daily') return json({ executionArn: 'demo' }, 202);
 
   const assetParam = url.searchParams.get('asset') ?? '';
@@ -401,7 +445,7 @@ async function route(method: string, url: URL, body: unknown): Promise<Response>
     return json({ items, minRatio: state.settings.stock.volumeRatio, window: 20 });
   }
   if (path === 'feedback/stats') {
-    const [total, corrections] = blank ? [0, 0] : [41, 9];
+    const [total, corrections] = state.sample ? [41, 9] : [0, 0];
     return json({ total: total + state.decisions.length, corrections: corrections + state.decisions.filter((d) => d.changed).length });
   }
 
@@ -435,20 +479,20 @@ async function route(method: string, url: URL, body: unknown): Promise<Response>
     return json({ sent: true });
   }
 
-  if (path === 'admin/users' && method === 'GET') return json({ users: state.users, me: 'demo-admin', invites: true });
+  if (path === 'admin/users' && method === 'GET') return json({ users: account.users, me: 'demo-admin', invites: true });
   if (path === 'admin/users' && method === 'POST') {
     const email = String((body as { email?: string }).email ?? '').trim().toLowerCase();
-    if (state.users.some((u) => u.email === email)) return json({ error: 'conflict', message: `${email} already has a user` }, 409);
+    if (account.users.some((u) => u.email === email)) return json({ error: 'conflict', message: `${email} already has a user` }, 409);
     const user = { ...fx.adminUsers[2]!, username: `invited-${Date.now()}`, email, createdAt: new Date().toISOString() };
-    state.users = [...state.users, user];
+    account.users = [...account.users, user];
     return json(user, 201);
   }
   if (seg[0] === 'admin' && seg[1] === 'users' && seg[2]) {
-    const user = state.users.find((u) => u.username === decodeURIComponent(seg[2]!));
+    const user = account.users.find((u) => u.username === decodeURIComponent(seg[2]!));
     if (!user) return json({ error: 'not_found', message: 'No such user' }, 404);
     if (seg[3] === 'invite') return json(null, 204);
     if (method === 'DELETE') {
-      state.users = state.users.filter((u) => u !== user);
+      account.users = account.users.filter((u) => u !== user);
       return json({ deleting: true }, 202);
     }
     const change = body as Partial<Pick<typeof user, 'access' | 'admin' | 'enabled'>>;
@@ -499,6 +543,7 @@ export function installMockApi(config: RuntimeConfig): void {
     const method = (init?.method ?? (input instanceof Request ? input.method : 'GET')).toUpperCase();
     const raw = init?.body ?? (input instanceof Request ? await input.text() : undefined);
     const body = typeof raw === 'string' && raw ? (JSON.parse(raw) as unknown) : undefined;
-    return route(method, url, body);
+    const headers = new Headers(init?.headers ?? (input instanceof Request ? input.headers : undefined));
+    return route(method, url, body, headers.get(PROFILE_HEADER));
   };
 }
