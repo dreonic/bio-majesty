@@ -110,8 +110,8 @@ export const handler = createRouter({
     const { asset: id } = parseQuery(event, AssetQuery);
     const settings = await getSettings(user.sub);
     if (!settings.stock.assets.includes(id)) throw notFound(`${id} is not one of your assets`);
-    if (settings.profile.sentimentAsset === id) {
-      throw badRequest(`Sentiment is judged against ${id}. Pick another asset (or the subject itself) in Settings → Profile first.`);
+    if (settings.subject.sentimentAsset === id) {
+      throw badRequest(`Sentiment is judged against ${id}. Pick another asset (or the subject itself) in Settings → Subject first.`);
     }
     const next = await saveSettings(user.sub, {
       ...settings,

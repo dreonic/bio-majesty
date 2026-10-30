@@ -1,7 +1,7 @@
 import type { Article, Category, Digest, TaskModelSettings } from '@bio-majesty/shared';
 import { effectiveTags, SentimentSchema } from '@bio-majesty/shared';
 import { z } from 'zod';
-import { profileContext, sentimentBasis, type ProfileContext } from '../prompts';
+import { sentimentBasis, subjectContext, type SubjectContext } from '../prompts';
 import { runStructured } from '../run-task';
 import type { UsageCollector } from '../usage';
 
@@ -20,18 +20,18 @@ const OutputSchema = z.object({
 });
 
 /** What the digest leads with: the sentiment asset's price and/or the subject. */
-function lead({ profile, asset }: ProfileContext): string {
-  if (!asset) return profile.subject || 'the reader';
-  const price = sentimentBasis(profile, asset);
-  return profile.subject ? `${price} or ${profile.subject}` : price;
+function lead({ subject, asset }: SubjectContext): string {
+  if (!asset) return subject.name || 'the reader';
+  const price = sentimentBasis(subject, asset);
+  return subject.name ? `${price} or ${subject.name}` : price;
 }
 
-function instructions(ctx: ProfileContext): string {
-  return `${profileContext(ctx.profile)}
+function instructions(ctx: SubjectContext): string {
+  return `${subjectContext(ctx.subject)}
 
 Write a brief digest of newly found news items for the reader, who will review them in the dashboard. Lead with what could matter most for ${lead(ctx)}. Be factual and concise; do not invent details beyond the item summaries.
 
-Also judge the overall sentiment of the items taken together, toward ${sentimentBasis(ctx.profile, ctx.asset)} (the same basis as each item's sentiment). Weigh the items by importance, not by count: one major story can outweigh several minor ones. "positive" or "negative": the likely net effect; "neutral": nothing here is likely to matter either way; "undecided": mixed, or the direction is unclear.`;
+Also judge the overall sentiment of the items taken together, toward ${sentimentBasis(ctx.subject, ctx.asset)} (the same basis as each item's sentiment). Weigh the items by importance, not by count: one major story can outweigh several minor ones. "positive" or "negative": the likely net effect; "neutral": nothing here is likely to matter either way; "undecided": mixed, or the direction is unclear.`;
 }
 
 export function digestCounts(articles: Article[]): Digest['counts'] {
@@ -45,7 +45,7 @@ export async function writeDigest(
   categories: Category[],
   context: { runType: 'daily' | 'backfill'; categoryName?: string },
   settings: TaskModelSettings,
-  ctx: ProfileContext,
+  ctx: SubjectContext,
   usage?: UsageCollector,
 ): Promise<Pick<Digest, 'title' | 'summary' | 'highlights' | 'overall'>> {
   const names = new Map(categories.map((c) => [c.id, c.name]));

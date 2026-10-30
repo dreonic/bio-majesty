@@ -365,8 +365,8 @@ async function route(method: string, url: URL, body: unknown): Promise<Response>
   }
   if (path === 'stock/assets' && method === 'DELETE') {
     const gone = assetParam;
-    if (state.settings.profile.sentimentAsset === gone) {
-      return json({ error: 'bad_request', message: `Sentiment is judged against ${gone}. Pick another asset (or the subject itself) in Settings → Profile first.` }, 400);
+    if (state.settings.subject.sentimentAsset === gone) {
+      return json({ error: 'bad_request', message: `Sentiment is judged against ${gone}. Pick another asset (or the subject itself) in Settings → Subject first.` }, 400);
     }
     state.settings.stock.assets = state.settings.stock.assets.filter((a) => a !== gone);
     return json(assetList());

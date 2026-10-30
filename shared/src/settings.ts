@@ -75,22 +75,22 @@ export function quarterHour(hhmm: string): string {
 export const MAX_ASSETS = 10;
 
 /**
- * Who or what the account's news is about. It sets the context of every AI task and what
- * sentiment means: the price of one of the account's assets, or (no asset) good or bad
- * news for the subject itself.
+ * Who or what a profile's news is about (Settings → Subject). It sets the context of every AI
+ * task and what sentiment means: the price of one of the profile's assets, or (no asset) good
+ * or bad news for the subject itself.
  */
-export const ProfileSchema = z.object({
-  /** How the AI refers to the subject, e.g. "Acme Group" or "the Singapore property market"; empty = the topics of the account's categories. */
-  subject: z.string().trim().max(120),
+export const SubjectSchema = z.object({
+  /** How the AI refers to the subject, e.g. "Acme Group" or "the Singapore property market"; empty = the topics of the profile's categories. */
+  name: z.string().trim().max(120),
   /** Entities and their aliases, unrelated look-alikes, typical sources, what counts as good or bad news. */
   context: z.string().trim().max(6000),
   /** Sentiment is judged against this asset's price (its ID); null = the subject itself. */
   sentimentAsset: AssetIdSchema.nullable(),
 });
-export type Profile = z.infer<typeof ProfileSchema>;
+export type Subject = z.infer<typeof SubjectSchema>;
 
-/** Starting profile of every account: blank until the account describes what it follows. */
-export const DEFAULT_PROFILE: Profile = { subject: '', context: '', sentimentAsset: null };
+/** Starting subject of every profile: blank until the profile describes what it follows. */
+export const DEFAULT_SUBJECT: Subject = { name: '', context: '', sentimentAsset: null };
 
 export const SettingsSchema = z.object({
   models: z.object({
@@ -117,7 +117,7 @@ export const SettingsSchema = z.object({
     /** Volume / 20-day average ratio that counts as unusual. */
     volumeRatio: z.number().min(1.5).max(20),
   }),
-  profile: ProfileSchema,
+  subject: SubjectSchema,
   learning: z.object({
     /**
      * Give the tagging model the account's recent corrections as examples.
@@ -159,7 +159,7 @@ export const SettingsUpdateSchema = z.object({
   sources: z.object({ googleNews: z.boolean(), gdelt: z.boolean() }).partial().optional(),
   notifications: z.object({ notifyWhenEmpty: z.boolean() }).partial().optional(),
   stock: z.object({ volumeAlerts: z.boolean(), volumeRatio: z.number().min(1.5).max(20) }).partial().optional(),
-  profile: ProfileSchema.partial().optional(),
+  subject: SubjectSchema.partial().optional(),
   learning: z.object({ useFeedbackContext: z.boolean(), maxExamples: z.number().int().min(1).max(30) }).partial().optional(),
 });
 export type SettingsUpdate = z.infer<typeof SettingsUpdateSchema>;
@@ -178,7 +178,7 @@ export const DEFAULT_SETTINGS: Settings = {
   sources: { googleNews: true, gdelt: true },
   notifications: { notifyWhenEmpty: false },
   stock: { assets: [], volumeAlerts: true, volumeRatio: 2.5 },
-  profile: DEFAULT_PROFILE,
+  subject: DEFAULT_SUBJECT,
   learning: { useFeedbackContext: false, maxExamples: 8 },
   updatedAt: null,
 };

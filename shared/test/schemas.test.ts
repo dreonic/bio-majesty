@@ -31,12 +31,12 @@ import {
 } from '../src';
 
 describe('settings', () => {
-  it('ships valid defaults (opus 5.5, context off, volume alerts on, a blank profile and no assets)', () => {
+  it('ships valid defaults (opus 5.5, context off, volume alerts on, a blank subject and no assets)', () => {
     expect(SettingsSchema.parse(DEFAULT_SETTINGS)).toEqual(DEFAULT_SETTINGS);
     expect(DEFAULT_SETTINGS.models.tagging.model).toBe('anthropic:claude-haiku-5-5');
     expect(DEFAULT_SETTINGS.learning.useFeedbackContext).toBe(false);
     expect(DEFAULT_SETTINGS.stock).toEqual({ assets: [], volumeAlerts: true, volumeRatio: 2.5 });
-    expect(DEFAULT_SETTINGS.profile).toEqual({ subject: '', context: '', sentimentAsset: null });
+    expect(DEFAULT_SETTINGS.subject).toEqual({ name: '', context: '', sentimentAsset: null });
   });
 
   it('keeps daily runs on quarter hours', () => {
@@ -47,9 +47,9 @@ describe('settings', () => {
     expect(SettingsUpdateSchema.safeParse({ schedule: { dailyTime: '06:15' } }).success).toBe(true);
   });
 
-  it('lets a profile update leave the asset list alone (assets are added via /stock/assets)', () => {
-    expect(SettingsUpdateSchema.parse({ profile: { sentimentAsset: null } })).toEqual({ profile: { sentimentAsset: null } });
-    expect(SettingsUpdateSchema.parse({ profile: { sentimentAsset: 'Yahoo:acme.jk' } })).toEqual({ profile: { sentimentAsset: 'yahoo:ACME.JK' } });
+  it('lets a subject update leave the asset list alone (assets are added via /stock/assets)', () => {
+    expect(SettingsUpdateSchema.parse({ subject: { sentimentAsset: null } })).toEqual({ subject: { sentimentAsset: null } });
+    expect(SettingsUpdateSchema.parse({ subject: { sentimentAsset: 'Yahoo:acme.jk' } })).toEqual({ subject: { sentimentAsset: 'yahoo:ACME.JK' } });
     expect(SettingsUpdateSchema.parse({ stock: { assets: ['yahoo:AAPL'] } })).toEqual({ stock: {} });
   });
 

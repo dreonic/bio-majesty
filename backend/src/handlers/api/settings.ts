@@ -60,7 +60,7 @@ export const handler = createRouter({
     }
     const current = await getSettings(user.sub);
     const next = mergeSettings(current, update);
-    const sentiment = next.profile.sentimentAsset;
+    const sentiment = next.subject.sentimentAsset;
     if (sentiment && !next.stock.assets.includes(sentiment)) {
       throw badRequest(`Sentiment can only be judged against one of your assets; add ${sentiment} in Settings → Assets first`);
     }

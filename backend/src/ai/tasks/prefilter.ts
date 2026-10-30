@@ -1,7 +1,7 @@
-import type { Category, Profile, TaskModelSettings } from '@bio-majesty/shared';
+import type { Category, Subject, TaskModelSettings } from '@bio-majesty/shared';
 import { z } from 'zod';
 import { errorMessage, logger } from '../../lib/logger';
-import { categoriesBlock, profileContext, UNTRUSTED_NOTE, untrusted } from '../prompts';
+import { categoriesBlock, subjectContext, UNTRUSTED_NOTE, untrusted } from '../prompts';
 import { runStructured } from '../run-task';
 import type { UsageCollector } from '../usage';
 
@@ -33,11 +33,11 @@ const OutputSchema = z.object({
 
 const BATCH_SIZE = 50;
 
-function instructions(categories: Category[], exclude: string[], profile: Profile): string {
-  const about = profile.subject
-    ? `${profile.subject} (or entities related to it), or a topic covered by one of the categories below (for example regulation or competitors affecting ${profile.subject})`
+function instructions(categories: Category[], exclude: string[], subject: Subject): string {
+  const about = subject.name
+    ? `${subject.name} (or entities related to it), or a topic covered by one of the categories below (for example regulation or competitors affecting ${subject.name})`
     : 'a topic covered by one of the categories below';
-  return `${profileContext(profile)}
+  return `${subjectContext(subject)}
 
 You screen search results before articles are fetched and read in full. Mark a headline relevant if it is plausibly about ${about}. Mark it irrelevant when it clearly concerns something else — when unsure, keep it (relevant = true), because a person reviews everything that passes.
 ${exclude.length ? `\nResults mentioning any of these are usually unrelated: ${exclude.join(', ')}.` : ''}
@@ -57,7 +57,7 @@ export async function prefilterHeadlines(
   categories: Category[],
   exclude: string[],
   settings: TaskModelSettings,
-  profile: Profile,
+  subject: Subject,
   usage?: UsageCollector,
 ): Promise<PrefilterDecision[]> {
   const known = new Set(categories.map((c) => c.id));
@@ -73,7 +73,7 @@ export async function prefilterHeadlines(
         settings,
         schema: OutputSchema,
         name: 'headline_screening',
-        instructions: instructions(categories, exclude, profile),
+        instructions: instructions(categories, exclude, subject),
         prompt: untrusted('search-results', listing),
         maxOutputTokens: 8000,
         usage,

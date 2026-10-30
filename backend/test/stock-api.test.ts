@@ -32,7 +32,7 @@ const asset = (id: string, overrides: Partial<StockAsset> = {}): StockAsset => {
   };
 };
 const assets = new Map<string, StockAsset>();
-let settings: { stock: { assets: string[]; volumeRatio: number }; profile: { sentimentAsset: string | null } };
+let settings: { stock: { assets: string[]; volumeRatio: number }; subject: { sentimentAsset: string | null } };
 
 vi.mock('../src/repo/settings', () => ({
   getSettings: async () => settings,
@@ -88,7 +88,7 @@ beforeEach(() => {
   assets.set('yahoo:ACME.JK', asset('yahoo:ACME.JK'));
   assets.set('yahoo:VFIAX', asset('yahoo:VFIAX', { type: 'MUTUALFUND', intradayInterval: null, timeZone: 'America/New_York' }));
   assets.set('eodhd:ACME.JK', asset('eodhd:ACME.JK'));
-  settings = { stock: { assets: ['yahoo:ACME.JK', 'yahoo:VFIAX', 'eodhd:ACME.JK'], volumeRatio: 3 }, profile: { sentimentAsset: 'yahoo:ACME.JK' } };
+  settings = { stock: { assets: ['yahoo:ACME.JK', 'yahoo:VFIAX', 'eodhd:ACME.JK'], volumeRatio: 3 }, subject: { sentimentAsset: 'yahoo:ACME.JK' } };
 });
 
 describe('GET /stock/export', () => {

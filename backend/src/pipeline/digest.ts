@@ -1,5 +1,5 @@
 import type { Digest } from '@bio-majesty/shared';
-import { loadProfileContext } from '../ai/profile';
+import { loadSubjectContext } from '../ai/subject';
 import { digestCounts, writeDigest } from '../ai/tasks/digest';
 import { UsageCollector } from '../ai/usage';
 import { errorMessage, logger } from '../lib/logger';
@@ -39,7 +39,7 @@ export async function digestRun(state: PipelineState): Promise<PipelineState> {
       categories,
       { runType: state.runType, categoryName: category?.name },
       settings.models.digest,
-      await loadProfileContext(settings),
+      await loadSubjectContext(settings),
       usage,
     );
   } catch (err) {

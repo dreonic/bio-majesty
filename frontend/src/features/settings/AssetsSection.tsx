@@ -72,7 +72,7 @@ export function AssetsSection() {
         title="Assets"
         description={`Prices in the stock panel and for the chat, up to ${MAX_ASSETS}: stocks, ETFs, indices, currencies, crypto or futures. Prices are delayed. ${origin}`}
       />
-      <AssetList items={items} sentimentAsset={s.profile.sentimentAsset} showSource={manySources} />
+      <AssetList items={items} sentimentAsset={s.subject.sentimentAsset} showSource={manySources} />
       <AddAsset sources={sources.data} full={items.length >= MAX_ASSETS} />
       <div className="flex flex-wrap items-center gap-3 border-t border-hairline px-5 py-4">
         <Switch
@@ -120,7 +120,7 @@ function AssetList({ items, sentimentAsset, showSource }: { items: StockAsset[];
               <p className="truncate text-xs text-ink-2">{describe(a)}</p>
             </div>
             {showSource && <Badge title="Where this asset's prices come from">{STOCK_SOURCE_INFO[a.source].label}</Badge>}
-            {isSentiment && <Badge title="News sentiment is judged against this asset (see Profile)">Sentiment</Badge>}
+            {isSentiment && <Badge title="News sentiment is judged against this asset (see Subject)">Sentiment</Badge>}
             <Button
               size="sm"
               variant="ghost"
@@ -137,7 +137,7 @@ function AssetList({ items, sentimentAsset, showSource }: { items: StockAsset[];
               className="hover:text-critical"
               icon={<Trash2 className="size-4" />}
               disabled={isSentiment || remove.isPending}
-              title={isSentiment ? 'Sentiment is judged against this asset: pick another in Profile first' : 'Remove from your assets'}
+              title={isSentiment ? 'Sentiment is judged against this asset: pick another in Subject first' : 'Remove from your assets'}
               onClick={() => remove.mutate(a.id, { onSuccess: () => toast.success(`${a.symbol} removed`), onError: toast.error })}
             >
               Remove

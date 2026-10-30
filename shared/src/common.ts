@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 /**
- * Sentiment of a news item, judged as the account's profile says (the price of one of its
+ * Sentiment of a news item, judged as the profile's subject says (the price of one of its
  * assets, or the subject itself): positive / negative = likely to help / hurt,
  * neutral = no meaningful effect expected, undecided = mixed or unclear.
  */

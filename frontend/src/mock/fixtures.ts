@@ -216,8 +216,8 @@ export const sampleCandles: Record<string, SampleSeries> = {
 export const settings: SettingsView = {
   ...DEFAULT_SETTINGS,
   stock: { ...DEFAULT_SETTINGS.stock, assets: ['yahoo:ACME', 'yahoo:^GSPC', 'yahoo:BTC-USD'] },
-  profile: {
-    subject: 'Acme Group',
+  subject: {
+    name: 'Acme Group',
     context: `A fictional regional logistics and energy group, used for this demo. Acme Digital is its digital services subsidiary; Acme also runs a fast-charging network for electric fleets.
 
 Not related, despite the name: other companies called Acme, and cartoon references.`,
@@ -235,7 +235,7 @@ Not related, despite the name: other companies called Acme, and cartoon referenc
 };
 
 /** A brand-new account (mock mode with `?blank`): the defaults, nothing set up yet. */
-export const blankSettings: SettingsView = { ...settings, stock: DEFAULT_SETTINGS.stock, profile: DEFAULT_SETTINGS.profile };
+export const blankSettings: SettingsView = { ...settings, stock: DEFAULT_SETTINGS.stock, subject: DEFAULT_SETTINGS.subject };
 
 export const models = {
   configuredProviders: settings.configuredProviders,

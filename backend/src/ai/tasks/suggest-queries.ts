@@ -1,6 +1,6 @@
-import { EDITION_IDS, type Profile, type SuggestQueriesResponse, type TaskModelSettings } from '@bio-majesty/shared';
+import { EDITION_IDS, type Subject, type SuggestQueriesResponse, type TaskModelSettings } from '@bio-majesty/shared';
 import { z } from 'zod';
-import { profileContext } from '../prompts';
+import { subjectContext } from '../prompts';
 import { runStructured } from '../run-task';
 import type { UsageCollector } from '../usage';
 
@@ -21,8 +21,8 @@ const OutputSchema = z.object({
   exclude: z.array(z.string()).describe('Words or phrases that indicate an unrelated result (may be empty).'),
 });
 
-function instructions(profile: Profile): string {
-  return `${profileContext(profile)}
+function instructions(subject: Subject): string {
+  return `${subjectContext(subject)}
 
 You help configure a news monitor. Given a category name and optional description, propose Google News search queries that will find relevant articles with good precision. Prefer specific entity names and the phrasing local media use. Search the edition of the subject's own country in its local language, and add English editions only where English coverage is plausible; for subjects without a home country, use the editions where most coverage appears. Avoid queries so broad that they would return mostly unrelated news (a bare company name may also match unrelated businesses, such as the look-alikes listed above).`;
 }
@@ -30,7 +30,7 @@ You help configure a news monitor. Given a category name and optional descriptio
 export async function suggestQueries(
   input: { name: string; description: string },
   settings: TaskModelSettings,
-  profile: Profile,
+  subject: Subject,
   usage?: UsageCollector,
 ): Promise<SuggestQueriesResponse> {
   const { output } = await runStructured({
@@ -38,7 +38,7 @@ export async function suggestQueries(
     settings,
     schema: OutputSchema,
     name: 'category_search_config',
-    instructions: instructions(profile),
+    instructions: instructions(subject),
     prompt: `Category name: ${input.name}\nDescription: ${input.description || '(none provided)'}`,
     maxOutputTokens: 4000,
     usage,

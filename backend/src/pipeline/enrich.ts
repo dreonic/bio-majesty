@@ -1,5 +1,5 @@
 import type { Article, Feedback } from '@bio-majesty/shared';
-import { loadProfileContext } from '../ai/profile';
+import { loadSubjectContext } from '../ai/subject';
 import { classifyArticle } from '../ai/tasks/classify';
 import { UsageCollector } from '../ai/usage';
 import { fetchArticle, type ExtractedArticle } from '../extract/fetch-article';
@@ -77,7 +77,7 @@ export async function enrichCandidate(input: EnrichInput): Promise<{ outcome: En
   const [categories, settings] = await Promise.all([listCategories(sub), getSettings(sub)]);
   const usage = new UsageCollector();
   const examples = settings.learning.useFeedbackContext ? await correctionExamples(sub, settings.learning.maxExamples) : [];
-  const profile = await loadProfileContext(settings);
+  const subject = await loadSubjectContext(settings);
   let article: Article;
   try {
     const classification = await classifyArticle(
@@ -92,7 +92,7 @@ export async function enrichCandidate(input: EnrichInput): Promise<{ outcome: En
       },
       categories,
       settings.models.tagging,
-      profile,
+      subject,
       usage,
       examples,
     );
@@ -109,7 +109,7 @@ export async function enrichCandidate(input: EnrichInput): Promise<{ outcome: En
       lang: extracted?.lang ?? candidate.lang,
       snippet: candidate.snippet ?? extracted?.excerpt ?? null,
       textStatus: extracted ? extracted.status : 'skipped',
-      filterReason: classification.relevant ? null : `Tagger: not about ${settings.profile.subject ? `${settings.profile.subject} or ` : ''}any category`,
+      filterReason: classification.relevant ? null : `Tagger: not about ${settings.subject.name ? `${settings.subject.name} or ` : ''}any category`,
       suggestion: {
         categoryIds: classification.categoryIds,
         sentiment: classification.sentiment,

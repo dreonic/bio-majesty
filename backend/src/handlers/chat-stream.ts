@@ -15,7 +15,7 @@ import { pipeline } from 'node:stream/promises';
 import type { ReadableStream as NodeReadableStream } from 'node:stream/web';
 import { buildChatTools, chatErrorText, chatInstructions, chatProviderOptions } from '../ai/chat-agent';
 import { resolveWithFallback } from '../ai/fallback';
-import { loadProfileContext } from '../ai/profile';
+import { loadSubjectContext } from '../ai/subject';
 import { corsHeaders, getUser, HttpError, parseBody, requireAccess, setRequestOrigin } from '../lib/http';
 import { errorMessage, logger } from '../lib/logger';
 import { listCategories } from '../repo/categories';
@@ -72,7 +72,7 @@ export const handler = awslambda.streamifyResponse(async (event: APIGatewayProxy
     const chat = settings.models.chat;
     const result = streamText({
       model: await resolveWithFallback(chat.model, chat.fallbackModel),
-      instructions: chatInstructions(await loadProfileContext(settings), categories, assets),
+      instructions: chatInstructions(await loadSubjectContext(settings), categories, assets),
       messages: await convertToModelMessages(messages.slice(-MAX_HISTORY_MESSAGES)),
       tools,
       stopWhen: isStepCount(8),

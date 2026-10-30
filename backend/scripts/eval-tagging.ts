@@ -9,7 +9,7 @@
  *     npm run eval:tagging -w backend -- anthropic:claude-haiku-5-5 --sub <sub> --limit 50
  */
 import { DEFAULT_SETTINGS } from '@bio-majesty/shared';
-import { loadProfileContext } from '../src/ai/profile';
+import { loadSubjectContext } from '../src/ai/subject';
 import { classifyArticle } from '../src/ai/tasks/classify';
 import { UsageCollector } from '../src/ai/usage';
 import { listCategories } from '../src/repo/categories';
@@ -28,7 +28,7 @@ if (!model || !sub) {
 }
 
 const categories = await listCategories(sub);
-const profile = await loadProfileContext(await getSettings(sub));
+const subject = await loadSubjectContext(await getSettings(sub));
 const examples = (await listFeedback(sub, { limit })).filter((f) => f.exec && f.decision !== 'rejected');
 if (!examples.length) {
   console.error('No approved decisions to evaluate against yet.');
@@ -46,7 +46,7 @@ for (const f of examples) {
       { title: f.title, sourceName: f.sourceName, url: f.url, publishedAt: f.publishedAt, text: stored?.text ?? null, snippet: null, categoryHints: [] },
       categories,
       { ...DEFAULT_SETTINGS.models.tagging, model, fallbackModel: null },
-      profile,
+      subject,
       usage,
     );
     if (c.sentiment === f.exec!.sentiment) sentimentHits++;

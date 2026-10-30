@@ -1,9 +1,9 @@
 import { AssetsSection } from './AssetsSection';
 import { CategoriesSection } from './CategoriesSection';
 import { ModelsSection } from './ModelsSection';
-import { ProfileSection } from './ProfileSection';
 import { ScheduleSection } from './ScheduleSection';
 import { SourcesSection } from './SourcesSection';
+import { SubjectSection } from './SubjectSection';
 import { TelegramSection } from './TelegramSection';
 
 /** Everything here belongs to the signed-in account; other accounts have their own. */
@@ -18,7 +18,7 @@ export function SettingsPage() {
             and where to send notifications.
           </p>
         </div>
-        <ProfileSection />
+        <SubjectSection />
         <AssetsSection />
         <ModelsSection />
         <CategoriesSection />

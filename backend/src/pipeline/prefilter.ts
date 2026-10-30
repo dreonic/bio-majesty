@@ -31,7 +31,7 @@ export async function prefilterRun(state: PipelineState): Promise<PipelineState>
     categories,
     exclude,
     settings.models.prefilter,
-    settings.profile,
+    settings.subject,
     usage,
   );
 

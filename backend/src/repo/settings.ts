@@ -32,7 +32,7 @@ export function mergeSettings(base: Settings, patch: Partial<Settings> | Setting
     sources: { ...base.sources, ...(patch.sources ?? {}) },
     notifications: { ...base.notifications, ...(patch.notifications ?? {}) },
     stock: { ...base.stock, ...(patch.stock ?? {}) },
-    profile: { ...base.profile, ...(patch.profile ?? {}) },
+    subject: { ...base.subject, ...(patch.subject ?? {}) },
     learning: { ...base.learning, ...(patch.learning ?? {}) },
     updatedAt: 'updatedAt' in patch && patch.updatedAt ? patch.updatedAt : base.updatedAt,
   };

@@ -14,7 +14,7 @@ import { z } from 'zod';
 import { configuredProviders, languageModel } from '../src/ai/registry';
 import { mergeProviderOptions } from '../src/ai/run-task';
 import { classifyArticle } from '../src/ai/tasks/classify';
-import { SAMPLE_PROFILE_CONTEXT } from './sample-profile';
+import { SAMPLE_SUBJECT_CONTEXT } from './sample-subject';
 
 const categories: Category[] = [
   {
@@ -51,7 +51,7 @@ async function smoke(model: string): Promise<boolean> {
         { title: f.title, sourceName: 'Smoke test', url: 'https://example.com', publishedAt: null, text: f.text, snippet: null, categoryHints: ['corp'] },
         categories,
         settings,
-        SAMPLE_PROFILE_CONTEXT,
+        SAMPLE_SUBJECT_CONTEXT,
       );
       console.log(`  ✓ tagging (${Date.now() - started} ms): ${c.sentiment}, categories=[${c.categoryIds.join(',')}], conf=${c.confidence.toFixed(2)}`);
     } catch (err) {

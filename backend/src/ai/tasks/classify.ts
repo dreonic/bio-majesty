@@ -2,12 +2,12 @@ import { SENTIMENTS, type Category, type Feedback, type Sentiment, type TaskMode
 import { z } from 'zod';
 import {
   categoriesBlock,
-  profileContext,
   sentimentBasis,
   sentimentRubric,
+  subjectContext,
   UNTRUSTED_NOTE,
   untrusted,
-  type ProfileContext,
+  type SubjectContext,
 } from '../prompts';
 import { runStructured } from '../run-task';
 import type { UsageCollector } from '../usage';
@@ -49,14 +49,14 @@ export interface ArticleForClassification {
 
 const MAX_TEXT_CHARS = 24_000;
 
-export function classificationInstructions(categories: Category[], ctx: ProfileContext, examples: Feedback[] = []): string {
-  return `${profileContext(ctx.profile)}
+export function classificationInstructions(categories: Category[], ctx: SubjectContext, examples: Feedback[] = []): string {
+  return `${subjectContext(ctx.subject)}
 
-${sentimentRubric(ctx.profile, ctx.asset)}
+${sentimentRubric(ctx.subject, ctx.asset)}
 
 ${categoriesBlock(categories)}
 
-You tag one news article for the reader's review queue. Suggest the matching categories, judge the sentiment for ${sentimentBasis(ctx.profile, ctx.asset)}, explain the call briefly, and summarise the article in English. If only a headline and snippet are available, work from those and lower your confidence accordingly.
+You tag one news article for the reader's review queue. Suggest the matching categories, judge the sentiment for ${sentimentBasis(ctx.subject, ctx.asset)}, explain the call briefly, and summarise the article in English. If only a headline and snippet are available, work from those and lower your confidence accordingly.
 ${examples.length ? `\n${feedbackExamplesBlock(examples, categories)}\n` : ''}
 ${UNTRUSTED_NOTE}`;
 }
@@ -123,7 +123,7 @@ export async function classifyArticle(
   article: ArticleForClassification,
   categories: Category[],
   settings: TaskModelSettings,
-  ctx: ProfileContext,
+  ctx: SubjectContext,
   usage?: UsageCollector,
   examples: Feedback[] = [],
 ): Promise<Classification> {

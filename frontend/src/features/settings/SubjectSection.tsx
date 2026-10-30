@@ -4,8 +4,8 @@ import { useToast } from '../../components/toast';
 import { Button, Card, Field, Input, SectionTitle, Select, Spinner, Textarea } from '../../components/ui';
 import { useSettings, useStockAssets, useUpdateSettings } from '../../lib/queries';
 
-/** Who the account's news is about, and what sentiment means: it shapes every AI task of this account. */
-export function ProfileSection() {
+/** Who the profile's news is about, and what sentiment means: it shapes every AI task of this profile. */
+export function SubjectSection() {
   const settings = useSettings();
   const assets = useStockAssets().data ?? [];
   const update = useUpdateSettings();
@@ -17,8 +17,8 @@ export function ProfileSection() {
 
   useEffect(() => {
     if (!settings.data) return;
-    const p = settings.data.profile;
-    setSubject(p.subject);
+    const p = settings.data.subject;
+    setSubject(p.name);
     setContext(p.context);
     setBasis(p.sentimentAsset ?? '');
   }, [settings.data]);
@@ -30,24 +30,24 @@ export function ProfileSection() {
       </Card>
     );
   }
-  const p = settings.data.profile;
-  const dirty = subject !== p.subject || context !== p.context || (basis || null) !== p.sentimentAsset;
+  const p = settings.data.subject;
+  const dirty = subject !== p.name || context !== p.context || (basis || null) !== p.sentimentAsset;
   // The same ticker from two sources needs its source named.
   const ambiguous = (ticker: string) => assets.filter((a) => displaySymbol(a.id) === ticker).length > 1;
   const save = () =>
     update.mutate(
-      { profile: { subject: subject.trim(), context: context.trim(), sentimentAsset: basis || null } },
-      { onSuccess: () => toast.success('Profile saved — it applies from the next run'), onError: toast.error },
+      { subject: { name: subject.trim(), context: context.trim(), sentimentAsset: basis || null } },
+      { onSuccess: () => toast.success('Subject saved — it applies from the next run'), onError: toast.error },
     );
 
   return (
     <Card>
       <SectionTitle
-        title="Profile"
+        title="Subject"
         description="Who your news is about. The AI uses this to filter and tag news, write digests and answer in chat. Changes apply from the next run; news already found keeps its tags."
         actions={
           <Button variant="primary" size="sm" disabled={!dirty} loading={update.isPending} onClick={save}>
-            Save profile
+            Save subject
           </Button>
         }
       />

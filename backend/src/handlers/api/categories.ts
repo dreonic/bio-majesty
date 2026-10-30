@@ -124,6 +124,6 @@ export const handler = createRouter({
   'POST /categories/suggest-queries': async (event, user) => {
     const input = parseBody(event, SuggestQueriesRequestSchema);
     const settings = await getSettings(user.sub);
-    return json(200, await suggestQueries(input, settings.models.querySuggest, settings.profile));
+    return json(200, await suggestQueries(input, settings.models.querySuggest, settings.subject));
   },
 });

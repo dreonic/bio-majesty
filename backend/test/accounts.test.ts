@@ -1,5 +1,5 @@
 import { GetCommand, DynamoDBDocumentClient, QueryCommand } from '@aws-sdk/lib-dynamodb';
-import { DEFAULT_PROFILE, DEFAULT_SETTINGS, type StockAsset } from '@bio-majesty/shared';
+import { DEFAULT_SETTINGS, DEFAULT_SUBJECT, type StockAsset } from '@bio-majesty/shared';
 import type { APIGatewayProxyEvent } from 'aws-lambda';
 import { mockClient } from 'aws-sdk-client-mock';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -199,15 +199,15 @@ describe('chat over one account', () => {
     expect(tools.getAssetPrices?.description).toContain('yahoo:ACME.JK = ACME (PT Acme Laboratorium Tbk)');
   });
 
-  it("frames answers with the account's profile and sentiment basis", () => {
-    const profile = { subject: 'Acme Labs', context: 'A laboratory chain.', sentimentAsset: acme.id };
-    const text = chatInstructions({ profile, asset: acme }, [], [acme]);
+  it('frames answers with the subject and sentiment basis', () => {
+    const subject = { name: 'Acme Labs', context: 'A laboratory chain.', sentimentAsset: acme.id };
+    const text = chatInstructions({ subject, asset: acme }, [], [acme]);
     expect(text).toContain('You support a reader who follows Acme Labs.\n\nA laboratory chain.');
     expect(text).toContain('likely effect on the ACME (PT Acme Laboratorium Tbk) share price');
   });
 
-  it('falls back to the categories when a new account has no subject yet', () => {
-    const text = chatInstructions({ profile: DEFAULT_PROFILE, asset: null }, [], []);
+  it('falls back to the categories when a new profile has no subject yet', () => {
+    const text = chatInstructions({ subject: DEFAULT_SUBJECT, asset: null }, [], []);
     expect(text).toContain('You support a reader who follows the topics of their news categories.');
     expect(text).toContain('likely effect on the topic each article is about');
   });
@@ -215,13 +215,13 @@ describe('chat over one account', () => {
 
 describe('sentiment rubric', () => {
   it("judges against the profile's asset, or the subject itself without one", () => {
-    const profile = { ...DEFAULT_SETTINGS.profile, subject: 'Acme Labs' };
-    const price = sentimentRubric(profile, { id: 'yahoo:BTC-USD', name: 'Bitcoin USD', type: 'CRYPTOCURRENCY' });
+    const acmeLabs = { ...DEFAULT_SETTINGS.subject, name: 'Acme Labs' };
+    const price = sentimentRubric(acmeLabs, { id: 'yahoo:BTC-USD', name: 'Bitcoin USD', type: 'CRYPTOCURRENCY' });
     expect(price).toContain('relative to the BTC-USD (Bitcoin USD) price — how an investor');
     expect(price).toContain('positive: likely to support the price');
-    const subject = sentimentRubric(profile, null);
+    const subject = sentimentRubric(acmeLabs, null);
     expect(subject).toContain('relative to Acme Labs — how a well-informed reader');
     expect(subject).toContain('positive: good news for Acme Labs');
-    expect(sentimentRubric(DEFAULT_SETTINGS.profile, null)).toContain('negative: bad news for the topic each article is about');
+    expect(sentimentRubric(DEFAULT_SETTINGS.subject, null)).toContain('negative: bad news for the topic each article is about');
   });
 });

@@ -13,7 +13,7 @@ import {
   searchNews,
   searchNewsInput,
 } from '../tools/news-tools';
-import { categoriesBlock, profileContext, sentimentBasis, UNTRUSTED_NOTE, type ProfileContext } from './prompts';
+import { categoriesBlock, sentimentBasis, subjectContext, UNTRUSTED_NOTE, type SubjectContext } from './prompts';
 import { mergeProviderOptions } from './run-task';
 
 /**
@@ -97,13 +97,13 @@ export function buildChatTools(ctx: { sub: string; assets: StockAsset[] }) {
 
 export type ChatTools = ReturnType<typeof buildChatTools>;
 
-export function chatInstructions(ctx: ProfileContext, categories: Category[], assets: StockAsset[]): string {
+export function chatInstructions(ctx: SubjectContext, categories: Category[], assets: StockAsset[]): string {
   const prices = assets.length ? ` and daily price data for their tracked assets (${assets.map(assetLabel).join(', ')})` : '';
-  return `${profileContext(ctx.profile)}
+  return `${subjectContext(ctx.subject)}
 
 You are the user's research assistant inside their news dashboard. Answer questions using their saved news archive (articles they have reviewed and approved)${prices}, through the tools provided. Call tools whenever the answer depends on the archive; do not rely on general knowledge for facts about what they follow, and say plainly when the saved news does not cover something.
 
-Cite the articles you rely on inline as [title](url) links. Mention publication dates for time-sensitive points. Each article's sentiment describes its likely effect on ${sentimentBasis(ctx.profile, ctx.asset)}. When relating news to prices, describe correlation carefully — do not claim causation. Answer in the language the user writes in. Keep answers concise and skimmable.
+Cite the articles you rely on inline as [title](url) links. Mention publication dates for time-sensitive points. Each article's sentiment describes its likely effect on ${sentimentBasis(ctx.subject, ctx.asset)}. When relating news to prices, describe correlation carefully — do not claim causation. Answer in the language the user writes in. Keep answers concise and skimmable.
 
 ${categoriesBlock(categories)}
 

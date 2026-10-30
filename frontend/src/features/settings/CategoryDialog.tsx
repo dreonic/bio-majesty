@@ -49,7 +49,7 @@ export function CategoryDialog({ category, existingCount, onClose }: { category:
   const update = useUpdateCategory();
   const suggest = useSuggestQueries();
   const toast = useToast();
-  const templates = categoryTemplates(useSettings().data?.profile.subject ?? '');
+  const templates = categoryTemplates(useSettings().data?.subject.name ?? '');
 
   const applySuggestion = () =>
     suggest.mutate(
