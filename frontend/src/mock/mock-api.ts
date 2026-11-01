@@ -479,7 +479,10 @@ async function route(method: string, url: URL, body: unknown, profileId: string 
     return json({ sent: true });
   }
 
-  if (path === 'admin/users' && method === 'GET') return json({ users: account.users, me: 'demo-admin', invites: true });
+  if (path === 'admin/users' && method === 'GET') {
+    // The demo only knows its own profiles; the other users have none.
+    return json({ users: account.users, profiles: { 'sub-demo-admin': account.profiles }, me: 'demo-admin', invites: true });
+  }
   if (path === 'admin/users' && method === 'POST') {
     const email = String((body as { email?: string }).email ?? '').trim().toLowerCase();
     if (account.users.some((u) => u.email === email)) return json({ error: 'conflict', message: `${email} already has a user` }, 409);

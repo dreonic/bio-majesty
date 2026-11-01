@@ -1,6 +1,6 @@
 import type { AdminUser, ProfileSummary } from '@bio-majesty/shared';
-import { Mail, Trash2, UserPlus } from 'lucide-react';
-import { Fragment, useState, type FormEvent } from 'react';
+import { Copy, IdCard, Mail, Trash2, UserPlus } from 'lucide-react';
+import { useState, type FormEvent } from 'react';
 import { Navigate } from 'react-router';
 import { useSession } from '../../app/session';
 import { Modal } from '../../components/overlays';
@@ -15,6 +15,7 @@ export function AdminPage() {
   const { admin } = useSession();
   const users = useAdminUsers();
   const [deleting, setDeleting] = useState<AdminUser | null>(null);
+  const [showingIds, setShowingIds] = useState<AdminUser | null>(null);
   if (!admin) return <Navigate to="/" replace />;
 
   const list = users.data?.users ?? [];
@@ -70,9 +71,9 @@ export function AdminPage() {
                     <UserRow
                       key={user.username}
                       user={user}
-                      profiles={profiles[user.sub] ?? []}
                       self={user.username === me}
                       invites={invites}
+                      onShowIds={() => setShowingIds(user)}
                       onDelete={() => setDeleting(user)}
                     />
                   ))}
@@ -82,6 +83,7 @@ export function AdminPage() {
           </>
         )}
       </div>
+      {showingIds && <IdsDialog user={showingIds} profiles={profiles[showingIds.sub] ?? []} onClose={() => setShowingIds(null)} />}
       {deleting && <DeleteDialog user={deleting} onClose={() => setDeleting(null)} />}
     </div>
   );
@@ -119,8 +121,7 @@ function InviteForm() {
   );
 }
 
-/** Who the user is; with `profiles`, also the IDs that scripts and support need. */
-function Identity({ user, self = false, profiles }: { user: AdminUser; self?: boolean; profiles?: ProfileSummary[] }) {
+function Identity({ user, self = false }: { user: AdminUser; self?: boolean }) {
   return (
     <div className="min-w-0 flex-1">
       <p className="flex flex-wrap items-center gap-2 text-sm font-medium text-ink">
@@ -130,18 +131,6 @@ function Identity({ user, self = false, profiles }: { user: AdminUser; self?: bo
       <p className="mt-0.5 text-xs text-ink-2">
         {[user.name, user.provider === 'google' ? 'Google sign-in' : 'Email and password', `added ${formatDate(user.createdAt)}`].filter(Boolean).join(' · ')}
       </p>
-      {profiles && (
-        <p className="mt-0.5 text-xs break-words text-muted">
-          Account ID <code className="select-all">{user.sub}</code>
-          {profiles.length > 0 && ' · Profile IDs: '}
-          {profiles.map((p, i) => (
-            <Fragment key={p.id}>
-              {i > 0 && ', '}
-              {p.name} <code className="select-all">{p.id}</code>
-            </Fragment>
-          ))}
-        </p>
-      )}
     </div>
   );
 }
@@ -188,15 +177,15 @@ function status(user: AdminUser, invites: boolean): { label: string; className?:
 
 function UserRow({
   user,
-  profiles,
   self,
   invites,
+  onShowIds,
   onDelete,
 }: {
   user: AdminUser;
-  profiles: ProfileSummary[];
   self: boolean;
   invites: boolean;
+  onShowIds: () => void;
   onDelete: () => void;
 }) {
   const update = useUpdateUser();
@@ -209,7 +198,7 @@ function UserRow({
 
   return (
     <li className={cn('flex flex-wrap items-center gap-x-5 gap-y-3 px-5 py-3', !user.enabled && 'bg-surface')}>
-      <Identity user={user} self={self} profiles={profiles} />
+      <Identity user={user} self={self} />
       <Badge className={badge.className} title={badge.title}>
         {badge.label}
       </Badge>
@@ -226,7 +215,10 @@ function UserRow({
         onChange={(admin) => change({ admin }, admin ? `${who} is now an admin` : `${who} is no longer an admin`)}
       />
       {/* Fixed width keeps the switches of every row in one column. */}
-      <div className="flex items-center gap-1 sm:w-64 sm:justify-end">
+      <div className="flex items-center gap-1 sm:w-80 sm:justify-end">
+        <Button size="sm" variant="ghost" icon={<IdCard className="size-4" />} onClick={onShowIds} aria-label={`IDs of ${who}`}>
+          IDs
+        </Button>
         {invites && user.status === 'FORCE_CHANGE_PASSWORD' && user.enabled && (
           <Button
             size="sm"
@@ -249,6 +241,53 @@ function UserRow({
           </Button>
         )}
       </div>
+    </li>
+  );
+}
+
+/** The account's IDs, for scripts (--profile-id) and the Cognito console. */
+function IdsDialog({ user, profiles, onClose }: { user: AdminUser; profiles: ProfileSummary[]; onClose: () => void }) {
+  return (
+    <Modal
+      open
+      onOpenChange={(o) => !o && onClose()}
+      title={`IDs of ${user.email ?? user.username}`}
+      description="Scripts such as export:feedback take a profile ID (--profile-id)."
+      width="max-w-lg"
+    >
+      <ul className="divide-y divide-hairline">
+        <IdRow label="Account ID" value={user.sub} />
+        <IdRow label="Cognito username" value={user.username} />
+        {profiles.map((p) => (
+          <IdRow key={p.id} label={`Profile: ${p.name}`} value={p.id} />
+        ))}
+      </ul>
+      {profiles.length === 0 && <p className="pt-3 text-sm text-ink-2">No profiles yet: the first one is made when the person names it after signing in.</p>}
+    </Modal>
+  );
+}
+
+function IdRow({ label, value }: { label: string; value: string }) {
+  const toast = useToast();
+  return (
+    <li className="flex items-center gap-3 py-2.5 first:pt-0 last:pb-0">
+      <div className="min-w-0 flex-1">
+        <p className="text-sm text-ink">{label}</p>
+        <code className="text-xs break-all text-ink-2 select-all">{value}</code>
+      </div>
+      <Button
+        size="sm"
+        icon={<Copy className="size-4" />}
+        aria-label={`Copy ${label}`}
+        onClick={() =>
+          void navigator.clipboard.writeText(value).then(
+            () => toast.success('Copied'),
+            () => toast.error('Copy failed: select the text instead'),
+          )
+        }
+      >
+        Copy
+      </Button>
     </li>
   );
 }
